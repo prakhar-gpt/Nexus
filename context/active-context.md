@@ -21,3 +21,4 @@ Resolved in this session:
 - Context-aware number checker: numbers from the prompt, earlier messages, and SQL queries no longer cause false "untraced figure" caveats.
 - Ambiguous date/filter queries actively trigger clarifying questions without tripping the checker.
 - Strict guardrails against raw diagram/Mermaid output in system.md; visualization requests query data for native Recharts under 'Show the query' or ask for required dimensions.
+- Completed senior-level backend refactor separating `app/packages/agent/` into dedicated `tools/`, `nodes/`, `state.py`, and `formatting.py`, and `app/apps/api/` into `schemas.py`, `sse.py`, `services/`, and `routers/`.

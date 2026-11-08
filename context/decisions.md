@@ -99,3 +99,7 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* The agent was generating raw Mermaid syntax blocks and pseudo-charts when asked to "render chart". Native interactive charts already exist in the UI via Recharts under "Show the query".
   * *Rejected:* Allowing the LLM to output arbitrary text diagrams, Mermaid blocks, or scripts.
   * *Files affected:* `app/packages/agent/prompts/system.md`.
+* **Decision 32 (2026-11-08):** Production-grade backend refactor with strict separation of concerns.
+  * *Reason:* `graph.py` (440 lines) and `main.py` (464 lines) had accumulated tool declarations, handlers, nodes, routers, schemas, services, and route definitions into large monolithic files.
+  * *Rejected:* Leaving the monolithic files in place.
+  * *Files affected:* `app/packages/agent/` (`state.py`, `formatting.py`, `tools/`, `nodes/`, `graph.py`), `app/apps/api/` (`schemas.py`, `sse.py`, `services/`, `routers/`, `main.py`).

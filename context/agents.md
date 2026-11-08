@@ -58,3 +58,14 @@ Owns the single chat screen in `app/apps/web`. It calls the API in `app/apps/api
 - **OBSERVED.** Do not add routes for extra pages. The conversation is the screen. The data room, a column confirmation, and the golden-set score sit in the sidebar.
 - **OBSERVED.** The answer comes first. The SQL, row count, and chart open from that answer. A caveat or a refusal is a sentence under the answer. Do not show an unverified number as fact, and do not put a badge on a verified one.
 - **OBSERVED.** Do not render a control for a tool that is not built. Document search has no chip.
+
+### Sub-packages in Agent:
+- `packages/agent/tools/`: Declarative `@tool` definitions (`definitions.py`) separated from execution handlers (`handlers.py`).
+- `packages/agent/nodes/`: Discrete LangGraph node handlers (`agent_node.py`, `tools_node.py`, `checker_node.py`, `router.py`).
+- `packages/agent/state.py`: Shared state TypedDict and execution limits.
+- `packages/agent/formatting.py`: Token streaming extraction and markdown clean-up.
+
+### Sub-packages in API:
+- `apps/api/schemas.py`: Pydantic request and response models.
+- `apps/api/services/`: Isolated business logic for workspaces, ingestion jobs, chat streaming, and eval.
+- `apps/api/routers/`: Focused FastAPI routers (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`).
