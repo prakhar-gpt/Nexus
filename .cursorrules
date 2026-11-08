@@ -1,7 +1,6 @@
 # Nexus Project Context Rules
 
-You are an expert AI engineer building the Nexus Retail Data Room
-Copilot.
+You are an expert AI engineer building the Nexus Retail Data Room Copilot.
 
 CRITICAL DIRECTIVE: Before answering any query, writing any code, or
 suggesting any architecture change, you MUST consult the context
@@ -9,17 +8,25 @@ system in `context/`.
 
 ## Session start protocol
 
-1. Read `context/INDEX.md` first — it is the routing table.
-2. Based on the task, open ONLY the specific context files relevant
-   to that task. Do not preload the entire `context/` folder.
-3. Read `context/active-context.md` to see what is currently in
-   progress or unresolved before deciding where to resume.
+1. Read `context/active-context.md` first — it contains the current
+   resolved architecture, active state, and recent decisions.
+2. Read `context/INDEX.md` to route to the specific context files
+   relevant to the task (e.g. `architecture.md`, `decisions.md`,
+   `agent/README.md`). Do not preload the entire `context/` folder.
+3. Review the current directory layout:
+   - `frontend/`: Next.js 16 app (Tailwind, shadcn/ui, JetBrains Mono).
+   - `backend/`: FastAPI service at `backend/main.py`.
+   - `backend/db/`: `changesets/` (SQL migrations) and `seeds/` (`load_superstore.py`).
+   - `backend/agent/`: 4 tools in `tools/`, graph in `graph.py`, nodes in `nodes.py`, checker in `checker.py`.
+   - `backend/ingest/`: `reader.py`, `mapping.py`, `store.py`, `pipeline.py`.
+   - `backend/eval/`: `golden_set.json` (single source of truth) and `runner.py`.
+   - `backend/tests/`: Consolidated pytest test suite.
 
 ## Trust hierarchy
 
 Live code, database state, and passing tests always outrank context
-notes. If a note in `context/` contradicts `app/` code, migrations,
-or test assertions, the code/schema wins — and update the stale note.
+notes. If a note in `context/` contradicts `backend/` or `frontend/` code,
+migrations, or test assertions, the code/schema wins — and update the stale note.
 
 ## Rules by file
 
@@ -40,12 +47,13 @@ or test assertions, the code/schema wins — and update the stale note.
 
 ## Hard boundaries
 
-- All application code stays inside `app/`. Never pollute the root.
+- All backend code stays inside `backend/` and frontend UI inside `frontend/`. Never pollute the root.
 - Never commit secrets, API keys, or `.env` files. If a task needs
-  DB access, read only the specific DB connection variable from
-  `.env` — never the whole file, and never copy secrets into
-  `context/`.
-- Do not edit files under `app/infra/` without explicit user approval.
+   DB access, read only the specific DB connection variable from
+   `.env` — never the whole file, and never copy secrets into
+   `context/`.
+- Do not edit database changesets under `backend/db/changesets/` without explicit user approval.
+- Deterministic claims: Never let the assistant calculate commercial numbers mentally. All figures must trace to SQL or Python tool outputs verified by `checker.py`.
 
 ## Session close protocol (mandatory, every session)
 
@@ -63,18 +71,12 @@ learned something non-obvious:
 3. Cross-link, don't duplicate — link to the detailed file rather
    than re-explaining inline.
 
-4. Escalate repeated mistakes: if the same category of bug was fixed
-   before (check `decisions.md`), add a permanent rule to
-   `agents.md` instead of just fixing it silently again.
+4. Verify all tests pass:
+   - `pytest backend/tests` (all unit & integration tests)
+   - `python backend/eval/runner.py` (30-question golden set)
 
 5. Give the user a one-line summary of exactly what was added or
    changed in `context/` so they can verify without opening files.
-
-## Maintenance trigger
-
-If `decisions.md` exceeds 100 lines, or 10+ sessions have passed
-since the last consolidation, propose a consolidation pass to the
-user at session close. Do not run it automatically.
 
 Do not proceed with code generation until you have reviewed the
 relevant context.
