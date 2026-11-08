@@ -132,6 +132,7 @@ export function Dashboard() {
           const patch: Partial<ChatMessage> = {
             runId: Number(data.run_id),
             rows: (data.rows as Record<string, string>[]) ?? [],
+            activity: [],
           }
           if (typeof data.answer === "string" && data.answer) {
             patch.text = data.answer

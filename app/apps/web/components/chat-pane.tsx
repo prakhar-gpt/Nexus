@@ -158,21 +158,22 @@ function AssistantMessage({
   const [open, setOpen] = useState(false)
   const rows = message.rows ?? []
   const activity = (message.activity ?? []).filter((step) => step.tool !== "checker")
-  const waiting = message.badge === "waiting" && !message.text && activity.length === 0
+  const activeStep = activity.length > 0 ? activity[activity.length - 1] : null
+  const waiting = message.badge === "waiting" && !message.text && !activeStep
   const note = message.badge ? NOTE[message.badge] : undefined
   const hasDetail = Boolean(message.sql) || rows.length > 0
   return (
     <div className="max-w-2xl text-[15px] leading-7">
-      {activity.length > 0 ? (
-        <div className="mb-3 flex flex-col gap-1">
-          {activity.map((step) => (
-            <p key={step.id ?? step.tool} className="text-sm text-muted-foreground">
-              {step.detail}
-            </p>
-          ))}
+      {!message.text && activeStep ? (
+        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+          <span>{activeStep.detail ?? activeStep.tool}</span>
         </div>
       ) : null}
-      {waiting ? <p className="text-sm text-muted-foreground">Looking at the table…</p> : null}
+      {waiting ? (
+        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
+          <span>Looking at the table…</span>
+        </div>
+      ) : null}
       {message.text ? <AnswerBody text={message.text} /> : null}
       {note ? <p className="mt-2 text-sm text-destructive">{note}</p> : null}
       {hasDetail ? (

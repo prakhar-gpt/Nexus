@@ -16,9 +16,10 @@ check = check_answer(answer, rows)
 
 - `sql` when this turn ran at least one query
 - `refusal` when the answer contains `cannot answer` or `refus`
+- `clarification` when the model asks the user a clarifying question (`?`)
 - `unknown` otherwise (a greeting, a definition with no query)
 
-`check_answer` in `app/packages/agent/checker.py` pulls every number out of the answer and out of the tool rows. A number matches if the decimals are equal. Thousands separators are stripped first, so `2,261,536.78` matches `2261536.78`. `verified` is true when `untraced` is empty.
+`check_answer` in `app/packages/agent/checker.py` pulls every number out of the answer and compares them against tool rows, executed SQL text, user prompts, and conversation messages. Ordinal suffixes (`1st`, `2nd`, `8th`, `26th`) are recognized. A number matches if the decimals are equal. Thousands separators are stripped first, so `2,261,536.78` matches `2261536.78`. When asking a clarifying question (`kind == 'clarification'`), numbers explaining options (e.g. available years) do not trip the checker. `verified` is true when `untraced` is empty.
 
 The node appends a step `{tool: "checker", status: "ok" | "caveat"}`. The screen does not show that step. It uses `verified` to decide the caveat sentence. A verified answer has no badge. An unverified answer gets a caveat under the text. The number is still shown. The checker does not delete it. See [09-screen.md](09-screen.md).
 

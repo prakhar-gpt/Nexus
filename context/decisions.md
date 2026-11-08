@@ -83,3 +83,15 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* The loop now spans the graph, the SQL guard, the stream, and the screen. A later session needs that path in order, without pasting `graph.py` into the architecture note.
   * *Rejected:* One long section inside `architecture.md`. Copying the source files into `context/`.
   * *Files affected:* `context/agent/`, `context/INDEX.md`, `context/architecture.md`, `context/agents.md`.
+* **Decision 28 (2026-11-08):** Tool execution indicators stream as one single pulsating line at a time, and disappear with no persistence once the answer text begins or stream finishes.
+  * *Reason:* Multiple stacked static tool lines cluttered the chat above the finished answer.
+  * *Rejected:* Showing all tool call steps permanently above the assistant response.
+  * *Files affected:* `app/apps/web/components/chat-pane.tsx`, `app/apps/web/components/dashboard.tsx`.
+* **Decision 29 (2026-11-08):** `psql` subprocess invocations on Windows enforce `encoding="utf-8"`.
+  * *Reason:* Windows defaults subprocess text mode to `cp1252`, crashing with `UnicodeEncodeError` on narrow non-breaking spaces (`\u202f`), curly quotes, and dashes emitted by hosted LLMs when persisting runs.
+  * *Rejected:* Leaving subprocess encoding to system default code page.
+  * *Files affected:* `app/packages/agent/db.py`, `app/infra/load_superstore.py`.
+* **Decision 30 (2026-11-08):** The number checker is context-aware (recognizing numbers in user prompts, earlier conversation turns, executed SQL text, and ordinals like 8th/26th), and clarification questions do not trip the checker. The agent is prompted to actively ask clarifying questions when date ranges or required filters are ambiguous.
+  * *Reason:* The checker previously flagged prompt dates or query limits as untraced hallucinations. The agent also silently guessed years or refused when a year was omitted.
+  * *Rejected:* Blank check on all numbers without context, and silently guessing dates.
+  * *Files affected:* `app/packages/agent/checker.py`, `app/packages/agent/graph.py`, `app/packages/agent/prompts/system.md`, `context/agent/07-checker.md`.

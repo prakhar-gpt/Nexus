@@ -6,6 +6,7 @@ import asyncio
 import csv
 import io
 import json
+import traceback
 import uuid
 from typing import Literal
 
@@ -336,6 +337,7 @@ def chat(workspace_id: int, body: ChatRequest):
                 elif kind == "result":
                     result = payload
         except Exception:
+            traceback.print_exc()
             yield _sse("error", {})
             return
         if not isinstance(result, dict):

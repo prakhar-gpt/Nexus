@@ -51,6 +51,7 @@ def psql(sql: str, *, user: str, password: str, database: str) -> str:
         [str(PSQL), "-w", "-v", "ON_ERROR_STOP=1", "-X", "-q", "--csv", "-d", database],
         input=sql,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         env=env,
         check=False,

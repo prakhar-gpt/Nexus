@@ -14,7 +14,7 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
-from packages.agent.checker import check_answer
+from packages.agent.checker import check_answer, is_clarification
 from packages.agent.model import chat_model
 from packages.agent.run_sql import SqlRejected
 from packages.agent.run_sql import run_sql as execute_sql
@@ -298,22 +298,46 @@ class Agent:
         else:
             answer = _text(last) or "No answer was produced."
         rows = list(state.get("rows") or [])
-        check = check_answer(answer, rows)
         sqls = list(state.get("sqls") or [])
         lowered = answer.lower()
         if sqls:
             kind = "sql"
         elif "cannot answer" in lowered or "refus" in lowered:
             kind = "refusal"
+        elif is_clarification(answer):
+            kind = "clarification"
         else:
             kind = "unknown"
+
+        context_texts = list(sqls)
+        for msg in (state.get("messages") or []):
+            content = getattr(msg, "content", "")
+            if isinstance(content, str):
+                context_texts.append(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, str):
+                        context_texts.append(part)
+                    elif isinstance(part, dict) and "text" in part:
+                        context_texts.append(str(part["text"]))
+
+        check = check_answer(answer, rows, context=context_texts)
+        if kind in ("refusal", "clarification"):
+            check = {"verified": True, "untraced": []}
+
         steps = list(state.get("steps") or [])
+        detail = "numbers match the tool output" if check["verified"] else "untraced number"
+        if kind == "clarification":
+            detail = "clarification requested"
+        elif kind == "refusal":
+            detail = "question refused"
+
         steps.append(
             {
                 "tool": "checker",
                 "status": "ok" if check["verified"] else "caveat",
                 "ms": 0,
-                "detail": "numbers match the tool output" if check["verified"] else "untraced number",
+                "detail": detail,
             }
         )
         return {"answer": answer, "check": check, "kind": kind, "steps": steps}

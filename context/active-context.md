@@ -14,3 +14,9 @@ Unresolved:
 - The in-memory thread does not survive an API restart. After a restart the model sees the stored questions and answers, not the earlier tool calls. Older stored answers may still be field dumps.
 
 Next action: the user can ask in the chat. Week 4 remains the add-on, Docker, and CI.
+
+Resolved in this session:
+- The screen shows one pulsating tool call at a time; tool calls do not persist once the answer text streams or finishes.
+- Fixed `UnicodeEncodeError` when saving runs with Unicode spaces/symbols (`\u202f`) on Windows via UTF-8 subprocess encoding.
+- Context-aware number checker: numbers from the prompt, earlier messages, and SQL queries no longer cause false "untraced figure" caveats.
+- Ambiguous date/filter queries actively trigger clarifying questions without tripping the checker.

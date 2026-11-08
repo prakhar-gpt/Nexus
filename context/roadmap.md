@@ -66,3 +66,6 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: Chat streams a status line as each tool starts, then the answer tokens as they are written. Scripted tests cover the event order. No live model call was made for this change.
 - 2026-11-08: Streamed tokens keep their spaces, so markdown renders as the answer is written. The prompt now asks for a sentence instead of a field dump such as `subcategories=17`.
 - 2026-11-08: The question path is written as one file per step in `context/agent/`. No model call was made for this change.
+- 2026-11-08: Fixed UI tool call display: shows one pulsating step while running, disappears with no persistence when answer begins.
+- 2026-11-08: Enforced UTF-8 encoding on Windows `psql` subprocess calls in `db.py` to fix `UnicodeEncodeError` on narrow spaces and quotes.
+- 2026-11-08: Made number checker context-aware (includes prompt and SQL text) and supported ordinal suffixes (`8th`, `26th`). Added clarification question support in `system.md`, `checker.py`, and `graph.py` so ambiguous filters ask the user without tripping the checker.

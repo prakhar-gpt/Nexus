@@ -65,6 +65,7 @@ def psql(database: str, *args: str, input_text: str | None = None) -> str:
         command,
         input=input_text,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         env=env,
         check=False,
