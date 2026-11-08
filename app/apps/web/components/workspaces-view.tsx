@@ -1,9 +1,11 @@
 "use client"
 
-import { Plus, Database, Trash2, ArrowRight, Table2, Calendar, FileSpreadsheet } from "lucide-react"
+import { useState } from "react"
+import { Plus, Database, Trash2, ArrowRight, FileSpreadsheet, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { type WorkspaceSummary } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface WorkspacesViewProps {
   workspaces: WorkspaceSummary[]
@@ -23,6 +25,7 @@ export function WorkspacesView({
   onOpenAuthModal,
 }: WorkspacesViewProps) {
   const { user } = useAuth()
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<{ id: number; name: string } | null>(null)
 
   return (
     <div className="flex-1 flex flex-col h-full bg-background overflow-y-auto">
@@ -110,13 +113,12 @@ export function WorkspacesView({
                         </span>
                       ) : null}
 
+                      {/* Shadcn-triggered Delete Button */}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`Delete Data Room "${ws.name}"?`)) {
-                            onDeleteWorkspace(ws.id)
-                          }
+                          setWorkspaceToDelete({ id: ws.id, name: ws.name })
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                         title="Delete Data Room"
@@ -150,6 +152,21 @@ export function WorkspacesView({
           })}
         </div>
       </main>
+
+      {/* Shadcn Alert Dialog for Workspace Deletion */}
+      <ConfirmDialog
+        isOpen={!!workspaceToDelete}
+        onClose={() => setWorkspaceToDelete(null)}
+        onConfirm={() => {
+          if (workspaceToDelete) {
+            onDeleteWorkspace(workspaceToDelete.id)
+            setWorkspaceToDelete(null)
+          }
+        }}
+        title={`Delete "${workspaceToDelete?.name}"?`}
+        description="Are you sure you want to delete this data room? All uploaded spreadsheets, column mappings, and historical runs within this workspace will be archived."
+        confirmText="Delete Data Room"
+      />
     </div>
   )
 }

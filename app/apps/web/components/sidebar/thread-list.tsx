@@ -1,7 +1,9 @@
 "use client"
 
-import { Plus, Trash2, MessageSquare, ChevronRight } from "lucide-react"
+import { useState } from "react"
+import { Plus, Trash2, MessageSquare } from "lucide-react"
 import { type Thread } from "@/lib/api"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface ThreadListProps {
   threads: Thread[]
@@ -18,6 +20,8 @@ export function ThreadList({
   onNewThread,
   onDeleteThread,
 }: ThreadListProps) {
+  const [threadToDelete, setThreadToDelete] = useState<string | null>(null)
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between px-1">
@@ -72,14 +76,12 @@ export function ThreadList({
                     </span>
                   ) : null}
 
-                  {/* Delete Thread Button */}
+                  {/* Delete Thread Button opening Shadcn AlertDialog */}
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (confirm("Delete this conversation?")) {
-                        onDeleteThread(th.id)
-                      }
+                      setThreadToDelete(th.id)
                     }}
                     className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                     title="Delete chat"
@@ -92,7 +94,21 @@ export function ThreadList({
           })
         )}
       </div>
+
+      {/* Shadcn Alert Dialog for Chat Deletion */}
+      <ConfirmDialog
+        isOpen={!!threadToDelete}
+        onClose={() => setThreadToDelete(null)}
+        onConfirm={() => {
+          if (threadToDelete) {
+            onDeleteThread(threadToDelete)
+            setThreadToDelete(null)
+          }
+        }}
+        title="Delete Conversation"
+        description="Are you sure you want to delete this chat thread? This conversation history will be permanently cleared from this data room."
+        confirmText="Delete Chat"
+      />
     </div>
   )
 }
-
