@@ -134,43 +134,45 @@ export function AuditBar({
             )}
           </button>
 
-          {runId != null ? (
-            <>
-              <button
-                type="button"
-                onClick={() => handleVote("up")}
-                aria-label="Thumbs up rating"
-                aria-pressed={feedback === "up"}
-                className={`p-1 transition-colors rounded ${
-                  feedback === "up"
-                    ? "text-foreground font-semibold"
-                    : "hover:text-foreground"
-                }`}
-                title="Accurate and helpful"
-              >
-                <ThumbsUp
-                  className={`h-3.5 w-3.5 ${feedback === "up" ? "fill-current" : ""}`}
-                />
-              </button>
+          <button
+            type="button"
+            disabled={runId == null}
+            onClick={() => handleVote("up")}
+            aria-label="Thumbs up rating"
+            aria-pressed={feedback === "up"}
+            className={`p-1 transition-colors rounded ${
+              runId == null
+                ? "opacity-30 cursor-not-allowed"
+                : feedback === "up"
+                ? "text-foreground font-semibold"
+                : "hover:text-foreground"
+            }`}
+            title={runId == null ? "Feedback unavailable" : "Accurate and helpful"}
+          >
+            <ThumbsUp
+              className={`h-3.5 w-3.5 ${feedback === "up" ? "fill-current" : ""}`}
+            />
+          </button>
 
-              <button
-                type="button"
-                onClick={() => handleVote("down")}
-                aria-label="Thumbs down rating"
-                aria-pressed={feedback === "down"}
-                className={`p-1 transition-colors rounded ${
-                  feedback === "down"
-                    ? "text-foreground font-semibold"
-                    : "hover:text-foreground"
-                }`}
-                title="Inaccurate or issues with query"
-              >
-                <ThumbsDown
-                  className={`h-3.5 w-3.5 ${feedback === "down" ? "fill-current" : ""}`}
-                />
-              </button>
-            </>
-          ) : null}
+          <button
+            type="button"
+            disabled={runId == null}
+            onClick={() => handleVote("down")}
+            aria-label="Thumbs down rating"
+            aria-pressed={feedback === "down"}
+            className={`p-1 transition-colors rounded ${
+              runId == null
+                ? "opacity-30 cursor-not-allowed"
+                : feedback === "down"
+                ? "text-foreground font-semibold"
+                : "hover:text-foreground"
+            }`}
+            title={runId == null ? "Feedback unavailable" : "Inaccurate or issues with query"}
+          >
+            <ThumbsDown
+              className={`h-3.5 w-3.5 ${feedback === "down" ? "fill-current" : ""}`}
+            />
+          </button>
         </div>
       </div>
 

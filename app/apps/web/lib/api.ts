@@ -1,3 +1,5 @@
+import { showToast } from "./toast"
+
 export const API_URL = "http://localhost:8000"
 
 export type Mapping = {
@@ -35,7 +37,7 @@ export type Room = {
     revenue: string
     quarantine: string
   }
-  quarantine: { row_number: string; reason: string }[]
+  quarantine: { row_number: string; reason: string; raw_value?: string }[]
   mappings: Mapping[]
   threads?: Thread[]
   turns?: Turn[]
@@ -50,6 +52,11 @@ export type Turn = {
   verified: boolean | null
   rows: Record<string, string>[]
   thread_id?: string
+  checker_result?: {
+    untraced?: string[]
+    missing_measure?: string
+    [key: string]: unknown
+  }
 }
 
 export type TraceStep = {
@@ -58,6 +65,46 @@ export type TraceStep = {
   status: string
   ms?: number
   detail?: string
+}
+
+// Registry for 401 unauthenticated cleanup (cache, chat-store, etc.)
+const unauthorizedCleanups = new Set<() => void>()
+
+export function registerUnauthorizedCleanup(fn: () => void): () => void {
+  unauthorizedCleanups.add(fn)
+  return () => unauthorizedCleanups.delete(fn)
+}
+
+/**
+ * Universal fetch wrapper that handles 401 Unauthorized by clearing session,
+ * caches, and chat store, showing a toast, and redirecting to /login?next=...
+ */
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init)
+
+  if (response.status === 401) {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("nexus_session")
+        document.cookie = "nexus_session=; path=/; max-age=0; SameSite=Lax"
+      } catch {}
+
+      // Run registered cleanups (cache, chat-store)
+      unauthorizedCleanups.forEach((cleanup) => {
+        try {
+          cleanup()
+        } catch {}
+      })
+
+      showToast("Session expired. Sign in again.")
+
+      const currentPath = window.location.pathname + window.location.search
+      const nextParam = encodeURIComponent(currentPath)
+      window.location.href = `/login?next=${nextParam}`
+    }
+  }
+
+  return response
 }
 
 export async function readSse(

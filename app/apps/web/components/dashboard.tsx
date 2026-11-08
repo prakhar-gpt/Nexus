@@ -11,6 +11,7 @@ import { DataRoomModal } from "@/components/data-room-modal"
 import { AuthModal } from "@/components/auth-modal"
 import {
   API_URL,
+  apiFetch,
   readSse,
   type Mapping,
   type Room,
@@ -190,7 +191,7 @@ export function Dashboard() {
   async function loadWorkspaces(preferredId?: number) {
     setWorkspacesLoading(true)
     try {
-      const res = await fetch(`${API_URL}/workspaces`)
+      const res = await apiFetch(`${API_URL}/workspaces`)
       if (!res.ok) throw new Error("Could not list data rooms.")
       const list = (await res.json()) as WorkspaceSummary[]
       if (list && list.length > 0) {
@@ -213,7 +214,7 @@ export function Dashboard() {
 
   async function selectRoom(roomId: number, preferredThreadId?: string) {
     try {
-      const res = await fetch(`${API_URL}/workspaces/${roomId}`)
+      const res = await apiFetch(`${API_URL}/workspaces/${roomId}`)
       if (!res.ok) throw new Error("The data room could not be loaded.")
       const loaded = (await res.json()) as Room
       setRoom(loaded)
@@ -247,7 +248,7 @@ export function Dashboard() {
     try {
       let turnsToUse = preloadedTurns
       if (!turnsToUse) {
-        const res = await fetch(`${API_URL}/workspaces/${roomId}/threads/${threadId}/turns`)
+        const res = await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${threadId}/turns`)
         if (res.ok) {
           turnsToUse = (await res.json()) as Turn[]
         }
@@ -273,7 +274,7 @@ export function Dashboard() {
 
   async function handleCreateWorkspace(name: string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_URL}/workspaces`, {
+      const res = await apiFetch(`${API_URL}/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -314,7 +315,7 @@ export function Dashboard() {
 
   async function handleDeleteWorkspace(workspaceId: number) {
     try {
-      const res = await fetch(`${API_URL}/workspaces/${workspaceId}`, {
+      const res = await apiFetch(`${API_URL}/workspaces/${workspaceId}`, {
         method: "DELETE",
       })
       if (!res.ok) throw new Error()
@@ -350,7 +351,7 @@ export function Dashboard() {
   async function handleDeleteThread(threadId: string) {
     if (!room) return
     try {
-      await fetch(`${API_URL}/workspaces/${room.id}/threads/${threadId}`, {
+      await apiFetch(`${API_URL}/workspaces/${room.id}/threads/${threadId}`, {
         method: "DELETE",
       })
     } catch {
@@ -410,7 +411,7 @@ export function Dashboard() {
     let currentAssistantText = ""
 
     try {
-      const response = await fetch(`${API_URL}/workspaces/${room.id}/chat`, {
+      const response = await apiFetch(`${API_URL}/workspaces/${room.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text, thread_id: activeThreadId }),
@@ -587,7 +588,7 @@ export function Dashboard() {
     )
 
     try {
-      const res = await fetch(`${API_URL}/runs/${runId}/feedback`, {
+      const res = await apiFetch(`${API_URL}/runs/${runId}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating, reason }),
@@ -618,7 +619,7 @@ export function Dashboard() {
     const form = new FormData()
     form.append("file", file)
     try {
-      const res = await fetch(`${API_URL}/workspaces/${room.id}/uploads`, {
+      const res = await apiFetch(`${API_URL}/workspaces/${room.id}/uploads`, {
         method: "POST",
         body: form,
       })
@@ -675,7 +676,7 @@ export function Dashboard() {
 
   async function loadMappings(uploadId: number) {
     try {
-      const res = await fetch(`${API_URL}/uploads/${uploadId}/mapping`)
+      const res = await apiFetch(`${API_URL}/uploads/${uploadId}/mapping`)
       if (!res.ok) return
       const body = (await res.json()) as { mappings: Mapping[] }
       setLiveMappings(body.mappings)
@@ -689,7 +690,7 @@ export function Dashboard() {
     if (!id || !room) return true
     setConfirming(true)
     try {
-      const res = await fetch(`${API_URL}/uploads/${id}/mapping`, {
+      const res = await apiFetch(`${API_URL}/uploads/${id}/mapping`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisions }),

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   Plus,
   Database,
@@ -14,11 +16,12 @@ import {
   Moon,
   LogOut,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { type WorkspaceSummary } from "@/lib/api"
-import { useAuth } from "@/lib/auth-context"
+import { Button, buttonVariants } from "@/components/ui/button"
+import type { WorkspaceSummary } from "@/lib/api"
+import { useSession } from "@/lib/auth/provider"
+import { useChatStore } from "@/lib/chat-store"
+import { clearResourceCache } from "@/lib/use-resource"
 import { ConfirmDialog } from "@/components/confirm-dialog"
-import { useTheme } from "next-themes"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,19 +33,19 @@ import {
 
 interface WorkspacesViewProps {
   workspaces: WorkspaceSummary[]
-  currentRoomId: number | null
+  currentRoomId?: number | null
   loading?: boolean
   error?: string | null
   onRetry?: () => void
-  onSelectWorkspace: (id: number) => void
-  onOpenCreateModal: () => void
-  onDeleteWorkspace: (id: number) => void
-  onOpenAuthModal: () => void
+  onSelectWorkspace?: (id: number) => void
+  onOpenCreateModal?: () => void
+  onDeleteWorkspace?: (id: number) => Promise<void> | void
+  onOpenAuthModal?: () => void
 }
 
 export function WorkspacesView({
   workspaces,
-  currentRoomId,
+  currentRoomId = null,
   loading = false,
   error = null,
   onRetry,
@@ -51,46 +54,63 @@ export function WorkspacesView({
   onDeleteWorkspace,
   onOpenAuthModal,
 }: WorkspacesViewProps) {
-  const { user, logout } = useAuth()
-  const { resolvedTheme, setTheme } = useTheme()
+  const router = useRouter()
+  const { session, signOut } = useSession()
+  const { clearAll } = useChatStore()
   const [workspaceToDelete, setWorkspaceToDelete] = useState<{
     id: number
     name: string
   } | null>(null)
 
-  const isDark = resolvedTheme === "dark"
+  function toggleTheme() {
+    const isDark = document.documentElement.classList.contains("dark")
+    if (isDark) {
+      document.documentElement.classList.remove("dark")
+      localStorage.setItem("nexus_theme", "light")
+    } else {
+      document.documentElement.classList.add("dark")
+      localStorage.setItem("nexus_theme", "dark")
+    }
+  }
 
-  const initials = user?.name
-    ? user.name
+  async function handleSignOut() {
+    clearAll()
+    clearResourceCache()
+    await signOut()
+    router.replace("/login")
+  }
+
+  const initials = session?.name
+    ? session.name
         .split(" ")
         .map((n) => n[0])
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : "CD"
+    : "DA"
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
       {/* Slim Top Row (56px, bottom hairline) */}
       <header className="h-14 border-b border-border px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold tracking-tight text-foreground">
+          <span className="text-sm font-semibold tracking-tight text-foreground select-none">
             Nexus
           </span>
-          <span className="hidden sm:inline text-xs text-muted-foreground border-l border-border pl-3">
+          <span className="hidden sm:inline text-xs text-muted-foreground border-l border-border pl-3 select-none">
             Commercial due diligence & retail analytics
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          {user ? (
+          {session ? (
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 <div className="flex h-6 w-6 items-center justify-center bg-accent text-accent-foreground text-[10px] font-medium border border-border">
                   {initials}
                 </div>
                 <span className="hidden md:inline font-normal">
-                  Signed in as <strong className="font-medium text-foreground">{user.name}</strong>
+                  Signed in as <strong className="font-medium text-foreground">{session.name}</strong>
                 </span>
               </DropdownMenuTrigger>
 
@@ -100,10 +120,10 @@ export function WorkspacesView({
               >
                 <DropdownMenuLabel className="font-normal px-2 py-1.5">
                   <div className="flex flex-col gap-1">
-                    <p className="text-xs font-medium text-foreground">{user.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                    <p className="text-xs font-medium text-foreground">{session.name}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{session.email}</p>
                     <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                      Diligence Analyst
+                      {session.role}
                     </span>
                   </div>
                 </DropdownMenuLabel>
@@ -111,26 +131,17 @@ export function WorkspacesView({
                 <DropdownMenuSeparator className="bg-border my-1" />
 
                 <DropdownMenuItem
-                  onClick={() => setTheme(isDark ? "light" : "dark")}
+                  onClick={toggleTheme}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
                 >
-                  {isDark ? (
-                    <>
-                      <Sun className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>Switch to light mode</span>
-                    </>
-                  ) : (
-                    <>
-                      <Moon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>Switch to dark mode</span>
-                    </>
-                  )}
+                  <Sun className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Toggle theme</span>
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator className="bg-border my-1" />
 
                 <DropdownMenuItem
-                  onClick={() => logout()}
+                  onClick={handleSignOut}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
                 >
                   <LogOut className="h-3.5 w-3.5" />
@@ -139,30 +150,26 @@ export function WorkspacesView({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onOpenAuthModal}
-              className="text-xs h-8 text-muted-foreground hover:text-foreground"
+            <Link
+              href="/login"
+              className={buttonVariants({ variant: "ghost", size: "sm", className: "h-8 text-xs text-muted-foreground hover:text-foreground" })}
             >
               Sign in
-            </Button>
+            </Link>
           )}
 
-          <Button
-            size="sm"
-            onClick={onOpenCreateModal}
-            className="h-8 px-3 text-xs font-medium"
+          <Link
+            href="/rooms/new"
+            className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium" })}
           >
             <Plus className="h-3.5 w-3.5 mr-1" />
-            New data room
-          </Button>
+            <span>New data room</span>
+          </Link>
         </div>
       </header>
 
       {/* Main Hub Body (max 960px centered) */}
       <main className="w-full max-w-[960px] mx-auto px-6 py-10 flex-1 flex flex-col">
-        {/* Title and muted sentence */}
         <div>
           <h1 className="text-[28px] font-semibold leading-tight text-foreground tracking-tight">
             Data rooms
@@ -222,14 +229,13 @@ export function WorkspacesView({
             <p className="text-xs text-muted-foreground mt-1 mb-4">
               Create an isolated workspace to upload diligence spreadsheets and run SQL queries.
             </p>
-            <Button
-              size="sm"
-              onClick={onOpenCreateModal}
-              className="h-8 px-4 text-xs font-medium"
+            <Link
+              href="/rooms/new"
+              className={buttonVariants({ size: "sm", className: "h-8 px-4 text-xs font-medium" })}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              New data room
-            </Button>
+              <span>New data room</span>
+            </Link>
           </div>
         ) : null}
 
@@ -237,9 +243,8 @@ export function WorkspacesView({
         {!loading && workspaces.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
             {/* First Tile: "New data room" dashed hairline button */}
-            <button
-              type="button"
-              onClick={onOpenCreateModal}
+            <Link
+              href="/rooms/new"
               className="group flex flex-col items-center justify-center min-h-[170px] p-5 border border-dashed border-border hover:border-foreground/30 hover:bg-accent/40 transition-colors text-center cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <div className="flex h-8 w-8 items-center justify-center bg-muted text-muted-foreground group-hover:text-foreground transition-colors mb-2">
@@ -251,26 +256,19 @@ export function WorkspacesView({
               <span className="text-[11px] text-muted-foreground mt-0.5">
                 Upload and isolate sales data
               </span>
-            </button>
+            </Link>
 
-            {/* Room Cards */}
+            {/* Room Cards: full-card Link with trash button stopping propagation */}
             {workspaces.map((ws) => {
               const isActive = ws.id === currentRoomId
               const uploadCount = Number(ws.upload_count ?? 1)
               const runCount = Number(ws.run_count ?? 0)
 
               return (
-                <div
+                <Link
                   key={ws.id}
-                  tabIndex={0}
-                  role="button"
-                  onClick={() => onSelectWorkspace(ws.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      onSelectWorkspace(ws.id)
-                    }
-                  }}
+                  href={`/rooms/${ws.id}`}
+                  prefetch={true}
                   className={`group relative flex flex-col justify-between min-h-[170px] p-5 border bg-card cursor-pointer outline-none transition-colors hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring ${
                     isActive ? "border-foreground/40" : "border-border"
                   }`}
@@ -292,18 +290,21 @@ export function WorkspacesView({
                           </span>
                         ) : null}
 
-                        {/* Trash Icon Button appears on hover/focus (always on touch) */}
-                        <button
-                          type="button"
-                          aria-label={`Delete ${ws.name}`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setWorkspaceToDelete({ id: ws.id, name: ws.name })
-                          }}
-                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive max-sm:opacity-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {/* Trash Icon Button stops propagation to avoid opening room */}
+                        {onDeleteWorkspace && (
+                          <button
+                            type="button"
+                            aria-label={`Delete ${ws.name}`}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setWorkspaceToDelete({ id: ws.id, name: ws.name })
+                            }}
+                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive max-sm:opacity-100"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -326,14 +327,14 @@ export function WorkspacesView({
                   <div className="flex items-center justify-between pt-3 border-t border-border/40 text-[11px] text-muted-foreground mt-4">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      <span>{ws.created_at ? ws.created_at.slice(0, 10) : "Recent"}</span>
+                      <span className="font-mono tabular-nums">{ws.created_at ? ws.created_at.slice(0, 10) : "Recent"}</span>
                     </span>
                     <span className="flex items-center gap-1 font-medium text-foreground group-hover:translate-x-0.5 transition-transform">
                       <span>Open</span>
                       <ArrowRight className="h-3 w-3" />
                     </span>
                   </div>
-                </div>
+                </Link>
               )
             })}
           </div>
@@ -344,9 +345,9 @@ export function WorkspacesView({
       <ConfirmDialog
         isOpen={!!workspaceToDelete}
         onClose={() => setWorkspaceToDelete(null)}
-        onConfirm={() => {
-          if (workspaceToDelete) {
-            onDeleteWorkspace(workspaceToDelete.id)
+        onConfirm={async () => {
+          if (workspaceToDelete && onDeleteWorkspace) {
+            await onDeleteWorkspace(workspaceToDelete.id)
             setWorkspaceToDelete(null)
           }
         }}

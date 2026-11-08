@@ -1,13 +1,13 @@
 import type { Metadata } from "next"
 import { JetBrains_Mono } from "next/font/google"
-
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { AuthProvider } from "@/lib/auth-context"
+import { ThemeScript } from "@/components/theme-script"
+import { Toaster } from "@/components/ui/toaster"
+import { AuthProvider } from "@/lib/auth/provider"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
-  title: "Nexus — Retail Data Room Copilot",
+  title: "Nexus · Commercial Due Diligence & Retail Analytics",
   description: "Retail Data Room Copilot for Commercial Due Diligence",
 }
 
@@ -27,10 +27,12 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("antialiased font-sans", jetbrains.variable)}
     >
-      <body>
-        <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
-        </ThemeProvider>
+      <head>
+        <ThemeScript />
+      </head>
+      <body className="min-h-screen bg-background text-foreground">
+        <AuthProvider>{children}</AuthProvider>
+        <Toaster />
       </body>
     </html>
   )

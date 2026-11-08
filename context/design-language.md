@@ -96,3 +96,4 @@ All dialogs share: `popover` background, 1px border, `--radius: 0`, 24px padding
    - Pipeline Stepper: Horizontal desktop / vertical mobile progress tracker ("Checking file → Reading sheet → Matching columns → Loading rows").
    - Column Mapping: Uncertain rows (<70%) shown first with warn-tinting; auto-mapped rows (≥70%) collapsed under expander; confirm button disabled until resolved.
    - Quarantine: Quarantined anomaly table with CSV report download.
+

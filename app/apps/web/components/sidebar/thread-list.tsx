@@ -1,15 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
+import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
 import { type Thread } from "@/lib/api"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 
 interface ThreadListProps {
+  roomId?: string | number
   threads: Thread[]
-  activeThreadId: string
-  onSelectThread: (threadId: string) => void
-  onDeleteThread: (threadId: string) => void
+  activeThreadId?: string
+  onSelectThread?: (threadId: string) => void
+  onDeleteThread?: (threadId: string) => Promise<void> | void
 }
 
 function categorizeThread(dateStr?: string): "Today" | "Yesterday" | "Earlier" {
@@ -24,17 +27,35 @@ function categorizeThread(dateStr?: string): "Today" | "Yesterday" | "Earlier" {
 }
 
 export function ThreadList({
+  roomId = "1",
   threads,
   activeThreadId,
   onSelectThread,
   onDeleteThread,
 }: ThreadListProps) {
-  const [threadToDelete, setThreadToDelete] = useState<string | null>(null)
+  const router = useRouter()
+  const params = useParams()
+  const currentThreadId = activeThreadId || (params?.threadId as string) || ""
 
+  const [threadToDelete, setThreadToDelete] = useState<string | null>(null)
   const shouldGroup = threads.length > 8
 
+  async function handleConfirmDelete() {
+    if (!threadToDelete) return
+    const id = threadToDelete
+    setThreadToDelete(null)
+
+    if (onDeleteThread) {
+      await onDeleteThread(id)
+    }
+
+    if (currentThreadId === id) {
+      router.replace(`/rooms/${roomId}`)
+    }
+  }
+
   function renderThreadItem(th: Thread) {
-    const isActive = activeThreadId === th.id
+    const isActive = currentThreadId === th.id
     const formattedDate = th.created_at
       ? th.created_at.replace("T", " ").slice(0, 16)
       : undefined
@@ -43,19 +64,28 @@ export function ThreadList({
       <div
         key={th.id}
         title={formattedDate}
-        className={`group relative flex items-center justify-between px-2.5 py-1.5 text-xs transition-colors ${
-          isActive
-            ? "bg-sidebar-accent text-sidebar-foreground border-l-2 border-foreground"
+        className={`group relative flex items-center justify-between px-2.5 py-1.5 text-xs transition-colors ${isActive
+            ? "bg-sidebar-accent text-sidebar-foreground border-l-2 border-foreground font-medium"
             : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 border-l-2 border-transparent"
-        }`}
+          }`}
       >
-        <button
-          type="button"
-          onClick={() => onSelectThread(th.id)}
-          className="flex-1 text-left truncate pr-2 outline-none"
-        >
-          <span className="truncate block font-normal">{th.title}</span>
-        </button>
+        {onSelectThread ? (
+          <button
+            type="button"
+            onClick={() => onSelectThread(th.id)}
+            className="flex-1 text-left truncate pr-2 outline-none"
+          >
+            <span className="truncate block font-normal">{th.title}</span>
+          </button>
+        ) : (
+          <Link
+            href={`/rooms/${roomId}/c/${th.id}`}
+            prefetch={true}
+            className="flex-1 text-left truncate pr-2 outline-none"
+          >
+            <span className="truncate block font-normal">{th.title}</span>
+          </Link>
+        )}
 
         <div className="flex items-center shrink-0">
           {th.turn_count > 0 ? (
@@ -64,23 +94,25 @@ export function ThreadList({
             </span>
           ) : null}
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setThreadToDelete(th.id)
-            }}
-            aria-label="Delete thread"
-            className="hidden group-hover:inline-flex p-0.5 text-muted-foreground hover:text-destructive transition-colors"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
+          {onDeleteThread && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setThreadToDelete(th.id)
+              }}
+              aria-label="Delete thread"
+              className="hidden group-hover:inline-flex p-0.5 text-muted-foreground hover:text-destructive transition-colors"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
     )
   }
 
-  // Render grouped or flat
   let content = null
   if (threads.length === 0) {
     content = (
@@ -125,7 +157,7 @@ export function ThreadList({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-      <span className="px-2 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <span className="px-2 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground select-none">
         Chats
       </span>
 
@@ -134,12 +166,7 @@ export function ThreadList({
       <ConfirmDialog
         isOpen={!!threadToDelete}
         onClose={() => setThreadToDelete(null)}
-        onConfirm={() => {
-          if (threadToDelete) {
-            onDeleteThread(threadToDelete)
-            setThreadToDelete(null)
-          }
-        }}
+        onConfirm={handleConfirmDelete}
         title="Delete this chat thread?"
         description="All messages, SQL queries, and audit logs within this conversation will be permanently removed."
         confirmText="Delete"

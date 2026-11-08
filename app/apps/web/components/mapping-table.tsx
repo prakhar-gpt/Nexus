@@ -74,7 +74,7 @@ export function MappingTable({
     if (success) {
       setSaveSuccess(true)
     } else {
-      setSaveError("Couldn't save column mappings. Check connection and retry.")
+      setSaveError("Couldn't save mapping. Try again.")
     }
   }
 
@@ -170,10 +170,20 @@ export function MappingTable({
           {saveError ? (
             <div
               role="alert"
-              className="flex items-center gap-1.5 p-2 bg-destructive/10 border border-destructive/20 text-destructive text-xs"
+              className="flex items-center justify-between p-2 bg-destructive/10 border border-destructive/20 text-destructive text-xs"
             >
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{saveError}</span>
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <span>{saveError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={confirming}
+                className="font-medium underline underline-offset-2 hover:opacity-80 disabled:opacity-50"
+              >
+                Retry
+              </button>
             </div>
           ) : null}
         </div>

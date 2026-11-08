@@ -2,7 +2,13 @@
 
 import { Check, AlertTriangle, Ban } from "lucide-react"
 
-export type AnswerBadge = "waiting" | "verified" | "caveat" | "refused" | "unanswered"
+export type AnswerBadge =
+  | "waiting"
+  | "verified"
+  | "caveat"
+  | "refused"
+  | "unanswered"
+  | "stopped"
 
 interface StatusBadgeProps {
   badge?: AnswerBadge
@@ -60,6 +66,17 @@ export function StatusBadge({
     )
   }
 
+  if (badge === "stopped") {
+    return (
+      <span
+        title="Generation stopped by user"
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border select-none cursor-default"
+        aria-label="Status: Stopped"
+      >
+        <span>Stopped</span>
+      </span>
+    )
+  }
+
   return null
 }
-

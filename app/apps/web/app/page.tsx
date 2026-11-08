@@ -1,5 +1,8 @@
-import { Dashboard } from "@/components/dashboard"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 
-export default function Page() {
-  return <Dashboard />
+export default async function Page() {
+  const cookieStore = await cookies()
+  const hasSession = cookieStore.has("nexus_session")
+  redirect(hasSession ? "/rooms" : "/login")
 }
