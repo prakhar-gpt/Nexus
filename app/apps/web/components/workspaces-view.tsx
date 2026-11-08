@@ -31,14 +31,9 @@ export function WorkspacesView({
     <div className="flex-1 flex flex-col h-full bg-background overflow-y-auto">
       {/* Top Header */}
       <header className="border-b border-border/60 px-8 py-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground shadow-xs">
-            N
-          </span>
-          <div>
-            <h1 className="text-base font-semibold text-foreground">Nexus Copilot</h1>
-            <p className="text-xs text-muted-foreground">Commercial Due Diligence & Retail Analytics</p>
-          </div>
+        <div>
+          <h1 className="text-base font-semibold tracking-tight text-foreground">Nexus Copilot</h1>
+          <p className="text-xs text-muted-foreground">Commercial Due Diligence & Retail Analytics</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -75,7 +70,7 @@ export function WorkspacesView({
             onClick={onOpenCreateModal}
             className="flex flex-col items-center justify-center p-6 rounded-xl border border-dashed border-input/80 hover:border-primary/60 hover:bg-accent/20 transition-all text-center group min-h-[170px]"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary group-hover:scale-105 transition-transform">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground group-hover:text-primary group-hover:bg-primary/10 group-hover:scale-105 transition-all">
               <Plus className="h-5 w-5" />
             </div>
             <span className="mt-3 text-sm font-medium text-foreground">Create New Data Room</span>

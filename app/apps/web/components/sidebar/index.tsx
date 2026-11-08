@@ -37,7 +37,7 @@ export function Sidebar({
   return (
     <div className="flex h-full flex-col justify-between overflow-y-auto px-3.5 py-4 text-[13px]">
       <div className="flex flex-col gap-4">
-        {/* Brand & Back Button */}
+        {/* Clean Back to Data Rooms Navigation */}
         <div className="flex items-center justify-between pb-2 border-b border-sidebar-border/60">
           <button
             type="button"
@@ -49,8 +49,8 @@ export function Sidebar({
             <span className="font-medium">Data Rooms</span>
           </button>
 
-          <span className="flex h-5 w-5 items-center justify-center rounded bg-primary text-[10px] font-bold text-primary-foreground shadow-xs">
-            N
+          <span className="text-[11px] font-semibold text-foreground tracking-tight">
+            Nexus
           </span>
         </div>
 

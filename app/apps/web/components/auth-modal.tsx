@@ -46,12 +46,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-6 w-6 items-center justify-center rounded bg-primary text-[11px] font-bold text-primary-foreground">
-              N
-            </span>
-            <DialogTitle className="text-base font-semibold">Nexus Copilot</DialogTitle>
-          </div>
+          <DialogTitle className="text-base font-semibold">Nexus Copilot</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             Sign in to access your retail diligence data rooms and audit history.
           </DialogDescription>
@@ -145,4 +140,3 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     </Dialog>
   )
 }
-
