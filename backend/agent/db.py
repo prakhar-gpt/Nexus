@@ -11,7 +11,7 @@ ENV_PATH = ROOT / ".env"
 PSQL = Path(r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
 READER_USER = "nexus_reader"
 DATABASE = "nexus_db"
-READER_SQL = Path(__file__).resolve().parents[1] / "infra" / "reader.sql"
+READER_SQL = Path(__file__).resolve().parents[1] / "db" / "changesets" / "reader.sql"
 
 _ENV_KEYS = ("NEXUS_READER_PASSWORD",)
 

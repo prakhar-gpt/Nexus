@@ -17,9 +17,9 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 CSV_PATH = ROOT / "datasets" / "Superstore" / "Superstore.csv"
-SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "changesets" / "001_initial_schema.sql"
 PSQL = Path(r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
 DATABASE = "nexus_db"
 

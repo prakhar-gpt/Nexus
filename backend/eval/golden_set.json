@@ -9,7 +9,8 @@
         {
           "total_revenue": "2261536.78"
         }
-      ]
+      ],
+      "sql": "SELECT round(sum(revenue), 2) AS total_revenue FROM sales_clean"
     },
     {
       "id": "q02",
@@ -32,7 +33,8 @@
           "region": "South",
           "revenue": "389151.46"
         }
-      ]
+      ],
+      "sql": "SELECT region, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY region ORDER BY revenue DESC, region"
     },
     {
       "id": "q03",
@@ -51,7 +53,8 @@
           "category": "Office Supplies",
           "revenue": "705422.33"
         }
-      ]
+      ],
+      "sql": "SELECT category, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY category ORDER BY revenue DESC, category"
     },
     {
       "id": "q04",
@@ -70,7 +73,8 @@
           "segment": "Home Office",
           "revenue": "424982.18"
         }
-      ]
+      ],
+      "sql": "SELECT segment, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY segment ORDER BY revenue DESC, segment"
     },
     {
       "id": "q05",
@@ -80,7 +84,8 @@
         {
           "row_count": "9800"
         }
-      ]
+      ],
+      "sql": "SELECT count(*) AS row_count FROM sales_clean"
     },
     {
       "id": "q06",
@@ -90,7 +95,8 @@
         {
           "customers": "793"
         }
-      ]
+      ],
+      "sql": "SELECT count(DISTINCT customer_id) AS customers FROM sales_clean"
     },
     {
       "id": "q07",
@@ -100,7 +106,8 @@
         {
           "products": "1861"
         }
-      ]
+      ],
+      "sql": "SELECT count(DISTINCT product_id) AS products FROM sales_clean"
     },
     {
       "id": "q08",
@@ -111,7 +118,8 @@
           "first_order": "2015-01-03",
           "last_order": "2018-12-30"
         }
-      ]
+      ],
+      "sql": "SELECT min(order_date)::text AS first_order, max(order_date)::text AS last_order FROM sales_clean"
     },
     {
       "id": "q09",
@@ -122,7 +130,8 @@
           "year": "2017",
           "revenue": "600192.55"
         }
-      ]
+      ],
+      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean WHERE extract(year FROM order_date) = 2017 GROUP BY 1"
     },
     {
       "id": "q10",
@@ -133,7 +142,8 @@
           "year": "2018",
           "revenue": "722052.02"
         }
-      ]
+      ],
+      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean WHERE extract(year FROM order_date) = 2018 GROUP BY 1"
     },
     {
       "id": "q11",
@@ -142,7 +152,9 @@
       "expected_results": {
         "difference": 321068.22,
         "pct_higher": 82.5
-      }
+      },
+      "sql": "SELECT region, round(sum(revenue), 2) AS rev FROM sales_clean WHERE region IN ('West', 'South') GROUP BY region",
+      "code": "w = float(data[data['region'] == 'West']['rev'].iloc[0])\ns = float(data[data['region'] == 'South']['rev'].iloc[0])\nresult = {'difference': round(w - s, 2), 'pct_higher': round(((w - s) / s) * 100, 2)}"
     },
     {
       "id": "q12",
@@ -151,7 +163,9 @@
       "expected_results": {
         "diff": 121859.47,
         "pct": 20.3
-      }
+      },
+      "sql": "SELECT extract(year FROM order_date)::int AS yr, round(sum(revenue), 2) AS rev FROM sales_clean WHERE extract(year FROM order_date) IN (2017, 2018) GROUP BY 1 ORDER BY 1",
+      "code": "r17 = float(data[data['yr'] == 2017]['rev'].iloc[0])\nr18 = float(data[data['yr'] == 2018]['rev'].iloc[0])\nresult = {'diff': round(r18 - r17, 2), 'pct': round(((r18 - r17) / r17) * 100, 2)}"
     },
     {
       "id": "q13",
@@ -160,7 +174,9 @@
       "expected_results": {
         "diff": 263511.89,
         "pct": 62.01
-      }
+      },
+      "sql": "SELECT segment, round(sum(revenue), 2) AS rev FROM sales_clean WHERE segment IN ('Corporate', 'Home Office') GROUP BY segment",
+      "code": "c = float(data[data['segment'] == 'Corporate']['rev'].iloc[0])\nh = float(data[data['segment'] == 'Home Office']['rev'].iloc[0])\nresult = {'diff': round(c - h, 2), 'pct': round(((c - h) / h) * 100, 2)}"
     },
     {
       "id": "q14",
@@ -168,7 +184,9 @@
       "question": "What percentage of revenue comes from the Consumer segment?",
       "expected_results": {
         "consumer_pct": 50.76
-      }
+      },
+      "sql": "SELECT segment, round(sum(revenue), 2) AS rev FROM sales_clean GROUP BY segment",
+      "code": "tot = float(data['rev'].astype(float).sum())\ncons = float(data[data['segment'] == 'Consumer']['rev'].iloc[0])\nresult = {'consumer_pct': round((cons / tot) * 100, 2)}"
     },
     {
       "id": "q15",
@@ -176,7 +194,9 @@
       "question": "What is the percentage share of Technology revenue out of total revenue?",
       "expected_results": {
         "share": 36.59
-      }
+      },
+      "sql": "SELECT category, round(sum(revenue), 2) AS rev FROM sales_clean GROUP BY category",
+      "code": "tot = float(data['rev'].astype(float).sum())\ntech = float(data[data['category'] == 'Technology']['rev'].iloc[0])\nresult = {'share': round((tech / tot) * 100, 2)}"
     },
     {
       "id": "q16",
@@ -184,7 +204,9 @@
       "question": "What is the ratio of West revenue to East revenue?",
       "expected_results": {
         "ratio": 1.0608
-      }
+      },
+      "sql": "SELECT region, round(sum(revenue), 2) AS rev FROM sales_clean WHERE region IN ('West', 'East') GROUP BY region",
+      "code": "w = float(data[data['region'] == 'West']['rev'].iloc[0])\ne = float(data[data['region'] == 'East']['rev'].iloc[0])\nresult = {'ratio': round(w / e, 4)}"
     },
     {
       "id": "q17",
@@ -207,7 +229,8 @@
           "year": "2018",
           "revenue": "722052.02"
         }
-      ]
+      ],
+      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY 1 ORDER BY 1"
     },
     {
       "id": "q18",
@@ -217,7 +240,8 @@
         {
           "revenue": "217466.51"
         }
-      ]
+      ],
+      "sql": "SELECT round(sum(revenue), 2) AS revenue FROM sales_clean WHERE category = 'Office Supplies' AND region = 'West'"
     },
     {
       "id": "q19",
@@ -227,7 +251,8 @@
         {
           "sub_categories": "17"
         }
-      ]
+      ],
+      "sql": "SELECT count(DISTINCT sub_category) AS sub_categories FROM sales_clean"
     },
     {
       "id": "q20",
@@ -237,7 +262,8 @@
         {
           "avg_revenue": "230.77"
         }
-      ]
+      ],
+      "sql": "SELECT round(avg(revenue), 2) AS avg_revenue FROM sales_clean"
     },
     {
       "id": "q21",
@@ -286,7 +312,9 @@
       "question": "What is the 3-year revenue CAGR from 2015 to 2018?",
       "expected_results": {
         "cagr": 0.1459
-      }
+      },
+      "sql": "SELECT extract(year FROM order_date)::int AS yr, round(sum(revenue), 2) AS rev FROM sales_clean GROUP BY 1 ORDER BY 1",
+      "code": "r15 = float(data[data['yr'] == 2015]['rev'].iloc[0])\nr18 = float(data[data['yr'] == 2018]['rev'].iloc[0])\nresult = {'cagr': round((r18 / r15) ** (1 / 3) - 1, 4)}"
     },
     {
       "id": "q27",
@@ -294,7 +322,9 @@
       "question": "What is the Pearson correlation between monthly line count and revenue in 2017?",
       "expected_results": {
         "r": 0.902
-      }
+      },
+      "sql": "SELECT extract(month FROM order_date)::int AS mo, count(*)::int AS lines, round(sum(revenue), 2) AS rev FROM sales_clean WHERE extract(year FROM order_date) = 2017 GROUP BY 1 ORDER BY 1",
+      "code": "r = float(data['lines'].astype(float).corr(data['rev'].astype(float)))\nresult = {'r': round(r, 4)}"
     },
     {
       "id": "q28",
@@ -304,7 +334,8 @@
         {
           "rev": "449914.18"
         }
-      ]
+      ],
+      "sql": "SELECT round(sum(revenue), 2) AS rev FROM sales_clean WHERE (attributes->>'ship_mode') = 'Second Class'"
     },
     {
       "id": "q29",

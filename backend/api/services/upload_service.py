@@ -11,9 +11,7 @@ from fastapi import BackgroundTasks, HTTPException, Response
 from api.services.workspace_service import get_mappings, get_workspace_meta
 from api.services.chat_service import format_sse
 from agent.tools import SqlRejected, run_sql
-from ingest.clean import make_inert
-from ingest.pipeline import confirm_mappings, ingest, reserve_upload
-from ingest.store import execute
+from ingest import confirm_mappings, execute, ingest, make_inert, reserve_upload
 
 PROGRESS: dict[int, list[dict]] = {}
 

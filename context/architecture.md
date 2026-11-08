@@ -33,7 +33,7 @@ The project is evidence for four Bain Capability Network roles: Capabilities Tec
 | Observability | `runs` table; Langfuse optional | — |
 | Packaging | Docker Compose, pytest, GitHub Actions | Azure Container Apps or App Service, Blob storage |
 
-Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `nexus_db`. See Decisions 5 and 14. DDL is `backend/infra/schema.sql`; the Superstore seed loader is `backend/infra/load_superstore.py`. That step creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean.id` is a surrogate key because an order line is not unique on the business columns. Quantity, unit price, discount, cost, profit, and channel are nullable; `datasets/Superstore/Superstore.csv` does not contain them.
+Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `nexus_db`. See Decisions 5 and 14. DDL is `backend/db/changesets/001_initial_schema.sql`; the Superstore seed loader is `backend/db/seeds/load_superstore.py`. That step creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean.id` is a surrogate key because an order line is not unique on the business columns. Quantity, unit price, discount, cost, profit, and channel are nullable; `datasets/Superstore/Superstore.csv` does not contain them.
 
 ## UI
 
@@ -75,7 +75,7 @@ Order: file safety, structure, domain fit, row validation, text safety.
 4. **Row validation — quarantine.** Date parse, numeric types, negatives, duplicates, impossible discounts. Keep `row_number`, `reason`, and `raw_json`.
 5. **Text safety — sanitise.** Cells are data. On any export, prefix cells that start with `=`, `+`, `-`, or `@`. Never pass cell or document text to the model as instructions.
 
-Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `backend/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `backend/ingest/`. Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
+Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `backend/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `backend/ingest/` (`reader.py`, `mapping.py`, `store.py`, `pipeline.py`). Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
 
 Six test files and their expected results are in `roadmap.md`.
 
@@ -151,10 +151,10 @@ The codebase is cleanly divided at root between frontend and backend:
 | UI | `frontend/` | Next.js 16 app with Tailwind, shadcn/ui, JetBrains Mono |
 | Backend API | `backend/main.py`, `backend/api/` | FastAPI entry point, routers (`routers/`), services (`services/`) |
 | Agent | `backend/agent/` | Graph, state, `nodes.py`, `tools/` (`get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`), `checker.py`, `sandbox.py` |
-| Ingest | `backend/ingest/` | Cleaning, mapping, capabilities, quarantine, dynamic attributes |
+| Ingest | `backend/ingest/` | Modular pipeline: `reader.py`, `mapping.py`, `store.py`, `pipeline.py` |
 | Knowledge Base | `backend/kb/` | Markdown reference playbooks, metrics definitions |
-| Evaluation | `backend/eval/` | Golden set eval runner (`runner.py`) |
-| Infrastructure | `backend/infra/` | PostgreSQL DDL schema and loaders |
+| Evaluation | `backend/eval/` | Single-source `golden_set.json` and `runner.py` |
+| Database | `backend/db/` | Changesets (`changesets/`) and seeds (`seeds/`) |
 | Tests | `backend/tests/` | Pytest suite (`test_*.py`, `conftest.py`) |
 | Context / Docs | `context/` | Project architecture, decisions log, design language |
 | Datasets | `datasets/` | Superstore CSV and sample files |

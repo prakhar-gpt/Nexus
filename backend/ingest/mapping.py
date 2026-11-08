@@ -229,3 +229,67 @@ def domain_gap(columns: set[str]) -> str | None:
     if not missing:
         return None
     return "missing " + ", ".join(missing)
+
+
+def compute_capabilities(cleaned_rows: list[dict]) -> dict:
+    """Return a capabilities dict from a list of cleaned row dicts."""
+    populated: set[str] = set()
+    order_dates: list[str] = []
+
+    for row in cleaned_rows:
+        for key, value in row.items():
+            if value is not None and str(value).strip() != "":
+                populated.add(key)
+        if row.get("order_date"):
+            order_dates.append(str(row["order_date"]))
+
+    return capabilities_from_attribute_schema(populated, order_dates)
+
+
+def capabilities_from_attribute_schema(
+    canonical_populated: set[str],
+    order_dates: list[str],
+) -> dict:
+    """Compute analytical capabilities (revenue, trend, margin, discount, customer) and reasons."""
+    has_revenue = "revenue" in canonical_populated
+
+    distinct_years: set[str] = set()
+    for date_str in order_dates:
+        try:
+            year = str(date_str).split("-")[0]
+            if year:
+                distinct_years.add(year)
+        except Exception:
+            pass
+    has_trend = len(distinct_years) >= 2
+    has_margin = "cost" in canonical_populated or "profit" in canonical_populated
+    has_discount = "discount_pct" in canonical_populated
+    has_customer = "customer_id" in canonical_populated
+
+    reasons: dict[str, str] = {}
+    if not has_revenue:
+        reasons["revenue"] = "revenue column is absent"
+    if not has_trend:
+        if "order_date" not in canonical_populated:
+            reasons["trend"] = "order_date column is absent"
+        else:
+            reasons["trend"] = (
+                f"order_date has only {len(distinct_years)} distinct "
+                f"year{'s' if len(distinct_years) != 1 else ''} "
+                "(need at least 2 for trend analysis)"
+            )
+    if not has_margin:
+        reasons["margin"] = "cost and profit are both absent"
+    if not has_discount:
+        reasons["discount"] = "discount_pct column is absent"
+    if not has_customer:
+        reasons["customer"] = "customer_id column is absent"
+
+    return {
+        "revenue": has_revenue,
+        "trend": has_trend,
+        "margin": has_margin,
+        "discount": has_discount,
+        "customer": has_customer,
+        "reasons": reasons,
+    }

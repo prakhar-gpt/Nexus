@@ -1,5 +1,56 @@
-"""Spreadsheet ingestion: safety, mapping, cleaning, quarantine."""
+"""Ingestion module: workbook parsing, schema mapping, database storage, and pipeline execution."""
 
-from ingest.pipeline import ingest
+from ingest.mapping import (
+    CANONICAL,
+    Proposal,
+    compute_capabilities,
+    domain_gap,
+    normalize,
+    normalize_to_snake,
+    propose_columns,
+)
+from ingest.pipeline import (
+    IngestResult,
+    confirm_mappings,
+    ingest,
+    reserve_upload,
+)
+from ingest.reader import (
+    RejectedFile,
+    TableRejected,
+    find_header,
+    inspect,
+    make_inert,
+    parse_date,
+    parse_number,
+    read_rows,
+    stored_name,
+)
+from ingest.store import StoreError, execute, get_writer_connection, sql_literal
 
-__all__ = ["ingest"]
+__all__ = [
+    "CANONICAL",
+    "IngestResult",
+    "Proposal",
+    "RejectedFile",
+    "StoreError",
+    "TableRejected",
+    "compute_capabilities",
+    "confirm_mappings",
+    "domain_gap",
+    "execute",
+    "find_header",
+    "get_writer_connection",
+    "ingest",
+    "inspect",
+    "make_inert",
+    "normalize",
+    "normalize_to_snake",
+    "parse_date",
+    "parse_number",
+    "propose_columns",
+    "read_rows",
+    "reserve_upload",
+    "sql_literal",
+    "stored_name",
+]

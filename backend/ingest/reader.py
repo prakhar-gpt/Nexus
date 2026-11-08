@@ -1,18 +1,31 @@
-"""Read csv and xlsx workbooks into rows. Formulas stay as text."""
+"""Tabular file safety inspection, workbook extraction (CSV/XLSX), and cell parsing."""
 
 from __future__ import annotations
 
 import csv
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO, StringIO
 from pathlib import Path
+import zipfile
 
 from openpyxl import load_workbook
 
 from ingest.mapping import propose_columns
 
+MAX_BYTES = 20 * 1024 * 1024
+ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 MAX_COLUMNS = 64
 MAX_ROWS = 200_000
 HEADER_SCAN = 20
+_DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y")
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+class RejectedFile(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class TableRejected(Exception):
@@ -21,7 +34,50 @@ class TableRejected(Exception):
         self.reason = reason
 
 
+def inspect(path: Path) -> tuple[bytes, str]:
+    """Validate file existence, size, extension, and binary safety."""
+    if not path.is_file():
+        raise RejectedFile("file not found")
+    size = path.stat().st_size
+    if size == 0:
+        raise RejectedFile("empty file")
+    if size > MAX_BYTES:
+        raise RejectedFile("file exceeds the 20 MB size cap")
+    data = path.read_bytes()
+    extension = path.suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise RejectedFile("only csv and xlsx files are accepted")
+    if _is_zip(data) and _zip_has_macro(data):
+        raise RejectedFile("macro-enabled workbooks are rejected")
+    if extension == ".csv" and _is_zip(data):
+        raise RejectedFile("file content does not match the csv extension")
+    if extension == ".xlsx" and not _is_zip(data):
+        raise RejectedFile("file content does not match the xlsx extension")
+    if extension == ".csv" and b"\x00" in data[:1024]:
+        raise RejectedFile("file content is not text")
+    return data, extension
+
+
+def stored_name(digest: str, extension: str) -> str:
+    """Generate deterministic content-addressed filename."""
+    return f"{digest[:16]}{extension}"
+
+
+def _is_zip(data: bytes) -> bool:
+    return data.startswith(b"PK")
+
+
+def _zip_has_macro(data: bytes) -> bool:
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as archive:
+            names = {name.lower() for name in archive.namelist()}
+    except zipfile.BadZipFile:
+        return False
+    return any(name.endswith("vbaproject.bin") for name in names)
+
+
 def read_rows(path: Path, extension: str) -> list[tuple[int, list[str]]]:
+    """Read CSV or XLSX into line-indexed string lists."""
     if extension == ".csv":
         return _read_csv(path)
     return _read_xlsx(path)
@@ -96,6 +152,7 @@ def header_hits(rows: list[tuple[int, list[str]]]) -> int:
 
 
 def find_header(rows: list[tuple[int, list[str]]]) -> tuple[int | None, list[str]]:
+    """Locate the row index that best matches canonical column headers."""
     best_line = None
     best_cells: list[str] = []
     best_hits = 0
@@ -122,3 +179,50 @@ def _is_header_cell(cell: str) -> bool:
     return proposal.canonical is not None and (
         not proposal.needs_confirmation or proposal.confidence >= 50
     )
+
+
+def parse_date(value: str):
+    """Parse dates in standard ISO and retail day/month/year formats."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_number(value: str) -> Decimal | None:
+    """Parse commercial numbers: strips currency symbols, percentage signs, commas."""
+    text = (value or "").strip()
+    if not text:
+        return None
+    negative = text.startswith("(") and text.endswith(")")
+    if negative:
+        text = text[1:-1].strip()
+    for symbol in ("$", "€", "£", ","):
+        text = text.replace(symbol, "")
+    text = text.replace(" ", "")
+    if text.endswith("%"):
+        text = text[:-1]
+    if not text:
+        return None
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return None
+    return -number if negative else number
+
+
+def make_inert(value: str) -> str:
+    """Escape CSV formula injection triggers (=, +, -, @) with a leading quote."""
+    if not value:
+        return value
+    if value.startswith("'"):
+        return value
+    if value[0] in _FORMULA_PREFIXES:
+        return "'" + value
+    return value
+

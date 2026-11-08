@@ -159,3 +159,16 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
     7. Chat persistence: full execution audit trail (all tool calls, step IDs, statuses, queries, durations, python outputs) is persisted in `runs.checker_result` and `runs.python_results`, and hydrated when reloading workspaces/threads.
   * *Rejected:* Monolithic or hyper-fragmented micro-files; losing intermediate tool steps upon session reload; leaving LLM whitespace failures unhandled.
   * *Files affected:* `backend/main.py`, `backend/agent/tools/`, `backend/agent/nodes.py`, `backend/agent/graph.py`, `backend/agent/sandbox.py`, `backend/agent/prompts/system.md`, `backend/api/routers/`, `backend/api/services/`, `backend/tests/`, `frontend/`.
+
+* **Decision 45 (2026-11-09):** Database changesets/seeds structure (`backend/db/`), ingest modular consolidation, and eval unification.
+  * *Reason:*
+    1. Replaced `backend/infra/` with standard industry database layout: `backend/db/changesets/` (versioned SQL migrations: `001_initial_schema.sql`, `002_ingest_tables.sql`, `003_week3_tables.sql`, `004_week4_attributes.sql`, `reader.sql`, `writer.sql`) and `backend/db/seeds/` (`load_superstore.py`).
+    2. Streamlined `backend/ingest/` from 8 scattered micro-files down to 4 cohesive, senior-level modules:
+       - `reader.py`: File safety validation, CSV/XLSX workbook extraction, formula sanitization, and cell parsing (consolidated from `safety.py`, `tables.py`, `clean.py`).
+       - `mapping.py`: Canonical column schema, RapidFuzz header matching, synonyms, domain fit, and analytical capabilities (`compute_capabilities`).
+       - `store.py`: Postgres writer connection and query execution gateway.
+       - `pipeline.py`: Ingestion workflow orchestration (staging, validation, quarantine, COPY commit).
+       - `__init__.py`: Clean package gateway.
+    3. Unified `backend/eval/`: Merged all question definitions (`sql`, `code`, `missing`, `fixture`) and ground-truth expectations into `golden_set.json` as the single source of truth, eliminating the redundant `questions.py` and simplifying `runner.py`.
+  * *Rejected:* Monolithic loose infra scripts; scattered 40-line micro-files in ingest; dual-maintaining test cases across Python code and JSON.
+  * *Files affected:* `backend/db/`, `backend/ingest/`, `backend/eval/`, `backend/agent/db.py`, `backend/api/services/chat_service.py`, `backend/api/services/upload_service.py`.

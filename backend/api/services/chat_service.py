@@ -10,8 +10,7 @@ from fastapi import HTTPException, Response
 
 def format_sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
-from ingest.clean import make_inert
-from ingest.store import StoreError, execute, sql_literal
+from ingest import StoreError, execute, make_inert, sql_literal
 
 
 def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "default") -> int:

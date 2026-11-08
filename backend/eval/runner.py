@@ -1,6 +1,6 @@
-"""Run the Week 1 golden set. Exit 1 when a score is below its target.
+"""Run the 30-question golden set. Exit 1 when a score is below its target.
 
-This scores verified SQL, the number checker, and refusals. It does not call a model.
+This scores verified SQL, the number checker, python calculations, and refusals without calling a model.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from eval.questions import QUESTIONS  # noqa: E402
 from agent.checker import (  # noqa: E402
     check_answer,
     draft_from_rows,
@@ -22,7 +21,7 @@ from agent.checker import (  # noqa: E402
 from agent.tools import populated_count, run_sql  # noqa: E402
 from agent.tools import SqlRejected, guard_sql  # noqa: E402
 from agent.tools import execute_sandboxed  # noqa: E402
-from ingest.pipeline import ingest  # noqa: E402
+from ingest import ingest  # noqa: E402
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_set.json"
 WORKSPACE_ID = 1
@@ -68,7 +67,7 @@ def _score(passed: int, total: int) -> float:
 
 def evaluate() -> dict:
     golden = _load_golden()
-    expected = {item["id"]: item.get("expected_rows") for item in golden["questions"]}
+    questions = golden.get("questions", [])
     guard_failures = _guard_failures()
 
     other_workspace = run_sql("SELECT count(*) AS row_count FROM sales_clean", 999)
@@ -85,40 +84,42 @@ def evaluate() -> dict:
     refusal_total = 0
     problems = list(problems_prefix)
 
-    for question in QUESTIONS:
-        if question["kind"] == "sql":
+    for item in questions:
+        kind = item.get("kind")
+        qid = item.get("id")
+
+        if kind == "sql":
             sql_total += 1
-            rows = run_sql(question["sql"], WORKSPACE_ID)
-            if rows == expected.get(question["id"]):
+            rows = run_sql(item["sql"], WORKSPACE_ID)
+            if rows == item.get("expected_rows"):
                 sql_passed += 1
             else:
-                problems.append(f"{question['id']} SQL result drifted")
+                problems.append(f"{qid} SQL result drifted")
 
             draft = draft_from_rows(rows)
             faith_total += 1
             if check_answer(draft, rows)["verified"]:
                 faith_passed += 1
             else:
-                problems.append(f"{question['id']} checker rejected a faithful draft")
+                problems.append(f"{qid} checker rejected a faithful draft")
 
             faith_total += 1
             tampered = draft + "\nextra=999999"
             if not check_answer(tampered, rows)["verified"]:
                 faith_passed += 1
             else:
-                problems.append(f"{question['id']} checker accepted a bad number")
+                problems.append(f"{qid} checker accepted a bad number")
             continue
 
-        if question["kind"] == "python":
+        if kind == "python":
             sql_total += 1
-            rows = run_sql(question["sql"], WORKSPACE_ID)
-            res = execute_sandboxed(question["code"], {"data": rows})
-            exp_item = next((q for q in golden["questions"] if q["id"] == question["id"]), {})
-            exp_results = exp_item.get("expected_results", {})
+            rows = run_sql(item["sql"], WORKSPACE_ID)
+            res = execute_sandboxed(item["code"], {"data": rows})
+            exp_results = item.get("expected_results", {})
             if res["ok"] and all(abs(res["results"].get(k, 0) - v) < 0.001 for k, v in exp_results.items()):
                 sql_passed += 1
             else:
-                problems.append(f"{question['id']} python execution/result mismatch: {res}")
+                problems.append(f"{qid} python execution/result mismatch: {res}")
 
             faith_total += 1
             res_str = ", ".join(f"{k}: {v}" for k, v in res.get("results", {}).items())
@@ -126,40 +127,40 @@ def evaluate() -> dict:
             if check_answer(draft, rows, python_results=res.get("results"))["verified"]:
                 faith_passed += 1
             else:
-                problems.append(f"{question['id']} checker rejected faithful python draft")
+                problems.append(f"{qid} checker rejected faithful python draft")
 
             faith_total += 1
             tampered = draft + " plus bad_stat=999999"
             if not check_answer(tampered, rows, python_results=res.get("results"))["verified"]:
                 faith_passed += 1
             else:
-                problems.append(f"{question['id']} checker accepted bad number in python draft")
+                problems.append(f"{qid} checker accepted bad number in python draft")
             continue
 
-        if question["kind"] == "mapping":
+        if kind == "mapping":
             sql_total += 1
-            fixture_path = ROOT / "datasets" / "tests" / question["fixture"]
+            fixture_path = ROOT / "datasets" / "tests" / item["fixture"]
             result = ingest(fixture_path, WORKSPACE_ID)
-            exp_item = next((q for q in golden["questions"] if q["id"] == question["id"]), {})
-            exp_status = exp_item.get("expected_status", "needs_confirmation")
+            exp_status = item.get("expected_status", "needs_confirmation")
             if result.status == exp_status:
                 sql_passed += 1
             else:
-                problems.append(f"{question['id']} mapping status mismatch: got {result.status}, expected {exp_status}")
+                problems.append(f"{qid} mapping status mismatch: got {result.status}, expected {exp_status}")
             continue
 
-        if question["kind"] == "refusal":
+        if kind == "refusal":
             refusal_total += 1
+            missing_cols = item.get("missing", [])
             absent = [
                 column
-                for column in question["missing"]
+                for column in missing_cols
                 if populated_count(WORKSPACE_ID, column) == 0
             ]
-            answer = refusal_text(" and ".join(question["missing"]))
-            if absent == question["missing"] and extract_numbers(answer) == []:
+            answer = refusal_text(" and ".join(missing_cols))
+            if absent == missing_cols and extract_numbers(answer) == []:
                 refusal_passed += 1
             else:
-                problems.append(f"{question['id']} refusal failed")
+                problems.append(f"{qid} refusal failed")
             continue
 
     scores = {
@@ -174,7 +175,7 @@ def evaluate() -> dict:
         "scores": scores,
         "problems": problems,
         "guard_failures": guard_failures,
-        "questions": len(QUESTIONS),
+        "questions": len(questions),
         "thresholds": THRESHOLDS,
     }
 

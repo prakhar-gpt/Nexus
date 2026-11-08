@@ -9,19 +9,27 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
-from ingest.capabilities import compute_capabilities
-from ingest.clean import make_inert, parse_date, parse_number
 from ingest.mapping import (
     CANONICAL,
     Proposal,
+    compute_capabilities,
     domain_gap,
     normalize,
     normalize_to_snake,
     propose_columns,
 )
-from ingest.safety import RejectedFile, inspect, stored_name
+from ingest.reader import (
+    RejectedFile,
+    TableRejected,
+    find_header,
+    inspect,
+    make_inert,
+    parse_date,
+    parse_number,
+    read_rows,
+    stored_name,
+)
 from ingest.store import execute, sql_literal
-from ingest.tables import TableRejected, find_header, read_rows
 
 ROOT = Path(__file__).resolve().parents[2]
 UPLOAD_DIR = ROOT / "datasets" / "uploads"

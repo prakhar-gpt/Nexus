@@ -1,5 +1,5 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T01:30:00+05:30
+Updated At: 2026-11-09T01:50:00+05:30
 
 Nexus is organized with a clean, senior-engineer root layout:
 - `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette).
@@ -9,9 +9,12 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Backend Architecture
 - **Entry Point**: `backend/main.py` sets up CORS, mounts routers, and defines root health checks.
-- **API Domain Routers & Services**:
-  - `backend/api/routers/` (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`): Clean HTTP endpoints with Pydantic request/response schemas colocated directly within their domain routers.
-  - `backend/api/services/` (`chat_service.py`, `workspace_service.py`, `upload_service.py`, `eval_service.py`): Business logic. SSE formatting is inlined cleanly into `chat_service.py`.
+- **Database (`backend/db/`)**:
+  - `changesets/`: Versioned migration scripts (`001_initial_schema.sql`, `002_ingest_tables.sql`, `003_week3_tables.sql`, `004_week4_attributes.sql`, `reader.sql`, `writer.sql`).
+  - `seeds/`: Initial seed data loader (`load_superstore.py`).
+- **API Domain Routers & Services (`backend/api/`)**:
+  - `routers/` (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`): Clean HTTP endpoints with Pydantic schemas colocated directly within their domain routers.
+  - `services/` (`chat_service.py`, `workspace_service.py`, `upload_service.py`, `eval_service.py`): Business logic. SSE formatting is inlined cleanly into `chat_service.py`.
 - **Agent Architecture (`backend/agent/`)**:
   - `tools/`: Exactly the 4 core tools cleanly modularized into dedicated files:
     - `get_schema.py`: Inspects table schemas, unmapped JSONB attributes, and analytical capabilities.
@@ -23,11 +26,18 @@ Nexus is organized with a clean, senior-engineer root layout:
   - `graph.py`: LangGraph state machine, thread-level checkpointing (`MemorySaver`), and streaming generator (`stream`).
   - `checker.py`: Deterministic numerical verification comparing draft claims against SQL rows, user messages, and Python execution results.
   - `sandbox.py`: Subprocess execution boundary (no network, 10s timeout, 256MB cap).
-  - `db.py`: PostgreSQL reader/writer connections.
+  - `db.py`: PostgreSQL reader/writer connections (`READER_SQL` in `backend/db/changesets/reader.sql`).
   - `model.py`: LLM provider resolver (Groq, OpenRouter, DeepSeek).
   - `prompts/system.md`: Hardened system prompt with explicit directives to execute SQL before calling `run_python`.
 - **Ingestion (`backend/ingest/`)**:
-  - File safety validation, structure checks, RapidFuzz mapping, row quarantine, dynamic attributes JSONB payload preservation, and per-upload capabilities analysis.
+  - `reader.py`: File safety validation, CSV/XLSX extraction, formula sanitization, and type cleaning.
+  - `mapping.py`: Canonical column mapping, RapidFuzz matching, retail synonyms, and analytical capabilities (`compute_capabilities`).
+  - `store.py`: Postgres writer connection and query execution gateway (`execute`, `get_writer_connection`, `sql_literal`).
+  - `pipeline.py`: Ingestion workflow orchestration (staging, validation, quarantine, COPY commit).
+  - `__init__.py`: Package gateway cleanly re-exporting public ingestion interfaces.
+- **Evaluation (`backend/eval/`)**:
+  - `golden_set.json`: Unified single source of truth containing all 30 questions (`sql`, `code`, `missing`, `fixture`) and ground-truth expected outputs.
+  - `runner.py`: Streamlined evaluation runner scoring SQL correctness, numeric faithfulness, and refusal accuracy without redundant external question dicts.
 - **Consolidated Tests (`backend/tests/`)**:
   - All test suites consolidated into `backend/tests/` (`conftest.py`, `test_api.py`, `test_atomicity.py`, `test_checker.py`, `test_ingest.py`, `test_loop.py`, `test_sql_guard.py`).
 
