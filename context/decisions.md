@@ -36,3 +36,7 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* `sales_clean` foreign keys need the two parent tables. Business columns do not uniquely identify a line. The checked-in Superstore extract has revenue and no quantity, discount, cost, profit, unit price, or channel.
   * *Rejected:* Creating all nine tables before any of them are used. Loading this file into NOT NULL measure columns.
   * *Files affected:* `app/infra/schema.sql`, `app/infra/load_superstore.py`.
+* **Decision 16 (2026-11-08):** `run_sql` uses the `nexus_reader` role, row-level security on `workspace_id`, a SELECT-only parser, a read-only transaction, a 5 second timeout, and a 200 row cap.
+  * *Reason:* Agent SQL must not run as the table owner. The owner is a superuser and bypasses row-level security.
+  * *Rejected:* Executing agent SQL as `postgres`.
+  * *Files affected:* `app/packages/agent/`, `app/infra/reader.sql`, `app/eval/`.

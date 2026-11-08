@@ -18,7 +18,7 @@ Owns file safety, profiling, RapidFuzz mapping, cleaning, and quarantine. Does n
 Owns the single LangGraph loop, the tools, and the prompts.
 
 - **OBSERVED.** One loop. Do not add a critic or a second agent unless an eval failure shows the loop cannot be fixed.
-- **OBSERVED.** `run_sql` is SELECT-only, parser-checked, row-limited, timed out, and filtered to the workspace. The database role is read-only.
+- **OBSERVED.** `run_sql` is SELECT-only, parser-checked, row-limited, timed out, and filtered to the workspace. The database role is read-only. `python app/eval/runner.py` exercises this. It is not a git hook or GitHub Action yet.
 - **OBSERVED.** The model does not calculate commercial numbers. Numbers in a draft must come from `run_sql` or `run_python` output.
 - **OBSERVED.** Refuse when the required columns are absent. Refuse margin questions when cost or profit is absent. State correlation, not causation, unless the result supports causation.
 - **OBSERVED.** `read_kb` may open files only under `app/kb/`.

@@ -87,6 +87,8 @@ Loop: read the question, `get_schema`, `read_kb` per the KB routing rules; plan 
 
 The checker is deterministic Python. It is not another model. LLM-as-judge is allowed for narrative quality only, never for numbers.
 
+`run_sql` connects as the non-superuser role `nexus_reader`. A row-level policy shows only the workspace named by the transaction setting `app.workspace_id`. The tool allows one `SELECT` against `sales_clean`, then runs it inside a read-only transaction with a 5 second timeout and a 200 row cap. The password for that role stays in `.env` and is not committed. The checker compares every number in a draft to the SQL result. `app/eval/runner.py` runs the 25-question golden set and exits non-zero below the targets in the v2 document. GitHub Actions running that script on push is Week 4.
+
 Knowledge base (markdown, versioned with the repo):
 
 ```text

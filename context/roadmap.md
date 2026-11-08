@@ -4,7 +4,7 @@ Part-time estimate from the v2 document: 3 to 4 weeks. If time runs short, ship 
 
 Week 4 Docker Compose packages the application. The database stays the existing local PostgreSQL (Decision 5) until a later decision says otherwise.
 
-## Week 1 — current, Superstore loaded
+## Week 1 — complete
 
 Postgres + Superstore loaded into `sales_clean`. Read-only `run_sql`. A 25-question golden set. The Python number checker. A CI eval script.
 
@@ -56,3 +56,4 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: User created empty `nexus_db`. Schema and Superstore load still blocked on the `postgres` role password.
 - 2026-11-08: Applied `app/infra/schema.sql` and loaded Superstore. `sales_clean` has 9800 rows, order dates 2015-01-03 through 2018-12-30, revenue 2261536.78. Quantity, unit price, discount, cost, profit, and channel are null.
 - 2026-11-08: Week 1 status corrected from "not started" to "Superstore loaded". `run_sql`, the golden set, the checker, and the CI eval script are still open.
+- 2026-11-08: Week 1 complete. `run_sql`, the checker, the 25-question golden set, and `app/eval/runner.py` pass at 100% against the 85% / 98% / 90% targets. GitHub Actions remains Week 4.
