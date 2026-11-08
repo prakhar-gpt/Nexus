@@ -12,3 +12,20 @@
   * *Reason:* Postgres and pgAdmin are already installed.
   * *Rejected:* `pgvector/pgvector:pg15` via `app/infra/docker-compose.yml`.
   * *Files affected:* none yet. No DDL has been applied.
+
+Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. The resulting design is in `architecture.md`.
+
+* **Decision 6 (2026-11-08):** Clean Postgres tables are the source of truth at question time. Keep the raw file for lineage and debugging.
+  * *Rejected:* Re-reading the upload to answer a question.
+* **Decision 7 (2026-11-08):** pgvector runs in the same Postgres as the tables.
+  * *Rejected:* A separate vector database. Azure AI Search remains a later swap.
+* **Decision 8 (2026-11-08):** The knowledge base is markdown in the repo.
+  * *Rejected for v1:* Neo4j. It is an add-on only.
+* **Decision 9 (2026-11-08):** v1 retrieval is pgvector semantic search plus a metadata filter.
+  * *Rejected for v1:* Hybrid BM25 and a cross-encoder reranker.
+* **Decision 10 (2026-11-08):** Web search is off by default. A run that uses it must be labelled external.
+* **Decision 11 (2026-11-08):** Streams use server-sent events.
+* **Decision 12 (2026-11-08):** The UI is one dashboard with three panes.
+  * *Rejected:* A nine-screen app and multi-page routing.
+* **Decision 13 (2026-11-08):** v1 accepts one canonical sales shape plus optional documents.
+  * *Rejected:* Chat with any file. Payroll, wide pivots, and free-form reports are out of scope.

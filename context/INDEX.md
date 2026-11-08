@@ -10,6 +10,9 @@ match the task. Do not load this whole folder.
 3. After a session that changes product understanding, follow the
    Session close protocol in `.cursorrules`.
 
+The 8 November 2026 v2 product document is incorporated across the
+files below. There is no second copy in this folder.
+
 ## Routing
 
 | If the task is about… | Read | Notes |
