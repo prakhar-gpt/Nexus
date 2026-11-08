@@ -73,3 +73,11 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: Logged architectural plans for implementation:
   1. `run_python` sandboxed math execution tool, expanding `checker.py` to trace and verify Python computation output.
   2. Dynamic column ingestion via `sales_clean.attributes JSONB` payload to preserve arbitrary commercial columns while retaining strict domain-fit guardrails.
+- 2026-11-09: Week 4 items completed: `run_python` sandboxed math execution tool, dynamic `attributes JSONB` preservation with `upload_attribute_schema`, per-upload analytical capabilities, and fast batch mapping. Evaluated against 30-question golden set at 100% SQL correctness, 100% numeric faithfulness, and 100% refusal accuracy.
+- 2026-11-09: Senior-engineer repository reorganization and cleanup:
+  1. Decoupled root into `frontend/` (Next.js 16) and `backend/` (FastAPI with entry point `backend/main.py`).
+  2. Streamlined `backend/agent/`: structured the 4 core tools (`get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`) into dedicated modular files, and unified graph nodes and token extractors into `nodes.py`.
+  3. Colocated Pydantic models directly within domain routers (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`) and inlined SSE formatting into `chat_service.py`.
+  4. Consolidated all unit and integration tests into `backend/tests/` (20/20 passing).
+  5. Fixed LLM Python tool indentation bug (`"That step was rejected"`) via `clean_code()` normalizer in `run_python.py` and expanded preview cap from 15 to 25 rows to eliminate category truncation and redundant queries.
+  6. Implemented full chat audit trail persistence: intermediate steps, durations, statuses, queries, and outputs are persisted in PostgreSQL `runs` (`checker_result`, `python_results`) and re-hydrated when reloading rooms/threads.

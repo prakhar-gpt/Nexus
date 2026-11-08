@@ -1,10 +1,10 @@
 # 6. Read-only SQL
 
-`run_sql` in `app/packages/agent/run_sql.py` is what `_query` calls, imported into the graph as `execute_sql`. Two checks happen before Postgres sees the text.
+`run_sql` in `backend/agent/tools/run_sql.py` executes SQL queries against the database under strict security constraints. Two checks happen before Postgres sees the text.
 
 ## The parser
 
-`guard_sql` in `app/packages/agent/sql_guard.py` raises `sql_guard.SqlRejected` when any of these fail:
+`guard_sql` in `backend/agent/sql_guard.py` raises `sql_guard.SqlRejected` when any of these fail:
 
 - empty, or longer than 8000 characters
 - a semicolon other than one trailing semicolon, which is stripped
@@ -35,11 +35,11 @@ LIMIT 200;
 COMMIT;
 ```
 
-`app/packages/agent/db.py` shells to `C:\Program Files\PostgreSQL\18\bin\psql.exe` against `localhost:5432` / `nexus_db`. The password is `NEXUS_READER_PASSWORD` only. A failure becomes `run_sql.SqlRejected`. That class is not the same object as `sql_guard.SqlRejected`. Callers catch both.
+`backend/agent/db.py` shells to `C:\Program Files\PostgreSQL\18\bin\psql.exe` against `localhost:5432` / `nexus_db`. The password is `NEXUS_READER_PASSWORD` only. A failure becomes `run_sql.SqlRejected`. That class is not the same object as `sql_guard.SqlRejected`. Callers catch both.
 
-Row-level security on `sales_clean` shows the reader only the workspace named by `app.workspace_id`. The policy is `app/infra/reader.sql`. The table owner is a superuser and bypasses that policy, which is why the agent must not connect as the owner.
+Row-level security on `sales_clean` shows the reader only the workspace named by `app.workspace_id`. The policy is `backend/infra/reader.sql`. The table owner is a superuser and bypasses that policy, which is why the agent must not connect as the owner.
 
-The cap is 200 rows (`ROW_LIMIT`) even if the model's own SQL has no `LIMIT`. Timeout is 5 seconds (`TIMEOUT_MS`). Output is CSV parsed into a list of dicts of strings.
+The cap is 200 rows (`ROW_LIMIT`) even if the model's own SQL has no `LIMIT`. Timeout is 5 seconds (`TIMEOUT_MS`). The preview returned to the LLM context is capped at 25 rows (`max_preview = 25`), preserving token space while allowing complete visibility over standard commercial categories (e.g., all 17 Superstore subcategories). Output is CSV parsed into a list of dicts of strings.
 
 `populated_count` is a helper for the eval. It only accepts the names in `MEASURE_COLUMNS`. The graph does not call it. `get_schema` counts those columns itself.
 

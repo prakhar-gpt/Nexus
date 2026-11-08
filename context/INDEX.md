@@ -43,13 +43,13 @@ context/
     ├── 02-model.md       ← Groq, then OpenRouter, then DeepSeek
     ├── 03-thread.md      ← workspace memory
     ├── 04-choose.md      ← the model picks the tool
-    ├── 05-tools.md       ← get_schema, run_sql, read_kb
-    ├── 06-sql.md         ← guard, reader role, 200 row cap
+    ├── 05-tools.md       ← get_schema, run_sql, read_kb, run_python
+    ├── 06-sql.md         ← guard, reader role, row caps
     ├── 07-checker.md     ← numbers must trace to this turn
     ├── 08-stream.md      ← tool lines and tokens
     └── 09-screen.md      ← how the chat paints them
 
 ## Default search scope
 
-Search only `app/` and the specific `context/` files relevant to the
+Search only `backend/`, `frontend/`, and the specific `context/` files relevant to the
 task. Do not preload the entire `context/` folder into every prompt.

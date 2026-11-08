@@ -1,6 +1,6 @@
 # 2. The model
 
-`app/packages/agent/model.py` picks the first configured key. Order is fixed (Decision 22):
+`backend/agent/model.py` picks the first configured key. Order is fixed (Decision 22):
 
 | Label | Env var | Base URL | Model id |
 |---|---|---|---|

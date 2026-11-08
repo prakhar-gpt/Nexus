@@ -33,15 +33,15 @@ The project is evidence for four Bain Capability Network roles: Capabilities Tec
 | Observability | `runs` table; Langfuse optional | — |
 | Packaging | Docker Compose, pytest, GitHub Actions | Azure Container Apps or App Service, Blob storage |
 
-Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `nexus_db`. See Decisions 5 and 14. DDL is `app/infra/schema.sql`; the Superstore seed loader is `app/infra/load_superstore.py`. That step creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean.id` is a surrogate key because an order line is not unique on the business columns. Quantity, unit price, discount, cost, profit, and channel are nullable; `datasets/Superstore/Superstore.csv` does not contain them.
+Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `nexus_db`. See Decisions 5 and 14. DDL is `backend/infra/schema.sql`; the Superstore seed loader is `backend/infra/load_superstore.py`. That step creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean.id` is a surrogate key because an order line is not unique on the business columns. Quantity, unit price, discount, cost, profit, and channel are nullable; `datasets/Superstore/Superstore.csv` does not contain them.
 
 ## UI
 
-One screen, one route, at `app/apps/web`. The conversation is the screen. A quiet sidebar holds the data room: the file, a confirmation when a column is uncertain, rows set aside, and the golden-set score. The query, the row count, and the chart stay behind "Show the query" on an answer. There is no third pane and no document chip. Decision 23.
+One screen, one route, at `frontend/`. The conversation is the screen. A quiet sidebar holds the data room: the file, a confirmation when a column is uncertain, rows set aside, and the golden-set score. The query, the row count, and the chart stay behind "Show the query" on an answer. There is no third pane and no document chip. Decision 23.
 
-The palette is the one in `app/apps/web/app/globals.css`: a white field, warm stone text, a red primary, and square corners. Dark mode is the same hues inverted. It does not follow the operating system theme. Type is JetBrains Mono. The stack is still Next.js, TypeScript, Tailwind, and the shadcn `base-nova` preset (Decision 19). Recharts loads only when a query is opened.
+The palette is the one in `frontend/app/globals.css`: a white field, warm stone text, a red primary, and square corners. Dark mode is the same hues inverted. It does not follow the operating system theme. Type is JetBrains Mono. The stack is still Next.js, TypeScript, Tailwind, and the shadcn `base-nova` preset (Decision 19). Recharts loads only when a query is opened.
 
-The screen talks to the FastAPI app in `app/apps/api`. Assistant answers are rendered as markdown while the tokens arrive. A streamed token keeps its spaces. A question streams the tools the agent chose as each one starts, then the answer tokens as they are written, then the checker. Opening a data room reloads the last 20 turns from `runs`. A failed upload, a dropped stream, a mapping that does not save, and a rating that does not save each surface as a short error. They do not leave the control looking successful.
+The screen talks to the FastAPI app in `backend/` (`backend/main.py`). Assistant answers are rendered as markdown while the tokens arrive. A streamed token keeps its spaces. A question streams the tools the agent chose as each one starts, then the answer tokens as they are written, then the checker. Opening a data room reloads the last 20 turns from `runs`. A failed upload, a dropped stream, a mapping that does not save, and a rating that does not save each surface as a short error. They do not leave the control looking successful.
 
 ## Data model
 
@@ -75,7 +75,7 @@ Order: file safety, structure, domain fit, row validation, text safety.
 4. **Row validation — quarantine.** Date parse, numeric types, negatives, duplicates, impossible discounts. Keep `row_number`, `reason`, and `raw_json`.
 5. **Text safety — sanitise.** Cells are data. On any export, prefix cells that start with `=`, `+`, `-`, or `@`. Never pass cell or document text to the model as instructions.
 
-Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `app/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `app/packages/ingest/`. Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
+Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `backend/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `backend/ingest/`. Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
 
 Six test files and their expected results are in `roadmap.md`.
 
@@ -83,24 +83,24 @@ Six test files and their expected results are in `roadmap.md`.
 
 Tools: `get_schema` (columns, types, mapping, samples); `run_sql` (SELECT only on that workspace's clean data); `search_docs` (pgvector, metadata filter, page numbers); `read_kb` (one knowledge-base file by path); `run_python` (pandas/sklearn for segmentation, correlation, cohorts); `web_search` optional and off by default.
 
-Loop, as built: one LangGraph thread per workspace. The model sees the conversation and chooses the next tool. The tools in the graph are `get_schema`, `run_sql`, `read_kb`, and `run_python`. `search_docs` and `web_search` are not wired.
+Loop, as built: one LangGraph thread per workspace. The model sees the conversation and chooses the next tool. The tools in the graph are `get_schema`, `run_sql`, `read_kb`, and `run_python` (in `backend/agent/tools/`). `search_docs` and `web_search` are not wired.
 
-`run_python` executes deterministic math (CAGR, Pearson correlation, cohort retention, percentage difference comparisons) in an isolated subprocess. The execution boundary runs in a scrubbed environment with no network access, no database credentials, a 10-second timeout, and a 256MB memory cap. An AST allowlist serves as a strict syntactic filter against hazardous builtins (open, exec, eval, __import__, os, sys, subprocess, socket), with the isolation boundary enforced by the OS subprocess. Each step of a question, and the code that implements it, is in `context/agent/`. Start at `context/agent/README.md`.
+`run_python` executes deterministic math (CAGR, Pearson correlation, cohort retention, percentage difference comparisons) in an isolated subprocess. The execution boundary runs in a scrubbed environment with no network access, no database credentials, a 10-second timeout, and a 256MB memory cap. An AST allowlist serves as a strict syntactic filter against hazardous builtins (open, exec, eval, __import__, os, sys, subprocess, socket), with the isolation boundary enforced by the OS subprocess. Indentation and code fences from LLM outputs are normalized via `clean_code()`. Each step of a question, and the code that implements it, is in `context/agent/`. Start at `context/agent/README.md`.
 
 The checker is deterministic Python. It is not another model. LLM-as-judge is allowed for narrative quality only, never for numbers.
 
-`run_sql` connects as the non-superuser role `nexus_reader`. A row-level policy shows only the workspace named by the transaction setting `app.workspace_id`. The tool allows one `SELECT` against `sales_clean`, then runs it inside a read-only transaction with a 5 second timeout and a 200 row cap. The password for that role stays in `.env` and is not committed. The checker compares every number in a draft against the union of SQL result rows and `run_python` numeric results. It normalizes percentages versus fractions, applies precision-based tolerances, and exempts non-claims (years, dates, ordinals, Top N, code spans). `app/eval/runner.py` runs the 30-question golden set (including SQL, Python math, refusals, and mapping accuracy) and exits non-zero below the targets in the v2 document. GitHub Actions running that script on push is Week 4.
+`run_sql` connects as the non-superuser role `nexus_reader`. A row-level policy shows only the workspace named by the transaction setting `app.workspace_id`. The tool allows one `SELECT` against `sales_clean`, then runs it inside a read-only transaction with a 5 second timeout and a 25 row preview cap (up to 200 row fetch cap). The password for that role stays in `.env` and is not committed. The checker compares every number in a draft against the union of SQL result rows and `run_python` numeric results. It normalizes percentages versus fractions, applies precision-based tolerances, and exempts non-claims (years, dates, ordinals, Top N, code spans). `backend/eval/runner.py` runs the 30-question golden set (including SQL, Python math, refusals, and mapping accuracy) and exits non-zero below the targets in the v2 document. GitHub Actions running that script on push is Week 4.
 
 Knowledge base (markdown, versioned with the repo):
 
 ```text
-kb/README.md
-kb/metrics.md          # margin, discount rate, AOV, churn, RFM
-kb/column_hints.md
-kb/playbooks/discount_leakage.md
-kb/playbooks/segmentation_rfm.md
-kb/playbooks/product_profitability.md
-kb/caveats.md
+backend/kb/README.md
+backend/kb/metrics.md          # margin, discount rate, AOV, churn, RFM
+backend/kb/column_hints.md
+backend/kb/playbooks/discount_leakage.md
+backend/kb/playbooks/segmentation_rfm.md
+backend/kb/playbooks/product_profitability.md
+backend/kb/caveats.md
 ```
 
 Prompts live in versioned files with typed structured outputs. A provider interface can swap OpenAI, Anthropic, or a local model. Comparing them on the golden set is the PEG AI Solutions add-on, not the Week 1 path.
@@ -144,16 +144,20 @@ Guardrails for tools and modules are in `agents.md`.
 
 ## Repository map
 
-Application code stays under `app/`. This `context/` folder is the project brain the v2 tree called `docs/`. Sample data already on disk is `datasets/Superstore/Superstore.csv`, not `data/samples/`.
+The codebase is cleanly divided at root between frontend and backend:
 
-| v2 path | Nexus path |
-|---|---|
-| `apps/web` | `app/apps/web` |
-| `apps/api` | `app/apps/api` |
-| `packages/ingest`, `packages/agent`, `packages/rag` | `app/packages/ingest`, `app/packages/agent`, `app/packages/rag` |
-| `kb`, `eval` | `app/kb`, `app/eval` |
-| `infra` | `app/infra` |
-| `data/samples` | `datasets/` until a loader exists |
+| Role | Path | Description |
+|---|---|---|
+| UI | `frontend/` | Next.js 16 app with Tailwind, shadcn/ui, JetBrains Mono |
+| Backend API | `backend/main.py`, `backend/api/` | FastAPI entry point, routers (`routers/`), services (`services/`) |
+| Agent | `backend/agent/` | Graph, state, `nodes.py`, `tools/` (`get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`), `checker.py`, `sandbox.py` |
+| Ingest | `backend/ingest/` | Cleaning, mapping, capabilities, quarantine, dynamic attributes |
+| Knowledge Base | `backend/kb/` | Markdown reference playbooks, metrics definitions |
+| Evaluation | `backend/eval/` | Golden set eval runner (`runner.py`) |
+| Infrastructure | `backend/infra/` | PostgreSQL DDL schema and loaders |
+| Tests | `backend/tests/` | Pytest suite (`test_*.py`, `conftest.py`) |
+| Context / Docs | `context/` | Project architecture, decisions log, design language |
+| Datasets | `datasets/` | Superstore CSV and sample files |
 
 ## Datasets
 
