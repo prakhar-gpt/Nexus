@@ -9,6 +9,13 @@ export type Mapping = {
   confirmed_by_user: boolean
 }
 
+export type Thread = {
+  id: string
+  title: string
+  created_at: string
+  turn_count: number
+}
+
 export type Room = {
   id: number
   name: string
@@ -22,6 +29,7 @@ export type Room = {
   }
   quarantine: { row_number: string; reason: string }[]
   mappings: Mapping[]
+  threads?: Thread[]
   turns?: Turn[]
 }
 
@@ -33,6 +41,7 @@ export type Turn = {
   kind: string | null
   verified: boolean | null
   rows: Record<string, string>[]
+  thread_id?: string
 }
 
 export type TraceStep = {

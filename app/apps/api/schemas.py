@@ -12,6 +12,11 @@ class WorkspaceCreate(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
+    thread_id: str | None = Field(default=None, max_length=100)
+
+
+class ThreadCreate(BaseModel):
+    title: str | None = Field(default="New Conversation", max_length=200)
 
 
 class MappingUpdate(BaseModel):
@@ -21,4 +26,3 @@ class MappingUpdate(BaseModel):
 class FeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     reason: str | None = None
-

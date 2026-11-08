@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from apps.api.schemas import ChatRequest, WorkspaceCreate
@@ -11,8 +11,10 @@ from apps.api.services.chat_service import generate_chat_events
 from apps.api.services.upload_service import handle_file_upload
 from apps.api.services.workspace_service import (
     create_workspace,
+    get_turns,
     get_workspace_detail,
     get_workspace_meta,
+    list_threads,
     list_workspaces,
 )
 from packages.agent.loop import stream as default_stream
@@ -40,9 +42,25 @@ def create_workspace_endpoint(body: WorkspaceCreate):
 
 
 @router.get("/workspaces/{workspace_id}")
-def get_workspace_endpoint(workspace_id: int):
-    """Retrieve full data room view for a workspace."""
-    return get_workspace_detail(workspace_id)
+def get_workspace_endpoint(workspace_id: int, thread_id: str | None = Query(default=None)):
+    """Retrieve full data room view for a workspace, optionally filtered to a thread."""
+    return get_workspace_detail(workspace_id, thread_id)
+
+
+@router.get("/workspaces/{workspace_id}/threads")
+def get_threads_endpoint(workspace_id: int):
+    """List all chat threads in a workspace."""
+    if get_workspace_meta(workspace_id) is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return list_threads(workspace_id)
+
+
+@router.get("/workspaces/{workspace_id}/threads/{thread_id}/turns")
+def get_thread_turns_endpoint(workspace_id: int, thread_id: str):
+    """Fetch message turns for a specific thread."""
+    if get_workspace_meta(workspace_id) is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return get_turns(workspace_id, thread_id)
 
 
 @router.post("/workspaces/{workspace_id}/uploads")
@@ -65,10 +83,10 @@ def chat_endpoint(workspace_id: int, body: ChatRequest):
     if not question:
         raise HTTPException(status_code=400, detail="question is required")
 
+    thread_id = (body.thread_id or "default").strip()
     stream_func = _get_stream_callable()
     return StreamingResponse(
-        generate_chat_events(workspace_id, question, stream_func),
+        generate_chat_events(workspace_id, question, stream_func, thread_id=thread_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-

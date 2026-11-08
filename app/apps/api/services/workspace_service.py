@@ -1,4 +1,4 @@
-"""Workspace data access and health check services."""
+"""Workspace data access, thread management, and health check services."""
 
 from __future__ import annotations
 
@@ -40,6 +40,34 @@ def create_workspace(name: str) -> dict:
         f"VALUES ({sql_literal(clean_name)}) RETURNING id"
     )
     return {"id": int(rows[0]["id"]), "name": clean_name}
+
+
+def list_threads(workspace_id: int) -> list[dict]:
+    """List conversation threads for a workspace derived from runs."""
+    sql = (
+        "SELECT coalesce(checker_result->>'thread_id', 'default') AS id, "
+        "min(created_at)::text AS created_at, "
+        "min(question) AS title, "
+        "count(*) AS turn_count "
+        f"FROM runs WHERE workspace_id = {int(workspace_id)} "
+        "GROUP BY coalesce(checker_result->>'thread_id', 'default') "
+        "ORDER BY min(created_at) DESC"
+    )
+    rows = execute(sql)
+    threads = []
+    for row in rows:
+        title = (row.get("title") or "New Conversation").strip()
+        if len(title) > 40:
+            title = title[:37] + "..."
+        threads.append(
+            {
+                "id": row["id"],
+                "title": title,
+                "created_at": row.get("created_at") or "",
+                "turn_count": int(row.get("turn_count") or 0),
+            }
+        )
+    return threads
 
 
 def get_mappings(upload_id: int) -> list[dict]:
@@ -85,11 +113,17 @@ def get_health(workspace_id: int) -> dict:
     }
 
 
-def get_turns(workspace_id: int) -> list[dict]:
-    """Fetch the latest 20 conversation turns for a workspace."""
+def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
+    """Fetch conversation turns for a workspace, optionally filtered by thread_id."""
+    where_clauses = [f"workspace_id = {int(workspace_id)}"]
+    if thread_id:
+        clean_thread = thread_id.strip()
+        where_clauses.append(f"coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)}")
+    where_sql = " AND ".join(where_clauses)
+
     rows = execute(
-        "SELECT id, question, answer, sql_list, checker_result FROM runs "
-        f"WHERE workspace_id = {int(workspace_id)} ORDER BY id DESC LIMIT 20"
+        f"SELECT id, question, answer, sql_list, checker_result FROM runs "
+        f"WHERE {where_sql} ORDER BY id DESC LIMIT 50"
     )
     turns = []
     for row in reversed(rows):
@@ -107,13 +141,14 @@ def get_turns(workspace_id: int) -> list[dict]:
                 "kind": check.get("kind"),
                 "verified": check.get("verified"),
                 "rows": check.get("rows") or [],
+                "thread_id": check.get("thread_id") or "default",
             }
         )
     return turns
 
 
-def get_workspace_detail(workspace_id: int) -> dict:
-    """Assemble complete data room view: uploads, health, quarantine, mappings, turns."""
+def get_workspace_detail(workspace_id: int, thread_id: str | None = None) -> dict:
+    """Assemble complete data room view: uploads, health, quarantine, mappings, threads, turns."""
     room = get_workspace_meta(workspace_id)
     if room is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -135,6 +170,6 @@ def get_workspace_detail(workspace_id: int) -> dict:
         "health": get_health(workspace_id),
         "quarantine": quarantine,
         "mappings": get_mappings(int(latest)) if latest else [],
-        "turns": get_turns(workspace_id),
+        "threads": list_threads(workspace_id),
+        "turns": get_turns(workspace_id, thread_id),
     }
-

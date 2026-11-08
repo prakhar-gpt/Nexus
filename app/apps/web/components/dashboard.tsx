@@ -1,15 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Menu, Plus } from "lucide-react"
 
 import { ChatPane, type AnswerBadge, type ChatMessage } from "@/components/chat-pane"
 import { DataPane } from "@/components/data-pane"
-import { API_URL, readSse, type Mapping, type Room, type TraceStep, type Turn } from "@/lib/api"
+import { API_URL, readSse, type Mapping, type Room, type Thread, type TraceStep, type Turn } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function Dashboard() {
+  const [workspaces, setWorkspaces] = useState<{ id: number; name: string }[]>([])
   const [room, setRoom] = useState<Room | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
+  const [threads, setThreads] = useState<Thread[]>([])
+  const [activeThreadId, setActiveThreadId] = useState<string>("default")
   const [draft, setDraft] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [roomOpen, setRoomOpen] = useState(false)
@@ -23,33 +27,70 @@ export function Dashboard() {
   const [scores, setScores] = useState<Record<string, number> | null>(null)
   const [runningEval, setRunningEval] = useState(false)
 
-  async function loadRoom(preferredId?: number) {
-    const listed = await fetch(`${API_URL}/workspaces`)
-    if (!listed.ok) {
-      throw new Error("The API did not list data rooms.")
+  async function loadWorkspaces(preferredId?: number) {
+    try {
+      const listed = await fetch(`${API_URL}/workspaces`)
+      if (!listed.ok) {
+        throw new Error("Could not list data rooms.")
+      }
+      const rooms = (await listed.json()) as { id: number; name: string }[]
+      setWorkspaces(rooms)
+      const chosen =
+        rooms.find((item) => item.id === preferredId) ??
+        rooms.find((item) => item.name === "Superstore") ??
+        rooms[0]
+      if (chosen) {
+        await selectRoom(chosen.id)
+      }
+    } catch {
+      setRoomError("The API is not running on localhost:8000.")
     }
-    const rooms = (await listed.json()) as { id: number; name: string }[]
-    const chosen =
-      rooms.find((item) => item.id === preferredId) ??
-      rooms.find((item) => item.name === "Superstore") ??
-      rooms[0]
-    if (!chosen) {
-      throw new Error("No data room exists yet.")
+  }
+
+  async function selectRoom(roomId: number, preferredThreadId?: string) {
+    try {
+      const detail = await fetch(`${API_URL}/workspaces/${roomId}`)
+      if (!detail.ok) {
+        throw new Error("The data room could not be loaded.")
+      }
+      const loaded = (await detail.json()) as Room
+      setRoom(loaded)
+      const roomThreads = loaded.threads ?? []
+      setThreads(roomThreads)
+
+      const targetThread =
+        preferredThreadId ??
+        (roomThreads.length > 0 ? roomThreads[0].id : "default")
+      setActiveThreadId(targetThread)
+
+      // Filter or load turns for this thread
+      await loadThreadTurns(roomId, targetThread, loaded.turns ?? [])
+      setRoomError(null)
+    } catch (e: any) {
+      setRoomError(e.message || "Could not read data room.")
     }
-    const detail = await fetch(`${API_URL}/workspaces/${chosen.id}`)
-    if (!detail.ok) {
-      throw new Error("The data room could not be read.")
+  }
+
+  async function loadThreadTurns(roomId: number, threadId: string, preloadedTurns?: Turn[]) {
+    try {
+      let turnsToUse = preloadedTurns
+      if (!turnsToUse) {
+        const res = await fetch(`${API_URL}/workspaces/${roomId}/threads/${threadId}/turns`)
+        if (res.ok) {
+          turnsToUse = (await res.json()) as Turn[]
+        }
+      }
+      const filtered = (turnsToUse ?? []).filter(
+        (turn) => (turn.thread_id || "default") === threadId
+      )
+      setMessages(turnsToMessages(filtered))
+    } catch {
+      setMessages([])
     }
-    const loaded = (await detail.json()) as Room
-    setRoom(loaded)
-    setMessages((current) =>
-      current.length === 0 ? turnsToMessages(loaded.turns ?? []) : current,
-    )
-    setRoomError(null)
   }
 
   useEffect(() => {
-    loadRoom().catch(() => setRoomError("The API is not running on localhost:8000."))
+    loadWorkspaces()
     fetch(`${API_URL}/eval/runs`)
       .then((response) => (response.ok ? response.json() : null))
       .then((body: { scores?: { scores?: Record<string, number> } | null } | null) => {
@@ -65,6 +106,38 @@ export function Dashboard() {
     setMessages((current) =>
       current.map((message) => (message.id === id ? { ...message, ...patch } : message)),
     )
+  }
+
+  async function handleCreateWorkspace(name: string) {
+    try {
+      const res = await fetch(`${API_URL}/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+      if (res.ok) {
+        const created = (await res.json()) as { id: number; name: string }
+        await loadWorkspaces(created.id)
+      }
+    } catch {
+      setRoomError("Could not create data room.")
+    }
+  }
+
+  function handleNewThread() {
+    const newId = `thread-${Date.now().toString(36)}`
+    setActiveThreadId(newId)
+    setMessages([])
+    setThreads((prev) => [
+      { id: newId, title: "New Conversation", created_at: new Date().toISOString(), turn_count: 0 },
+      ...prev,
+    ])
+  }
+
+  async function handleSelectThread(threadId: string) {
+    if (!room) return
+    setActiveThreadId(threadId)
+    await loadThreadTurns(room.id, threadId)
   }
 
   async function ask(question: string) {
@@ -93,181 +166,187 @@ export function Dashboard() {
       const response = await fetch(`${API_URL}/workspaces/${room.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: text }),
+        body: JSON.stringify({ question: text, thread_id: activeThreadId }),
       })
       if (!response.ok) {
         updateAssistant(assistantId, {
           text: "The question could not be sent.",
-          badge: "caveat",
+          badge: "refused",
         })
         return
       }
+
       await readSse(response, (event, data) => {
-        if (event === "step") {
-          const step = data as TraceStep
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId
-                ? { ...message, activity: upsertStep(message.activity ?? [], step) }
-                : message,
-            ),
-          )
+        if (event === "token") {
+          const chunk = String(data.text ?? "")
+          if (chunk) {
+            updateAssistant(assistantId, {
+              text: `${latestText(messages, assistantId)}${chunk}`,
+              activity: [],
+            })
+          }
+        } else if (event === "step") {
+          const step = data as unknown as TraceStep
+          updateAssistant(assistantId, {
+            activity: [step],
+          })
         } else if (event === "sql") {
           updateAssistant(assistantId, {
-            sql: String(data.query ?? ""),
+            sql: (data.query as string) || null,
             rowCount: Number(data.row_count ?? 0),
           })
-        } else if (event === "token") {
-          finished = true
-          const delta = String(data.text ?? "")
-          setMessages((current) =>
-            current.map((message) =>
-              message.id === assistantId ? { ...message, text: message.text + delta } : message,
-            ),
-          )
         } else if (event === "check") {
-          updateAssistant(assistantId, { badge: badgeFor(data) })
+          updateAssistant(assistantId, {
+            badge: badgeFor(data),
+          })
         } else if (event === "done") {
           finished = true
-          const patch: Partial<ChatMessage> = {
-            runId: Number(data.run_id),
+          updateAssistant(assistantId, {
+            text: (data.answer as string) || latestText(messages, assistantId),
+            runId: Number(data.run_id ?? 0),
             rows: (data.rows as Record<string, string>[]) ?? [],
             activity: [],
-          }
-          if (typeof data.answer === "string" && data.answer) {
-            patch.text = data.answer
-          }
-          updateAssistant(assistantId, patch)
+          })
+          // Update thread list with updated turn counts/titles
+          setThreads((prev) =>
+            prev.map((th) =>
+              th.id === activeThreadId
+                ? {
+                    ...th,
+                    title: th.title === "New Conversation" ? (text.length > 35 ? text.slice(0, 32) + "..." : text) : th.title,
+                    turn_count: th.turn_count + 1,
+                  }
+                : th
+            )
+          )
         } else if (event === "error") {
-          finished = true
           updateAssistant(assistantId, {
-            text: "The question failed.",
-            badge: "caveat",
+            text: "The model could not be reached.",
+            badge: "refused",
+            activity: [],
           })
         }
       })
-      if (!finished) {
-        updateAssistant(assistantId, {
-          text: "The answer did not finish.",
-          badge: "caveat",
-        })
-      }
     } catch {
       updateAssistant(assistantId, {
-        text: "The API is not running on localhost:8000.",
-        badge: "caveat",
+        text: "The stream could not be read.",
+        badge: "refused",
+        activity: [],
       })
-    }
-  }
-
-  async function chooseFile(file: File) {
-    if (!room) {
-      return
-    }
-    const name = file.name.toLowerCase()
-    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
-      setRoomError("Only csv and xlsx files can be selected.")
-      return
-    }
-    setRoomError(null)
-    setLiveName(file.name)
-    setLiveStatus("received")
-    setLiveReason(null)
-    setLiveStages([])
-    setLiveMappings(null)
-    const body = new FormData()
-    body.append("file", file)
-    const response = await fetch(`${API_URL}/workspaces/${room.id}/uploads`, {
-      method: "POST",
-      body,
-    })
-    if (!response.ok) {
-      setRoomError("The file could not be uploaded.")
-      return
-    }
-    const payload = (await response.json()) as { upload_id: number }
-    setLiveUploadId(String(payload.upload_id))
-    const source = new EventSource(`${API_URL}/uploads/${payload.upload_id}/events`)
-    let finished = false
-    source.addEventListener("step", (event) => {
-      const data = readEvent<{ stage: string; status: string }>(event)
-      if (data) {
-        setLiveStages((current) => [...current, data])
-      }
-    })
-    source.addEventListener("done", (event) => {
-      finished = true
-      const data = readEvent<{
-        status: string
-        reason: string | null
-        mappings: Mapping[]
-      }>(event)
-      if (!data) {
-        setRoomError("The upload stream failed.")
-        source.close()
-        return
-      }
-      setLiveStatus(data.status)
-      setLiveReason(data.reason)
-      setLiveMappings(data.mappings)
-      source.close()
-      loadRoom(room.id).catch(() => setRoomError("The data room could not be refreshed."))
-    })
-    source.addEventListener("error", () => {
-      if (finished || source.readyState === EventSource.CLOSED) {
-        return
-      }
-      setRoomError("The upload stream failed.")
-      source.close()
-    })
-  }
-
-  async function confirm(decisions: Record<string, string>) {
-    const uploadId = liveUploadId ?? room?.uploads[0]?.id
-    if (!uploadId || !room) {
-      return
-    }
-    setConfirming(true)
-    try {
-      const response = await fetch(`${API_URL}/uploads/${uploadId}/mapping`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisions }),
-      })
-      if (!response.ok) {
-        setRoomError("The mapping could not be saved.")
-        return
-      }
-      const body = (await response.json()) as { status: string; reason: string | null; mappings: Mapping[] }
-      setLiveStatus(body.status)
-      setLiveReason(body.reason)
-      setLiveMappings(body.mappings)
-      await loadRoom(room.id)
-    } catch {
-      setRoomError("The mapping could not be saved.")
     } finally {
-      setConfirming(false)
+      if (!finished) {
+        updateAssistant(assistantId, { activity: [] })
+      }
     }
+  }
+
+  function latestText(list: ChatMessage[], id: string) {
+    return list.find((m) => m.id === id)?.text ?? ""
   }
 
   async function feedback(runId: number, rating: "up" | "down") {
     try {
-      const response = await fetch(`${API_URL}/runs/${runId}/feedback`, {
+      await fetch(`${API_URL}/runs/${runId}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rating }),
       })
-      if (!response.ok) {
-        setRoomError("The rating could not be saved.")
-        return
-      }
       setMessages((current) =>
         current.map((message) =>
           message.runId === runId ? { ...message, feedback: rating } : message,
         ),
       )
     } catch {
-      setRoomError("The rating could not be saved.")
+      // Ignored
+    }
+  }
+
+  async function chooseFile(file: File) {
+    if (!room) return
+    setLiveName(file.name)
+    setLiveStatus("uploading")
+    setLiveReason(null)
+    setLiveStages([])
+    setLiveMappings(null)
+    setLiveUploadId(null)
+
+    const form = new FormData()
+    form.append("file", file)
+    try {
+      const response = await fetch(`${API_URL}/workspaces/${room.id}/uploads`, {
+        method: "POST",
+        body: form,
+      })
+      if (!response.ok) {
+        setLiveStatus("rejected")
+        setLiveReason("The file was rejected.")
+        return
+      }
+      const body = (await response.json()) as { upload_id: number; status: string }
+      setLiveUploadId(String(body.upload_id))
+      setLiveStatus(body.status)
+      listenToUpload(body.upload_id)
+    } catch {
+      setLiveStatus("rejected")
+      setLiveReason("The upload failed.")
+    }
+  }
+
+  function listenToUpload(uploadId: number) {
+    const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`)
+    source.onmessage = (event) => {
+      const payload = readEvent<{
+        stage?: string
+        status?: string
+        reason?: string
+        final?: string
+      }>(event)
+      if (!payload) return
+      if (payload.stage && payload.status) {
+        setLiveStages((current) => [
+          ...current.filter((item) => item.stage !== payload.stage),
+          { stage: payload.stage!, status: payload.status! },
+        ])
+      }
+      if (payload.reason) setLiveReason(payload.reason)
+      if (payload.final) {
+        setLiveStatus(payload.final)
+        source.close()
+        loadMappings(uploadId)
+        if (room) selectRoom(room.id, activeThreadId)
+      }
+    }
+    source.onerror = () => {
+      source.close()
+    }
+  }
+
+  async function loadMappings(uploadId: number) {
+    try {
+      const response = await fetch(`${API_URL}/uploads/${uploadId}/mapping`)
+      if (!response.ok) return
+      const body = (await response.json()) as { mappings: Mapping[] }
+      setLiveMappings(body.mappings)
+    } catch {
+      // Ignored
+    }
+  }
+
+  async function confirm(decisions: Record<string, string>) {
+    const id = liveUploadId ?? room?.uploads[0]?.id
+    if (!id || !room) return
+    setConfirming(true)
+    try {
+      const response = await fetch(`${API_URL}/uploads/${id}/mapping`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decisions }),
+      })
+      if (!response.ok) return
+      setLiveMappings(null)
+      await selectRoom(room.id, activeThreadId)
+    } finally {
+      setConfirming(false)
     }
   }
 
@@ -275,14 +354,11 @@ export function Dashboard() {
     setRunningEval(true)
     try {
       const response = await fetch(`${API_URL}/eval/runs`, { method: "POST" })
-      if (!response.ok) {
-        setRoomError("The scorecard could not be run.")
-        return
-      }
+      if (!response.ok) return
       const body = (await response.json()) as { scores: Record<string, number> }
       setScores(body.scores)
     } catch {
-      setRoomError("The scorecard could not be run.")
+      setRoomError("The eval could not be run.")
     } finally {
       setRunningEval(false)
     }
@@ -290,12 +366,20 @@ export function Dashboard() {
 
   const latest = room?.uploads[0]
   const mappings = liveMappings ?? room?.mappings ?? []
-
   const pending = mappings.some((item) => item.needs_confirmation)
   const busy = messages.some((message) => message.badge === "waiting")
+
   const rail = (
     <DataPane
       roomName={room?.name ?? "Data room"}
+      workspaces={workspaces}
+      currentRoomId={room?.id ?? null}
+      onSelectWorkspace={(id) => selectRoom(id)}
+      onCreateWorkspace={handleCreateWorkspace}
+      threads={threads}
+      activeThreadId={activeThreadId}
+      onSelectThread={handleSelectThread}
+      onNewThread={handleNewThread}
       fileName={liveName ?? latest?.original_name ?? null}
       status={liveStatus ?? latest?.status ?? null}
       reason={liveReason}
@@ -316,27 +400,38 @@ export function Dashboard() {
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground md:flex-row">
+      {/* Sidebar */}
       <aside
         className={cn(
-          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-64 md:border-r md:border-sidebar-border",
+          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-72 md:border-r md:border-sidebar-border shadow-[1px_0_0_0_rgba(0,0,0,0.03)]",
           roomOpen || pending
-            ? "max-h-80 overflow-y-auto border-b border-sidebar-border"
+            ? "max-h-96 overflow-y-auto border-b border-sidebar-border"
             : "hidden",
         )}
       >
         {rail}
       </aside>
+
+      {/* Main Chat Pane */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center px-4 md:hidden">
+        {/* Mobile Header */}
+        <div className="flex h-12 items-center justify-between px-4 border-b border-border md:hidden">
+          <div className="flex items-center gap-2">
+            <span className="flex h-5 w-5 items-center justify-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
+              N
+            </span>
+            <span className="font-semibold text-sm">Nexus</span>
+          </div>
           <button
             type="button"
-            className="text-sm text-muted-foreground"
-            aria-expanded={roomOpen || pending}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => setRoomOpen((open) => !open)}
           >
-            {room?.name ?? "Data room"}
+            <Menu className="h-4 w-4" />
+            <span>{room?.name ?? "Data Room"}</span>
           </button>
         </div>
+
         <ChatPane
           draft={draft}
           messages={messages}
@@ -372,19 +467,6 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
       rows: turn.rows ?? [],
     },
   ])
-}
-
-function upsertStep(steps: TraceStep[], step: TraceStep): TraceStep[] {
-  if (!step.id) {
-    return [...steps, step]
-  }
-  const index = steps.findIndex((item) => item.id === step.id)
-  if (index === -1) {
-    return [...steps, step]
-  }
-  const next = steps.slice()
-  next[index] = { ...next[index], ...step }
-  return next
 }
 
 function badgeFor(data: Record<string, unknown>): AnswerBadge {

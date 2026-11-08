@@ -13,7 +13,7 @@ from packages.agent.formatting import chunk_text, clean_answer_text, extract_vis
 from packages.agent.model import chat_model
 from packages.agent.nodes import agent_node, checker_node, route_next_step, tools_node
 from packages.agent.state import AgentState, HISTORY_TURNS, MAX_TOOL_STEPS
-from packages.ingest.store import StoreError, execute
+from packages.ingest.store import StoreError, execute, sql_literal
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
@@ -22,12 +22,18 @@ SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
 _chunk_text = chunk_text
 
 
-def load_conversation_history(workspace_id: int) -> list:
+def load_conversation_history(workspace_id: int, thread_id: str | None = None) -> list:
     """Load the most recent turns from the runs table for cold start thread hydration."""
+    where_clauses = [f"workspace_id = {int(workspace_id)}"]
+    if thread_id:
+        clean_thread = thread_id.strip()
+        where_clauses.append(f"coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)}")
+    where_sql = " AND ".join(where_clauses)
+
     try:
         rows = execute(
             "SELECT question, answer FROM runs "
-            f"WHERE workspace_id = {int(workspace_id)} "
+            f"WHERE {where_sql} "
             f"ORDER BY id DESC LIMIT {HISTORY_TURNS}"
         )
     except StoreError:
@@ -44,7 +50,7 @@ def load_conversation_history(workspace_id: int) -> list:
 
 
 class Agent:
-    """The LangGraph agent runtime with per-workspace thread checkpoints."""
+    """The LangGraph agent runtime with per-workspace and per-thread checkpoints."""
 
     def __init__(self, model):
         self.model = model
@@ -63,8 +69,9 @@ class Agent:
         self.graph = workflow.compile(checkpointer=MemorySaver())
 
     def _prepare(self, question: str, workspace_id: int, thread_id: str | None, history):
+        effective_thread = thread_id.strip() if thread_id else "default"
         config = {
-            "configurable": {"thread_id": thread_id or f"workspace-{int(workspace_id)}"},
+            "configurable": {"thread_id": f"ws-{int(workspace_id)}-thread-{effective_thread}"},
             "recursion_limit": 30,
         }
         try:
@@ -75,7 +82,7 @@ class Agent:
 
         incoming = [HumanMessage(content=question)]
         if not existing:
-            prior = list(history) if history is not None else load_conversation_history(workspace_id)
+            prior = list(history) if history is not None else load_conversation_history(workspace_id, effective_thread)
             incoming = prior + incoming
 
         payload = {

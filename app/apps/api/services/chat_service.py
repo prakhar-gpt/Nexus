@@ -13,14 +13,16 @@ from packages.ingest.clean import make_inert
 from packages.ingest.store import StoreError, execute, sql_literal
 
 
-def save_run(workspace_id: int, question: str, result: dict) -> int:
-    """Persist an agent execution run, its SQL queries, answer, and checker audit result."""
+def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "default") -> int:
+    """Persist an agent execution run, its SQL queries, answer, and checker audit result with thread scoping."""
+    clean_thread = (thread_id or "default").strip()
     payload = json.dumps(
         {
             "verified": result["check"]["verified"],
             "untraced": result["check"]["untraced"],
             "kind": result["kind"],
             "rows": result["rows"],
+            "thread_id": clean_thread,
         }
     )
     try:
@@ -78,11 +80,19 @@ def export_result_csv(run_id: int) -> Response:
     )
 
 
-def generate_chat_events(workspace_id: int, question: str, stream_func):
+def generate_chat_events(workspace_id: int, question: str, stream_func, thread_id: str = "default"):
     """Generator yielding formatted Server-Sent Events from the agent stream."""
     result = None
+    clean_thread = (thread_id or "default").strip()
     try:
-        for kind, payload in stream_func(question, workspace_id):
+        # Pass thread_id to the agent stream function if accepted, otherwise fall back cleanly
+        stream_kwargs = {"thread_id": clean_thread}
+        try:
+            stream_iter = stream_func(question, workspace_id, **stream_kwargs)
+        except TypeError:
+            stream_iter = stream_func(question, workspace_id)
+
+        for kind, payload in stream_iter:
             if kind == "step" and isinstance(payload, dict):
                 yield format_sse(
                     "step",
@@ -114,7 +124,7 @@ def generate_chat_events(workspace_id: int, question: str, stream_func):
         return
 
     try:
-        run_id = save_run(workspace_id, question, result)
+        run_id = save_run(workspace_id, question, result, thread_id=clean_thread)
     except HTTPException:
         yield format_sse("error", {})
         return
@@ -135,6 +145,6 @@ def generate_chat_events(workspace_id: int, question: str, stream_func):
             "model": result.get("model") or "langgraph",
             "rows": result["rows"],
             "answer": result.get("answer") or "",
+            "thread_id": clean_thread,
         },
     )
-
