@@ -9,6 +9,7 @@ from langgraph.config import get_stream_writer
 from packages.agent.state import AgentState, format_status_line
 from packages.agent.tools.handlers import (
     execute_kb,
+    execute_python,
     execute_query,
     execute_schema,
     parse_tool_args,
@@ -29,6 +30,9 @@ def tools_node(state: AgentState) -> dict:
     rows = list(state.get("rows") or [])
     sqls = list(state.get("sqls") or [])
     steps = list(state.get("steps") or [])
+    python_rows = list(state.get("python_rows") or [])
+    tools_used = list(state.get("tools_used") or [])
+    sql_results = dict(state.get("sql_results") or {})
     messages = []
 
     for call in last.tool_calls:
@@ -50,14 +54,28 @@ def tools_node(state: AgentState) -> dict:
         found: list[dict] = []
 
         if name == "get_schema":
+            tools_used.append("get_schema")
             text = execute_schema(workspace_id)
         elif name == "run_sql":
+            tools_used.append("run_sql")
             text, found, query = execute_query(str(args.get("sql") or ""), workspace_id)
             rows.extend(found)
             if query:
                 sqls.append(query)
+                sql_idx = len(sqls)
+                sql_results[f"sql_{sql_idx}"] = found
+                sql_results[call_id] = found
         elif name == "read_kb":
+            tools_used.append("read_kb")
             text = execute_kb(str(args.get("path") or ""))
+        elif name == "run_python":
+            tools_used.append("run_python")
+            code = str(args.get("code") or "")
+            inputs = list(args.get("inputs") or [])
+            text, py_results = execute_python(code, inputs, rows, sql_results)
+            # Merge py_results into python_rows as labelled value pairs
+            for label, value in py_results.items():
+                python_rows.append({"label": label, "value": value})
         else:
             text = "rejected: unknown tool"
 
@@ -95,6 +113,8 @@ def tools_node(state: AgentState) -> dict:
         "rows": rows,
         "sqls": sqls,
         "steps": steps,
+        "python_rows": python_rows,
         "step_count": state.get("step_count", 0) + 1,
+        "sql_results": sql_results,
+        "tools_used": tools_used,
     }
-

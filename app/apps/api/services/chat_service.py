@@ -14,25 +14,33 @@ from packages.ingest.store import StoreError, execute, sql_literal
 
 
 def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "default") -> int:
-    """Persist an agent execution run, its SQL queries, answer, and checker audit result with thread scoping."""
+    """Persist an agent execution run, its SQL queries, answer, checker audit result, and python results."""
     clean_thread = (thread_id or "default").strip()
+    check_data = result.get("check") or {}
     payload = json.dumps(
         {
-            "verified": result["check"]["verified"],
-            "untraced": result["check"]["untraced"],
+            "status": check_data.get("status", "verified" if check_data.get("verified") else "caveat"),
+            "verified": check_data.get("verified", False),
+            "untraced": check_data.get("untraced", []),
+            "matched": check_data.get("matched", []),
             "kind": result["kind"],
             "rows": result["rows"],
+            "tools_used": result.get("tools_used", []),
+            "steps": result.get("steps", []),
+            "python_results": result.get("python_results", []),
             "thread_id": clean_thread,
         }
     )
+    py_res_json = json.dumps(result.get("python_results") or [])
     try:
         rows = execute(
             "INSERT INTO runs "
-            "(workspace_id, question, plan, sql_list, answer, checker_result, "
+            "(workspace_id, question, plan, sql_list, answer, checker_result, python_results, "
             "latency_ms, tokens, cost, model) "
             f"VALUES ({int(workspace_id)}, {sql_literal(question)}, "
             f"{sql_literal(result['plan'])}, {sql_literal(result['sql'])}, "
             f"{sql_literal(result['answer'])}, {sql_literal(payload)}::jsonb, "
+            f"{sql_literal(py_res_json)}::jsonb, "
             f"{int(result['latency_ms'])}, 0, 0, {sql_literal(result.get('model') or 'langgraph')}) "
             "RETURNING id"
         )
@@ -144,6 +152,7 @@ def generate_chat_events(workspace_id: int, question: str, stream_func, thread_i
             "tokens": 0,
             "model": result.get("model") or "langgraph",
             "rows": result["rows"],
+            "tools_used": result.get("tools_used", []),
             "answer": result.get("answer") or "",
             "thread_id": clean_thread,
         },

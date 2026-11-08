@@ -5,7 +5,6 @@
       "id": "q01",
       "kind": "sql",
       "question": "What is total revenue?",
-      "sql": "SELECT round(sum(revenue), 2) AS total_revenue FROM sales_clean",
       "expected_rows": [
         {
           "total_revenue": "2261536.78"
@@ -16,7 +15,6 @@
       "id": "q02",
       "kind": "sql",
       "question": "What is revenue by region?",
-      "sql": "SELECT region, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY region ORDER BY revenue DESC, region",
       "expected_rows": [
         {
           "region": "West",
@@ -40,7 +38,6 @@
       "id": "q03",
       "kind": "sql",
       "question": "What is revenue by category?",
-      "sql": "SELECT category, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY category ORDER BY revenue DESC, category",
       "expected_rows": [
         {
           "category": "Technology",
@@ -60,7 +57,6 @@
       "id": "q04",
       "kind": "sql",
       "question": "What is revenue by segment?",
-      "sql": "SELECT segment, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY segment ORDER BY revenue DESC, segment",
       "expected_rows": [
         {
           "segment": "Consumer",
@@ -80,7 +76,6 @@
       "id": "q05",
       "kind": "sql",
       "question": "How many sales lines are there?",
-      "sql": "SELECT count(*) AS row_count FROM sales_clean",
       "expected_rows": [
         {
           "row_count": "9800"
@@ -91,7 +86,6 @@
       "id": "q06",
       "kind": "sql",
       "question": "How many distinct customers are there?",
-      "sql": "SELECT count(DISTINCT customer_id) AS customers FROM sales_clean",
       "expected_rows": [
         {
           "customers": "793"
@@ -102,7 +96,6 @@
       "id": "q07",
       "kind": "sql",
       "question": "How many distinct products are there?",
-      "sql": "SELECT count(DISTINCT product_id) AS products FROM sales_clean",
       "expected_rows": [
         {
           "products": "1861"
@@ -113,7 +106,6 @@
       "id": "q08",
       "kind": "sql",
       "question": "What is the first and last order date?",
-      "sql": "SELECT min(order_date)::text AS first_order, max(order_date)::text AS last_order FROM sales_clean",
       "expected_rows": [
         {
           "first_order": "2015-01-03",
@@ -125,7 +117,6 @@
       "id": "q09",
       "kind": "sql",
       "question": "What is revenue in 2017?",
-      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean WHERE extract(year FROM order_date) = 2017 GROUP BY 1",
       "expected_rows": [
         {
           "year": "2017",
@@ -137,7 +128,6 @@
       "id": "q10",
       "kind": "sql",
       "question": "What is revenue in 2018?",
-      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean WHERE extract(year FROM order_date) = 2018 GROUP BY 1",
       "expected_rows": [
         {
           "year": "2018",
@@ -147,110 +137,59 @@
     },
     {
       "id": "q11",
-      "kind": "sql",
-      "question": "Who are the top 5 customers by revenue?",
-      "sql": "SELECT customer_id, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY customer_id ORDER BY revenue DESC, customer_id LIMIT 5",
-      "expected_rows": [
-        {
-          "customer_id": "SM-20320",
-          "revenue": "25043.05"
-        },
-        {
-          "customer_id": "TC-20980",
-          "revenue": "19052.22"
-        },
-        {
-          "customer_id": "RB-19360",
-          "revenue": "15117.34"
-        },
-        {
-          "customer_id": "TA-21385",
-          "revenue": "14595.62"
-        },
-        {
-          "customer_id": "AB-10105",
-          "revenue": "14473.57"
-        }
-      ]
+      "kind": "python",
+      "question": "How much higher is West revenue than South?",
+      "expected_results": {
+        "difference": 321068.22,
+        "pct_higher": 82.5
+      }
     },
     {
       "id": "q12",
-      "kind": "sql",
-      "question": "What are the top 5 sub-categories by revenue?",
-      "sql": "SELECT sub_category, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY sub_category ORDER BY revenue DESC, sub_category LIMIT 5",
-      "expected_rows": [
-        {
-          "sub_category": "Phones",
-          "revenue": "327782.45"
-        },
-        {
-          "sub_category": "Chairs",
-          "revenue": "322822.73"
-        },
-        {
-          "sub_category": "Storage",
-          "revenue": "219343.39"
-        },
-        {
-          "sub_category": "Tables",
-          "revenue": "202810.63"
-        },
-        {
-          "sub_category": "Binders",
-          "revenue": "200028.79"
-        }
-      ]
+      "kind": "python",
+      "question": "How much higher is 2018 revenue than 2017?",
+      "expected_results": {
+        "diff": 121859.47,
+        "pct": 20.3
+      }
     },
     {
       "id": "q13",
-      "kind": "sql",
-      "question": "What is Furniture revenue?",
-      "sql": "SELECT round(sum(revenue), 2) AS revenue FROM sales_clean WHERE category = 'Furniture'",
-      "expected_rows": [
-        {
-          "revenue": "728658.58"
-        }
-      ]
+      "kind": "python",
+      "question": "How much higher is Corporate revenue than Home Office?",
+      "expected_results": {
+        "diff": 263511.89,
+        "pct": 62.01
+      }
     },
     {
       "id": "q14",
-      "kind": "sql",
+      "kind": "python",
       "question": "What percentage of revenue comes from the Consumer segment?",
-      "sql": "SELECT round(100 * sum(revenue) FILTER (WHERE segment = 'Consumer') / sum(revenue), 2) AS consumer_pct FROM sales_clean",
-      "expected_rows": [
-        {
-          "consumer_pct": "50.76"
-        }
-      ]
+      "expected_results": {
+        "consumer_pct": 50.76
+      }
     },
     {
       "id": "q15",
-      "kind": "sql",
-      "question": "What is revenue in the South?",
-      "sql": "SELECT round(sum(revenue), 2) AS revenue FROM sales_clean WHERE region = 'South'",
-      "expected_rows": [
-        {
-          "revenue": "389151.46"
-        }
-      ]
+      "kind": "python",
+      "question": "What is the percentage share of Technology revenue out of total revenue?",
+      "expected_results": {
+        "share": 36.59
+      }
     },
     {
       "id": "q16",
-      "kind": "sql",
-      "question": "Which category has the highest revenue?",
-      "sql": "SELECT category, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY category ORDER BY revenue DESC, category LIMIT 1",
-      "expected_rows": [
-        {
-          "category": "Technology",
-          "revenue": "827455.87"
-        }
-      ]
+      "kind": "python",
+      "question": "What is the ratio of West revenue to East revenue?",
+      "expected_results": {
+        "ratio": 1.0608
+      }
     },
     {
       "id": "q17",
       "kind": "sql",
       "question": "What is revenue by year?",
-      "sql": "SELECT extract(year FROM order_date)::int AS year, round(sum(revenue), 2) AS revenue FROM sales_clean GROUP BY 1 ORDER BY 1",
       "expected_rows": [
         {
           "year": "2015",
@@ -274,7 +213,6 @@
       "id": "q18",
       "kind": "sql",
       "question": "What is Office Supplies revenue in the West?",
-      "sql": "SELECT round(sum(revenue), 2) AS revenue FROM sales_clean WHERE category = 'Office Supplies' AND region = 'West'",
       "expected_rows": [
         {
           "revenue": "217466.51"
@@ -285,7 +223,6 @@
       "id": "q19",
       "kind": "sql",
       "question": "How many sub-categories are there?",
-      "sql": "SELECT count(DISTINCT sub_category) AS sub_categories FROM sales_clean",
       "expected_rows": [
         {
           "sub_categories": "17"
@@ -296,7 +233,6 @@
       "id": "q20",
       "kind": "sql",
       "question": "What is the average revenue per line?",
-      "sql": "SELECT round(avg(revenue), 2) AS avg_revenue FROM sales_clean",
       "expected_rows": [
         {
           "avg_revenue": "230.77"
@@ -343,6 +279,48 @@
       "missing": [
         "channel"
       ]
+    },
+    {
+      "id": "q26",
+      "kind": "python",
+      "question": "What is the 3-year revenue CAGR from 2015 to 2018?",
+      "expected_results": {
+        "cagr": 0.1459
+      }
+    },
+    {
+      "id": "q27",
+      "kind": "python",
+      "question": "What is the Pearson correlation between monthly line count and revenue in 2017?",
+      "expected_results": {
+        "r": 0.902
+      }
+    },
+    {
+      "id": "q28",
+      "kind": "sql",
+      "question": "What is total revenue for orders shipped via Second Class?",
+      "expected_rows": [
+        {
+          "rev": "449914.18"
+        }
+      ]
+    },
+    {
+      "id": "q29",
+      "kind": "refusal",
+      "question": "What was the gross profit margin in 2018?",
+      "missing": [
+        "cost",
+        "profit"
+      ]
+    },
+    {
+      "id": "q30",
+      "kind": "mapping",
+      "question": "Verify column mapping accuracy on messy header file",
+      "fixture": "03_messy.csv",
+      "expected_status": "needs_confirmation"
     }
   ]
 }

@@ -41,6 +41,10 @@ def accept_all(pending):
 
 def main() -> int:
     room = workspace_id()
+    execute(f"DELETE FROM sales_clean WHERE workspace_id = {room}")
+    execute(f"DELETE FROM quarantine WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = {room})")
+    execute(f"DELETE FROM column_mapping WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = {room})")
+    execute(f"DELETE FROM uploads WHERE workspace_id = {room}")
 
     clean = ingest(FIXTURES / "01_clean.csv", room)
     check(

@@ -118,14 +118,17 @@ def get_mappings(upload_id: int) -> list[dict]:
     mappings = []
     for item in saved:
         confirmed = str(item["confirmed_by_user"]).lower() in {"t", "true"}
+        canonical = item["canonical_column"] or None
+        role = canonical if canonical else "attribute"
         mappings.append(
             {
                 "source": item["source_column"],
-                "canonical": item["canonical_column"] or None,
+                "canonical": canonical,
                 "confidence": float(item["confidence"] or 0),
                 "method": item["method"],
                 "needs_confirmation": item["method"] == "llm" and not confirmed,
                 "confirmed_by_user": confirmed,
+                "detected_role": role,
             }
         )
     return mappings
@@ -183,6 +186,9 @@ def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
                 "kind": check.get("kind"),
                 "verified": check.get("verified"),
                 "rows": check.get("rows") or [],
+                "steps": check.get("steps") or [],
+                "tools_used": check.get("tools_used") or [],
+                "python_results": check.get("python_results") or [],
                 "thread_id": check.get("thread_id") or "default",
             }
         )
@@ -199,6 +205,17 @@ def get_workspace_detail(workspace_id: int, thread_id: str | None = None) -> dic
         f"WHERE workspace_id = {int(workspace_id)} ORDER BY id DESC"
     )
     latest = uploads[0]["id"] if uploads else None
+    capabilities = {}
+    if latest:
+        cap_rows = execute(
+            f"SELECT capabilities FROM uploads WHERE id = {int(latest)}"
+        )
+        if cap_rows and cap_rows[0].get("capabilities"):
+            raw_cap = cap_rows[0]["capabilities"]
+            try:
+                capabilities = json.loads(raw_cap) if isinstance(raw_cap, str) else raw_cap
+            except Exception:
+                capabilities = {}
     quarantine = execute(
         "SELECT q.row_number, q.reason FROM quarantine q "
         "JOIN uploads u ON u.id = q.upload_id "
@@ -209,6 +226,7 @@ def get_workspace_detail(workspace_id: int, thread_id: str | None = None) -> dic
         "id": int(room["id"]),
         "name": room["name"],
         "uploads": uploads,
+        "capabilities": capabilities,
         "health": get_health(workspace_id),
         "quarantine": quarantine,
         "mappings": get_mappings(int(latest)) if latest else [],

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS uploads (
     sha256 text NOT NULL,
     size bigint NOT NULL,
     status text NOT NULL,
+    capabilities jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -57,6 +58,34 @@ COMMENT ON COLUMN sales_clean.profit IS
     'Nullable. Margin questions are refused when profit is absent.';
 COMMENT ON COLUMN sales_clean.channel IS
     'Nullable: the checked-in Superstore extract has no channel.';
+
+-- Week 4: GIN-indexed JSONB for unmapped columns, attribute schema table,
+-- capabilities on uploads, python_results on runs.
+
+ALTER TABLE sales_clean ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}';
+
+CREATE INDEX IF NOT EXISTS sales_clean_attributes_gin
+    ON sales_clean USING gin(attributes);
+
+COMMENT ON COLUMN sales_clean.attributes IS
+    'Unmapped source columns stored as {snake_case_key: raw_value}. '
+    'Cast expressions are exposed by get_schema.';
+
+CREATE TABLE IF NOT EXISTS upload_attribute_schema (
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    upload_id     bigint NOT NULL REFERENCES uploads (id),
+    key           text NOT NULL,
+    inferred_type text NOT NULL,
+    null_rate     numeric NOT NULL DEFAULT 0,
+    sample_values jsonb NOT NULL DEFAULT '[]',
+    UNIQUE (upload_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS upload_attribute_schema_upload_id_idx
+    ON upload_attribute_schema (upload_id);
+
+COMMENT ON TABLE upload_attribute_schema IS
+    'Per-upload inventory of attributes keys: inferred type, null rate, sample values.';
 
 CREATE TABLE IF NOT EXISTS column_mapping (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -123,6 +152,7 @@ CREATE TABLE IF NOT EXISTS runs (
     tokens integer,
     cost numeric,
     model text,
+    python_results jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -144,3 +174,8 @@ CREATE TABLE IF NOT EXISTS eval_results (
     metrics_json jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Week 4 grants
+GRANT SELECT ON upload_attribute_schema TO nexus_reader;
+GRANT SELECT ON uploads, column_mapping, sales_clean TO nexus_reader;
+GRANT ALL ON upload_attribute_schema, uploads, column_mapping, sales_clean, quarantine, runs, feedback, eval_results TO nexus_writer;

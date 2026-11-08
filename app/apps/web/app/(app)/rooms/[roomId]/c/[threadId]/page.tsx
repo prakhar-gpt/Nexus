@@ -7,7 +7,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { useRoom } from "@/lib/room-context"
 import { ChatPane } from "@/components/chat-pane"
 import { RoomGate } from "@/components/room-gate"
-import { useChatStore, useThreadState } from "@/lib/chat-store"
+import { useChatStore, useThreadState, getThreadStateDirect } from "@/lib/chat-store"
 import { API_URL, apiFetch, type Turn } from "@/lib/api"
 
 export default function ExistingThreadPage({
@@ -39,8 +39,8 @@ export default function ExistingThreadPage({
 
   // Load thread turns on mount or thread switch
   useEffect(() => {
-    const threadState = useThreadState(roomId, threadId)
-    if (threadState.messages.length > 0) return
+    const currentState = getThreadStateDirect(roomId, threadId)
+    if (currentState.messages.length > 0) return
 
     let active = true
     setLoadingTurns(true)

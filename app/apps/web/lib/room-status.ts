@@ -13,14 +13,20 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
   }
 
   const latestUpload = room.uploads && room.uploads.length > 0 ? room.uploads[0] : null
+  const hasLoadedRows = Boolean(room.health?.rows && room.health.rows !== "0")
 
-  // 1. Check if there are no uploads at all
-  if (!latestUpload && (!room.health?.rows || room.health.rows === "0")) {
+  // 1. If rows are loaded into the data room, it is ready for queries!
+  if (hasLoadedRows) {
+    return { type: "ready" }
+  }
+
+  // 2. Check if there are no uploads at all
+  if (!latestUpload) {
     return { type: "empty" }
   }
 
-  // 2. Check rejected state
-  if (latestUpload?.status === "rejected" || latestUpload?.status === "failed") {
+  // 3. Check rejected state
+  if (latestUpload.status === "rejected" || latestUpload.status === "failed") {
     return {
       type: "rejected",
       reason:
@@ -29,10 +35,9 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
     }
   }
 
-  // 3. Check active ingestion state
+  // 4. Check active ingestion state
   if (
-    latestUpload &&
-    ["uploading", "processing", "safety", "structure", "mapping", "load"].includes(
+    ["uploading", "processing", "safety", "structure", "mapping", "load", "loading", "received"].includes(
       latestUpload.status
     )
   ) {
@@ -42,10 +47,10 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
     }
   }
 
-  // 4. Check if column mappings have uncertain items needing confirmation
+  // 5. Check if canonical column mappings require user confirmation
   const mappings = room.mappings || []
   const uncertain = mappings.filter(
-    (m) => m.needs_confirmation || (m.confidence < 0.7 && !m.confirmed_by_user)
+    (m) => m.canonical && m.needs_confirmation && !m.confirmed_by_user
   )
 
   if (uncertain.length > 0) {
@@ -56,14 +61,10 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
     }
   }
 
-  // 5. Ready state (loaded with confirmed mappings or established data)
-  if (
-    latestUpload?.status === "loaded" ||
-    (room.health?.rows && room.health.rows !== "0")
-  ) {
+  // 6. Ready state
+  if (latestUpload.status === "loaded" || latestUpload.status === "accepted") {
     return { type: "ready" }
   }
 
   return { type: "empty" }
 }
-

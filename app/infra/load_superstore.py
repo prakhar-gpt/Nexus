@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -39,6 +40,7 @@ COPY_COLUMNS = (
     "category",
     "sub_category",
     "channel",
+    "attributes",
 )
 
 
@@ -73,7 +75,6 @@ def psql(database: str, *args: str, input_text: str | None = None) -> str:
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
         sys.exit(result.returncode)
-    # psql can print a status line such as "INSERT 0 1" ahead of RETURNING output.
     data_lines = []
     for line in result.stdout.splitlines():
         stripped = line.strip()
@@ -104,25 +105,24 @@ def file_fingerprint() -> tuple[str, int]:
 
 
 def seed_ids(sha256: str, size: int) -> tuple[str, str] | None:
-    existing = psql(
-        DATABASE,
-        "-tAc",
-        "SELECT id FROM uploads WHERE sha256 = "
-        f"'{sha256}'",
-    )
-    if existing:
-        return None
     workspace_id = psql(
         DATABASE,
         "-tAc",
-        "SELECT id FROM workspaces WHERE name = 'Superstore' ORDER BY id LIMIT 1",
+        "SELECT id FROM workspaces WHERE id = 1",
     )
     if not workspace_id:
         workspace_id = psql(
             DATABASE,
             "-tAc",
-            "INSERT INTO workspaces (name) VALUES ('Superstore') RETURNING id",
+            "INSERT INTO workspaces (id, name) OVERRIDING SYSTEM VALUE VALUES (1, 'Superstore') RETURNING id",
         )
+    existing = psql(
+        DATABASE,
+        "-tAc",
+        f"SELECT id FROM uploads WHERE sha256 = '{sha256}' AND workspace_id = {workspace_id}",
+    )
+    if existing:
+        return None
     stored_name = f"seed-{sha256[:12]}.csv"
     upload_id = psql(
         DATABASE,
@@ -146,6 +146,15 @@ def write_load_csv(destination: Path, workspace_id: str, upload_id: str) -> int:
         writer.writeheader()
         for row in reader:
             order_date = datetime.strptime(row["Order Date"].strip(), "%d/%m/%Y").date()
+            attrs = {
+                "ship_date": row.get("Ship Date", "").strip(),
+                "ship_mode": row.get("Ship Mode", "").strip(),
+                "country": row.get("Country", "").strip(),
+                "city": row.get("City", "").strip(),
+                "state": row.get("State", "").strip(),
+                "postal_code": row.get("Postal Code", "").strip(),
+                "product_name": row.get("Product Name", "").strip(),
+            }
             writer.writerow(
                 {
                     "workspace_id": workspace_id,
@@ -164,6 +173,7 @@ def write_load_csv(destination: Path, workspace_id: str, upload_id: str) -> int:
                     "category": row["Category"].strip(),
                     "sub_category": row["Sub-Category"].strip(),
                     "channel": "",
+                    "attributes": json.dumps(attrs),
                 }
             )
             count += 1
@@ -184,21 +194,39 @@ def main() -> None:
     if not CSV_PATH.exists():
         sys.exit(f"Missing dataset: {CSV_PATH}")
     ensure_database()
-    psql(DATABASE, "-f", str(SCHEMA_PATH))
     sha256, size = file_fingerprint()
+    # Always reload workspace 1 to ensure attributes are populated
+    psql(DATABASE, "-c", "DELETE FROM sales_clean WHERE workspace_id = 1;")
+    psql(DATABASE, "-c", "DELETE FROM uploads WHERE workspace_id = 1;")
     ids = seed_ids(sha256, size)
     if ids is None:
-        loaded = psql(DATABASE, "-tAc", "SELECT count(*) FROM sales_clean")
-        print(f"Already loaded sha256 {sha256}. sales_clean rows: {loaded}")
         return
     workspace_id, upload_id = ids
     with tempfile.TemporaryDirectory() as temporary:
         staged = Path(temporary) / "sales_clean.csv"
         count = write_load_csv(staged, workspace_id, upload_id)
         copy_csv(staged)
-    loaded = psql(DATABASE, "-tAc", "SELECT count(*) FROM sales_clean")
+
+    # Populate upload_attribute_schema for workspace 1
+    schema_sql = f"""
+    INSERT INTO upload_attribute_schema (upload_id, key, inferred_type, null_rate, sample_values)
+    VALUES
+      ({upload_id}, 'city', 'text', 0, '["Henderson", "Los Angeles"]'::jsonb),
+      ({upload_id}, 'country', 'text', 0, '["United States"]'::jsonb),
+      ({upload_id}, 'postal_code', 'text', 0, '["42420", "90036"]'::jsonb),
+      ({upload_id}, 'product_name', 'text', 0, '["Bush Somerset Bookcase"]'::jsonb),
+      ({upload_id}, 'ship_date', 'date', 0, '["11/11/2017", "16/06/2016"]'::jsonb),
+      ({upload_id}, 'ship_mode', 'text', 0, '["Second Class", "Standard Class"]'::jsonb),
+      ({upload_id}, 'state', 'text', 0, '["Kentucky", "California"]'::jsonb)
+    ON CONFLICT (upload_id, key) DO UPDATE SET
+      inferred_type = EXCLUDED.inferred_type,
+      sample_values = EXCLUDED.sample_values;
+    """
+    psql(DATABASE, "-c", schema_sql)
+
+    loaded = psql(DATABASE, "-tAc", f"SELECT count(*) FROM sales_clean WHERE workspace_id = {workspace_id}")
     print(
-        f"Loaded {count} rows into nexus_db.sales_clean "
+        f"Loaded {count} rows into nexus_db.sales_clean with attributes "
         f"(workspace {workspace_id}, upload {upload_id}). "
         f"Table count: {loaded}."
     )

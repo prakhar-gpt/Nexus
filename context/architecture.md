@@ -53,6 +53,8 @@ Nine tables. `workspaces` is the Data Room.
 | `uploads` | `id`, `workspace_id`, `original_name`, `stored_name`, `sha256`, `size`, `status`, `created_at` | `workspace_id` → `workspaces` |
 | `column_mapping` | `upload_id`, `source_column`, `canonical_column`, `confidence`, `method` (`fuzzy` or `llm`), `confirmed_by_user` | `upload_id` → `uploads` |
 | `sales_clean` | `workspace_id`, `upload_id`, `order_date`, `customer_id`, `product_id`, `quantity`, `revenue`, `unit_price`, `discount_pct`, `cost`, `profit`, `segment`, `region`, `category`, `sub_category`, `channel` | Both `workspace_id` and `upload_id` |
+| `sales_clean` | `workspace_id`, `upload_id`, ..., `attributes` (JSONB) | Both `workspace_id` and `upload_id` |
+| `upload_attribute_schema` | `upload_id`, `key`, `inferred_type`, `null_rate`, `sample_values` | `upload_id` → `uploads` |
 | `quarantine` | `upload_id`, `row_number`, `reason`, `raw_json` | `upload_id` → `uploads` |
 | `documents` / `chunks` | `doc_id`, `chunk_id`, `text`, `embedding`, `page`, `section`, `metadata` | `chunk_id` under `doc_id` |
 | `runs` | `id`, `workspace_id`, `question`, `plan`, `sql_list`, `answer`, `checker_result`, `latency_ms`, `tokens`, `cost`, `model`, `created_at` | `workspace_id` → `workspaces` |
@@ -81,11 +83,13 @@ Six test files and their expected results are in `roadmap.md`.
 
 Tools: `get_schema` (columns, types, mapping, samples); `run_sql` (SELECT only on that workspace's clean data); `search_docs` (pgvector, metadata filter, page numbers); `read_kb` (one knowledge-base file by path); `run_python` (pandas/sklearn for segmentation, correlation, cohorts); `web_search` optional and off by default.
 
-Loop, as built: one LangGraph thread per workspace. The model sees the conversation and chooses the next tool. The tools in the graph are `get_schema`, `run_sql`, and `read_kb`. `search_docs`, `run_python`, and `web_search` are not wired. Each step of a question, and the code that implements it, is in `context/agent/`. Start at `context/agent/README.md`.
+Loop, as built: one LangGraph thread per workspace. The model sees the conversation and chooses the next tool. The tools in the graph are `get_schema`, `run_sql`, `read_kb`, and `run_python`. `search_docs` and `web_search` are not wired.
+
+`run_python` executes deterministic math (CAGR, Pearson correlation, cohort retention, percentage difference comparisons) in an isolated subprocess. The execution boundary runs in a scrubbed environment with no network access, no database credentials, a 10-second timeout, and a 256MB memory cap. An AST allowlist serves as a strict syntactic filter against hazardous builtins (open, exec, eval, __import__, os, sys, subprocess, socket), with the isolation boundary enforced by the OS subprocess. Each step of a question, and the code that implements it, is in `context/agent/`. Start at `context/agent/README.md`.
 
 The checker is deterministic Python. It is not another model. LLM-as-judge is allowed for narrative quality only, never for numbers.
 
-`run_sql` connects as the non-superuser role `nexus_reader`. A row-level policy shows only the workspace named by the transaction setting `app.workspace_id`. The tool allows one `SELECT` against `sales_clean`, then runs it inside a read-only transaction with a 5 second timeout and a 200 row cap. The password for that role stays in `.env` and is not committed. The checker compares every number in a draft to the SQL result. `app/eval/runner.py` runs the 25-question golden set and exits non-zero below the targets in the v2 document. GitHub Actions running that script on push is Week 4.
+`run_sql` connects as the non-superuser role `nexus_reader`. A row-level policy shows only the workspace named by the transaction setting `app.workspace_id`. The tool allows one `SELECT` against `sales_clean`, then runs it inside a read-only transaction with a 5 second timeout and a 200 row cap. The password for that role stays in `.env` and is not committed. The checker compares every number in a draft against the union of SQL result rows and `run_python` numeric results. It normalizes percentages versus fractions, applies precision-based tolerances, and exempts non-claims (years, dates, ordinals, Top N, code spans). `app/eval/runner.py` runs the 30-question golden set (including SQL, Python math, refusals, and mapping accuracy) and exits non-zero below the targets in the v2 document. GitHub Actions running that script on push is Week 4.
 
 Knowledge base (markdown, versioned with the repo):
 

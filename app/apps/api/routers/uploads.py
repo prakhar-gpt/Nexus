@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from apps.api.schemas import MappingUpdate
 from apps.api.services.upload_service import (
     get_upload_health_summary,
+    get_upload_mapping_detail,
     stream_upload_events,
     update_column_mappings,
 )
@@ -27,8 +28,8 @@ async def upload_events_endpoint(upload_id: int):
 
 @router.get("/uploads/{upload_id}/mapping")
 def get_mapping_endpoint(upload_id: int):
-    """Retrieve column mapping proposals for an upload."""
-    return {"mappings": get_mappings(upload_id)}
+    """Retrieve column mapping proposals, capabilities, and preview for an upload."""
+    return get_upload_mapping_detail(upload_id)
 
 
 @router.put("/uploads/{upload_id}/mapping")

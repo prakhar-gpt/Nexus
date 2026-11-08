@@ -5,21 +5,23 @@ from __future__ import annotations
 from typing import Annotated, TypedDict
 from langgraph.graph.message import add_messages
 
-MAX_TOOL_STEPS = 6
+MAX_TOOL_STEPS = 8
 HISTORY_TURNS = 8
-MESSAGE_TAIL = 30
+MESSAGE_TAIL = 20
 STEP_LIMIT = "The step limit was reached before an answer."
 
 STATUS_RUNNING: dict[str, str] = {
-    "get_schema": "Looking at the columns…",
-    "run_sql": "Running a query…",
-    "read_kb": "Reading the notes…",
+    "get_schema": "Looking at the columns...",
+    "run_sql": "Running a query...",
+    "read_kb": "Reading the notes...",
+    "run_python": "Running Python calculation...",
 }
 
 STATUS_FINISHED: dict[str, str] = {
     "get_schema": "Looked at the columns",
     "run_sql": "Ran a query",
     "read_kb": "Read the notes",
+    "run_python": "Ran calculation",
 }
 
 
@@ -35,12 +37,15 @@ class AgentState(TypedDict, total=False):
     answer: str
     check: dict
     kind: str
+    python_rows: list  # results from run_python: [{"label": str, "value": float}]
+    sql_results: dict  # results by id or alias: {"sql_1": [...], ...}
+    tools_used: list  # list of tool names called this turn: ["run_sql", "run_python"]
 
 
 def format_status_line(name: str, status: str) -> str:
     """Format user-facing status lines emitted during tool execution."""
     if status == "running":
-        return STATUS_RUNNING.get(name, "Working…")
+        return STATUS_RUNNING.get(name, "Working...")
     if status == "error":
         return "That step was rejected"
     return STATUS_FINISHED.get(name, "Done")

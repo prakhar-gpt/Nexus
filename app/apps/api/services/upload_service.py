@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import json
 from fastapi import BackgroundTasks, HTTPException, Response
 
 from apps.api.services.workspace_service import get_mappings, get_workspace_meta
@@ -135,4 +136,46 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
         "summary": summary[0] if summary else {},
         "mappings": get_mappings(upload_id),
     }
+
+
+def get_upload_mapping_detail(upload_id: int) -> dict:
+    """Retrieve column mapping proposals, capabilities, and preview for an upload."""
+    found = execute(
+        "SELECT workspace_id, stored_name, status, capabilities FROM uploads "
+        f"WHERE id = {int(upload_id)}"
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail="upload not found")
+    upload = found[0]
+    raw_caps = upload.get("capabilities") or "{}"
+    try:
+        caps = json.loads(raw_caps) if isinstance(raw_caps, str) else raw_caps
+    except Exception:
+        caps = {}
+    mappings = get_mappings(upload_id)
+
+    preview = []
+    try:
+        rows = run_sql(
+            f"SELECT * FROM sales_clean WHERE upload_id = {int(upload_id)} LIMIT 10",
+            int(upload["workspace_id"]),
+        )
+        for r in rows:
+            attrs = {}
+            if "attributes" in r and r["attributes"]:
+                try:
+                    attrs = json.loads(r["attributes"]) if isinstance(r["attributes"], str) else r["attributes"]
+                except Exception:
+                    pass
+            clean_row = {k: v for k, v in r.items() if k not in ("attributes", "workspace_id", "upload_id")}
+            preview.append({**clean_row, **attrs})
+    except Exception:
+        preview = []
+
+    return {
+        "mappings": mappings,
+        "capabilities": caps or {},
+        "preview": preview,
+    }
+
 

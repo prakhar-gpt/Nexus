@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import psycopg2
 
 from packages.agent.db import DATABASE, ENV_PATH, psql
 
@@ -27,6 +28,17 @@ def writer_password() -> str:
             if value:
                 return value
     raise StoreError("NEXUS_WRITER_PASSWORD is not set.")
+
+
+def get_writer_connection():
+    """Return a psycopg2 connection authenticated as nexus_writer."""
+    return psycopg2.connect(
+        dbname=DATABASE,
+        user=WRITER_USER,
+        password=writer_password(),
+        host="localhost",
+        port=5432,
+    )
 
 
 def execute(sql: str) -> list[dict[str, str]]:

@@ -13,7 +13,6 @@ from packages.agent.formatting import chunk_text, clean_answer_text, extract_vis
 from packages.agent.model import chat_model
 from packages.agent.nodes import agent_node, checker_node, route_next_step, tools_node
 from packages.agent.state import AgentState, HISTORY_TURNS, MAX_TOOL_STEPS
-from packages.ingest.store import StoreError, execute, sql_literal
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
@@ -24,6 +23,7 @@ _chunk_text = chunk_text
 
 def load_conversation_history(workspace_id: int, thread_id: str | None = None) -> list:
     """Load the most recent turns from the runs table for cold start thread hydration."""
+    from packages.ingest.store import StoreError, execute, sql_literal
     where_clauses = [f"workspace_id = {int(workspace_id)}"]
     if thread_id:
         clean_thread = thread_id.strip()
@@ -91,6 +91,7 @@ class Agent:
             "rows": [],
             "sqls": [],
             "steps": [],
+            "python_rows": [],
             "step_count": 0,
         }
         return config, payload
@@ -98,13 +99,16 @@ class Agent:
     def _result(self, values: dict, started: float) -> dict:
         sqls = list(values.get("sqls") or [])
         steps = list(values.get("steps") or [])
+        python_rows = list(values.get("python_rows") or [])
         return {
             "kind": values.get("kind") or "unknown",
             "plan": ", ".join(step["tool"] for step in steps),
             "sql": "\n\n".join(sqls) if sqls else None,
             "rows": list(values.get("rows") or []),
+            "python_results": python_rows,
+            "tools_used": list(values.get("tools_used") or []),
             "answer": values.get("answer") or "",
-            "check": values.get("check") or {"verified": False, "untraced": []},
+            "check": values.get("check") or {"status": "caveat", "verified": False, "untraced": []},
             "steps": steps,
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "model": self.model_name,

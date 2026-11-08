@@ -21,6 +21,8 @@ from packages.agent.checker import (  # noqa: E402
 )
 from packages.agent.run_sql import populated_count, run_sql  # noqa: E402
 from packages.agent.sql_guard import SqlRejected, guard_sql  # noqa: E402
+from packages.agent.sandbox import execute_sandboxed  # noqa: E402
+from packages.ingest.pipeline import ingest  # noqa: E402
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_set.json"
 WORKSPACE_ID = 1
@@ -107,17 +109,58 @@ def evaluate() -> dict:
                 problems.append(f"{question['id']} checker accepted a bad number")
             continue
 
-        refusal_total += 1
-        absent = [
-            column
-            for column in question["missing"]
-            if populated_count(WORKSPACE_ID, column) == 0
-        ]
-        answer = refusal_text(" and ".join(question["missing"]))
-        if absent == question["missing"] and extract_numbers(answer) == []:
-            refusal_passed += 1
-        else:
-            problems.append(f"{question['id']} refusal failed")
+        if question["kind"] == "python":
+            sql_total += 1
+            rows = run_sql(question["sql"], WORKSPACE_ID)
+            res = execute_sandboxed(question["code"], {"data": rows})
+            exp_item = next((q for q in golden["questions"] if q["id"] == question["id"]), {})
+            exp_results = exp_item.get("expected_results", {})
+            if res["ok"] and all(abs(res["results"].get(k, 0) - v) < 0.001 for k, v in exp_results.items()):
+                sql_passed += 1
+            else:
+                problems.append(f"{question['id']} python execution/result mismatch: {res}")
+
+            faith_total += 1
+            res_str = ", ".join(f"{k}: {v}" for k, v in res.get("results", {}).items())
+            draft = f"Computed metrics: {res_str}"
+            if check_answer(draft, rows, python_results=res.get("results"))["verified"]:
+                faith_passed += 1
+            else:
+                problems.append(f"{question['id']} checker rejected faithful python draft")
+
+            faith_total += 1
+            tampered = draft + " plus bad_stat=999999"
+            if not check_answer(tampered, rows, python_results=res.get("results"))["verified"]:
+                faith_passed += 1
+            else:
+                problems.append(f"{question['id']} checker accepted bad number in python draft")
+            continue
+
+        if question["kind"] == "mapping":
+            sql_total += 1
+            fixture_path = ROOT / "datasets" / "tests" / question["fixture"]
+            result = ingest(fixture_path, WORKSPACE_ID)
+            exp_item = next((q for q in golden["questions"] if q["id"] == question["id"]), {})
+            exp_status = exp_item.get("expected_status", "needs_confirmation")
+            if result.status == exp_status:
+                sql_passed += 1
+            else:
+                problems.append(f"{question['id']} mapping status mismatch: got {result.status}, expected {exp_status}")
+            continue
+
+        if question["kind"] == "refusal":
+            refusal_total += 1
+            absent = [
+                column
+                for column in question["missing"]
+                if populated_count(WORKSPACE_ID, column) == 0
+            ]
+            answer = refusal_text(" and ".join(question["missing"]))
+            if absent == question["missing"] and extract_numbers(answer) == []:
+                refusal_passed += 1
+            else:
+                problems.append(f"{question['id']} refusal failed")
+            continue
 
     scores = {
         "sql_correctness": _score(sql_passed, sql_total),
