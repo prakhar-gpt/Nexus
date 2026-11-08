@@ -58,3 +58,4 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: Week 1 status corrected from "not started" to "Superstore loaded". `run_sql`, the golden set, the checker, and the CI eval script are still open.
 - 2026-11-08: Week 1 complete. `run_sql`, the checker, the 25-question golden set, and `app/eval/runner.py` pass at 100% against the 85% / 98% / 90% targets. GitHub Actions remains Week 4.
 - 2026-11-08: Week 2 complete. Ingestion accepts the six test files. `python app/packages/ingest/test_week2.py` passes, and the Week 1 eval still passes.
+- 2026-11-08: Week 3 screen started at `app/apps/web`. The three panes render. Upload and answers are not connected.

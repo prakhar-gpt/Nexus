@@ -51,7 +51,7 @@ Owns routes, SSE, and BackgroundTasks. Contract is in `architecture.md`.
 
 ## UI (`app/apps/web`)
 
-Owns the single three-pane dashboard.
+Owns the single three-pane dashboard in `app/apps/web`. The current screen does not call the API.
 
 - **OBSERVED.** Do not add routes for extra pages. Left is data and health, center is chat, right is trace and eval.
 - **OBSERVED.** Every rendered number links to its SQL and row count. Show a verified badge, a caveat, or a refusal. Do not show an unverified number as fact.

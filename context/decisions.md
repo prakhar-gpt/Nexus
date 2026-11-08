@@ -47,3 +47,7 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* No model key is configured. The hint file is the fallback the spec would hand to a model. The saved method for that path is `llm`, which is the spec's name for the non-fuzzy path.
   * *Rejected:* Calling a hosted model during ingestion. Reading ambiguous dates as month-day-year.
   * *Files affected:* `app/packages/ingest/`, `app/kb/column_hints.md`.
+* **Decision 19 (2026-11-08):** The first screen is a Next.js app at `app/apps/web`, using the shadcn/ui `base-nova` preset. It is one route. It shows the three panes and does not call SQL or ingest.
+  * *Reason:* The user asked for the UI first, with shadcn, before the API.
+  * *Rejected:* Scaffolding at the repo root. `shadcn init` created a nested `.git` in `app/apps/web`; that directory was removed so Nexus stays one local repository.
+  * *Files affected:* `app/apps/web/`.

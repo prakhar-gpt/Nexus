@@ -45,6 +45,8 @@ One dashboard, three panes. No multi-page routing.
 
 Show uncertainty. Every number links to its SQL and row count. Answer first, trace one click away. Design empty, loading, and error states for every pane.
 
+The screen is `app/apps/web`, one route, shadcn/ui preset `base-nova` (Decision 19). It does not call the API yet. A chosen file stays in the browser, and a question renders a waiting card with inactive source chips.
+
 ## Data model
 
 Nine tables. `workspaces` is the Data Room.
