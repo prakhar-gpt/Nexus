@@ -95,3 +95,7 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* The checker previously flagged prompt dates or query limits as untraced hallucinations. The agent also silently guessed years or refused when a year was omitted.
   * *Rejected:* Blank check on all numbers without context, and silently guessing dates.
   * *Files affected:* `app/packages/agent/checker.py`, `app/packages/agent/graph.py`, `app/packages/agent/prompts/system.md`, `context/agent/07-checker.md`.
+* **Decision 31 (2026-11-08):** Add explicit role & visualization guardrails in `system.md`.
+  * *Reason:* The agent was generating raw Mermaid syntax blocks and pseudo-charts when asked to "render chart". Native interactive charts already exist in the UI via Recharts under "Show the query".
+  * *Rejected:* Allowing the LLM to output arbitrary text diagrams, Mermaid blocks, or scripts.
+  * *Files affected:* `app/packages/agent/prompts/system.md`.

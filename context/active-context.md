@@ -20,3 +20,4 @@ Resolved in this session:
 - Fixed `UnicodeEncodeError` when saving runs with Unicode spaces/symbols (`\u202f`) on Windows via UTF-8 subprocess encoding.
 - Context-aware number checker: numbers from the prompt, earlier messages, and SQL queries no longer cause false "untraced figure" caveats.
 - Ambiguous date/filter queries actively trigger clarifying questions without tripping the checker.
+- Strict guardrails against raw diagram/Mermaid output in system.md; visualization requests query data for native Recharts under 'Show the query' or ask for required dimensions.
