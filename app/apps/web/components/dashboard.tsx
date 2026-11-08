@@ -1,14 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { PanelRightClose, PanelRightOpen } from "lucide-react"
+import { useState, useEffect } from "react"
 
 import { ChatPane, type AnswerBadge, type ChatMessage } from "@/components/chat-pane"
 import { DataPane } from "@/components/data-pane"
-import { TracePane } from "@/components/trace-pane"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { API_URL, readSse, type Mapping, type Room, type TraceStep } from "@/lib/api"
+import { API_URL, readSse, type Mapping, type Room, type TraceStep, type Turn } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export function Dashboard() {
@@ -16,8 +12,7 @@ export function Dashboard() {
   const [roomError, setRoomError] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [steps, setSteps] = useState<TraceStep[]>([])
-  const [traceOpen, setTraceOpen] = useState(true)
+  const [roomOpen, setRoomOpen] = useState(false)
   const [liveName, setLiveName] = useState<string | null>(null)
   const [liveStatus, setLiveStatus] = useState<string | null>(null)
   const [liveReason, setLiveReason] = useState<string | null>(null)
@@ -45,7 +40,11 @@ export function Dashboard() {
     if (!detail.ok) {
       throw new Error("The data room could not be read.")
     }
-    setRoom((await detail.json()) as Room)
+    const loaded = (await detail.json()) as Room
+    setRoom(loaded)
+    setMessages((current) =>
+      current.length === 0 ? turnsToMessages(loaded.turns ?? []) : current,
+    )
     setRoomError(null)
   }
 
@@ -89,8 +88,7 @@ export function Dashboard() {
       },
     ])
     setDraft("")
-    setSteps([])
-    setTraceOpen(true)
+    let finished = false
     try {
       const response = await fetch(`${API_URL}/workspaces/${room.id}/chat`, {
         method: "POST",
@@ -106,28 +104,53 @@ export function Dashboard() {
       }
       await readSse(response, (event, data) => {
         if (event === "step") {
-          setSteps((current) => [...current, data as TraceStep])
+          const step = data as TraceStep
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId
+                ? { ...message, activity: upsertStep(message.activity ?? [], step) }
+                : message,
+            ),
+          )
         } else if (event === "sql") {
           updateAssistant(assistantId, {
             sql: String(data.query ?? ""),
             rowCount: Number(data.row_count ?? 0),
           })
         } else if (event === "token") {
-          updateAssistant(assistantId, { text: String(data.text ?? "") })
+          finished = true
+          const delta = String(data.text ?? "")
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === assistantId ? { ...message, text: message.text + delta } : message,
+            ),
+          )
         } else if (event === "check") {
           updateAssistant(assistantId, { badge: badgeFor(data) })
         } else if (event === "done") {
-          updateAssistant(assistantId, {
+          finished = true
+          const patch: Partial<ChatMessage> = {
             runId: Number(data.run_id),
             rows: (data.rows as Record<string, string>[]) ?? [],
-          })
+          }
+          if (typeof data.answer === "string" && data.answer) {
+            patch.text = data.answer
+          }
+          updateAssistant(assistantId, patch)
         } else if (event === "error") {
+          finished = true
           updateAssistant(assistantId, {
             text: "The question failed.",
             badge: "caveat",
           })
         }
       })
+      if (!finished) {
+        updateAssistant(assistantId, {
+          text: "The answer did not finish.",
+          badge: "caveat",
+        })
+      }
     } catch {
       updateAssistant(assistantId, {
         text: "The API is not running on localhost:8000.",
@@ -166,15 +189,22 @@ export function Dashboard() {
     const source = new EventSource(`${API_URL}/uploads/${payload.upload_id}/events`)
     let finished = false
     source.addEventListener("step", (event) => {
-      const data = JSON.parse((event as MessageEvent).data) as { stage: string; status: string }
-      setLiveStages((current) => [...current, data])
+      const data = readEvent<{ stage: string; status: string }>(event)
+      if (data) {
+        setLiveStages((current) => [...current, data])
+      }
     })
     source.addEventListener("done", (event) => {
       finished = true
-      const data = JSON.parse((event as MessageEvent).data) as {
+      const data = readEvent<{
         status: string
         reason: string | null
         mappings: Mapping[]
+      }>(event)
+      if (!data) {
+        setRoomError("The upload stream failed.")
+        source.close()
+        return
       }
       setLiveStatus(data.status)
       setLiveReason(data.reason)
@@ -203,35 +233,55 @@ export function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisions }),
       })
+      if (!response.ok) {
+        setRoomError("The mapping could not be saved.")
+        return
+      }
       const body = (await response.json()) as { status: string; reason: string | null; mappings: Mapping[] }
       setLiveStatus(body.status)
       setLiveReason(body.reason)
       setLiveMappings(body.mappings)
       await loadRoom(room.id)
+    } catch {
+      setRoomError("The mapping could not be saved.")
     } finally {
       setConfirming(false)
     }
   }
 
   async function feedback(runId: number, rating: "up" | "down") {
-    await fetch(`${API_URL}/runs/${runId}/feedback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rating }),
-    })
-    setMessages((current) =>
-      current.map((message) => (message.runId === runId ? { ...message, feedback: rating } : message)),
-    )
+    try {
+      const response = await fetch(`${API_URL}/runs/${runId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating }),
+      })
+      if (!response.ok) {
+        setRoomError("The rating could not be saved.")
+        return
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.runId === runId ? { ...message, feedback: rating } : message,
+        ),
+      )
+    } catch {
+      setRoomError("The rating could not be saved.")
+    }
   }
 
   async function runEval() {
     setRunningEval(true)
     try {
       const response = await fetch(`${API_URL}/eval/runs`, { method: "POST" })
-      if (response.ok) {
-        const body = (await response.json()) as { scores: Record<string, number> }
-        setScores(body.scores)
+      if (!response.ok) {
+        setRoomError("The scorecard could not be run.")
+        return
       }
+      const body = (await response.json()) as { scores: Record<string, number> }
+      setScores(body.scores)
+    } catch {
+      setRoomError("The scorecard could not be run.")
     } finally {
       setRunningEval(false)
     }
@@ -240,67 +290,112 @@ export function Dashboard() {
   const latest = room?.uploads[0]
   const mappings = liveMappings ?? room?.mappings ?? []
 
+  const pending = mappings.some((item) => item.needs_confirmation)
+  const busy = messages.some((message) => message.badge === "waiting")
+  const rail = (
+    <DataPane
+      roomName={room?.name ?? "Data room"}
+      fileName={liveName ?? latest?.original_name ?? null}
+      status={liveStatus ?? latest?.status ?? null}
+      reason={liveReason}
+      stages={liveStages}
+      mappings={mappings}
+      health={room?.health ?? null}
+      quarantine={room?.quarantine ?? []}
+      uploadId={liveUploadId ?? latest?.id ?? null}
+      error={roomError}
+      confirming={confirming}
+      scores={scores}
+      runningEval={runningEval}
+      onFile={chooseFile}
+      onConfirm={confirm}
+      onRunEval={runEval}
+    />
+  )
+
   return (
-    <div className="flex h-svh flex-col bg-background">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-        <span className="text-sm font-medium">Nexus</span>
-        <Separator orientation="vertical" className="h-4" />
-        <span className="text-sm text-muted-foreground">{room?.name ?? "Data room"}</span>
-        <Button
-          className="ml-auto"
-          variant="outline"
-          size="sm"
-          aria-expanded={traceOpen}
-          onClick={() => setTraceOpen((open) => !open)}
-        >
-          {traceOpen ? <PanelRightClose /> : <PanelRightOpen />}
-          {traceOpen ? "Hide trace" : "Show trace"}
-        </Button>
-      </header>
-      <div
+    <div className="flex h-svh flex-col bg-background text-foreground md:flex-row">
+      <aside
         className={cn(
-          "grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:overflow-hidden",
-          traceOpen
-            ? "xl:grid-cols-[20rem_minmax(0,1fr)_22rem]"
-            : "xl:grid-cols-[20rem_minmax(0,1fr)]",
+          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-64 md:border-r md:border-sidebar-border",
+          roomOpen || pending
+            ? "max-h-80 overflow-y-auto border-b border-sidebar-border"
+            : "hidden",
         )}
       >
-        <DataPane
-          fileName={liveName ?? latest?.original_name ?? null}
-          status={liveStatus ?? latest?.status ?? null}
-          reason={liveReason}
-          stages={liveStages}
-          mappings={mappings}
-          health={room?.health ?? null}
-          quarantine={room?.quarantine ?? []}
-          uploadId={liveUploadId ?? latest?.id ?? null}
-          error={roomError}
-          confirming={confirming}
-          onFile={chooseFile}
-          onConfirm={confirm}
-        />
+        {rail}
+      </aside>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex h-12 items-center px-4 md:hidden">
+          <button
+            type="button"
+            className="text-sm text-muted-foreground"
+            aria-expanded={roomOpen || pending}
+            onClick={() => setRoomOpen((open) => !open)}
+          >
+            {room?.name ?? "Data room"}
+          </button>
+        </div>
         <ChatPane
           draft={draft}
           messages={messages}
+          busy={busy}
           onDraft={setDraft}
           onAsk={ask}
           onFeedback={feedback}
         />
-        {traceOpen ? (
-          <TracePane steps={steps} scores={scores} runningEval={runningEval} onRunEval={runEval} />
-        ) : null}
       </div>
     </div>
   )
 }
 
+function readEvent<T>(event: Event): T | null {
+  try {
+    return JSON.parse((event as MessageEvent).data) as T
+  } catch {
+    return null
+  }
+}
+
+function turnsToMessages(turns: Turn[]): ChatMessage[] {
+  return turns.flatMap((turn) => [
+    { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
+    {
+      id: `a-${turn.run_id}`,
+      role: "assistant" as const,
+      text: turn.answer,
+      badge: badgeFor({ kind: turn.kind, verified: turn.verified }),
+      sql: turn.sql,
+      rowCount: turn.rows?.length ?? 0,
+      runId: turn.run_id,
+      rows: turn.rows ?? [],
+    },
+  ])
+}
+
+function upsertStep(steps: TraceStep[], step: TraceStep): TraceStep[] {
+  if (!step.id) {
+    return [...steps, step]
+  }
+  const index = steps.findIndex((item) => item.id === step.id)
+  if (index === -1) {
+    return [...steps, step]
+  }
+  const next = steps.slice()
+  next[index] = { ...next[index], ...step }
+  return next
+}
+
 function badgeFor(data: Record<string, unknown>): AnswerBadge {
+  if (data.verified === false) {
+    return "caveat"
+  }
   const kind = String(data.kind ?? "")
   if (kind === "refusal") {
     return "refused"
   }
   if (kind === "sql") {
-    return data.verified ? "verified" : "caveat"
+    return "verified"
   }
   return "unanswered"
 }

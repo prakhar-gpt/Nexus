@@ -15,9 +15,11 @@ Owns file safety, profiling, RapidFuzz mapping, cleaning, and quarantine. Does n
 
 ## Agent (`app/packages/agent`)
 
-Owns the single LangGraph loop, the tools, and the prompts.
+Owns the single LangGraph loop, the tools, and the prompts. The turn is written step by step in `context/agent/`. Read `context/agent/README.md` before changing the loop.
 
-- **OBSERVED.** One loop. Do not add a critic or a second agent unless an eval failure shows the loop cannot be fixed.
+- **OBSERVED.** One loop. The model chooses the next tool. Do not replace that with a fixed route, and do not add a critic or a second agent unless an eval failure shows the loop cannot be fixed.
+- **OBSERVED.** A follow-up is another turn on the workspace thread. Load prior questions and answers from `runs` when the thread is empty. Numbers in a new answer still have to come from a tool call in that turn.
+- **OBSERVED.** The answer is a short sentence or a markdown list. Do not echo a tool field such as `subcategories=17`.
 - **OBSERVED.** `run_sql` is SELECT-only, parser-checked, row-limited, timed out, and filtered to the workspace. The database role is read-only. `python app/eval/runner.py` exercises this. It is not a git hook or GitHub Action yet.
 - **OBSERVED.** The model does not calculate commercial numbers. Numbers in a draft must come from `run_sql` or `run_python` output.
 - **OBSERVED.** Refuse when the required columns are absent. Refuse margin questions when cost or profit is absent. State correlation, not causation, unless the result supports causation.
@@ -47,11 +49,12 @@ Owns chunking, embeddings, and pgvector search.
 Owns routes, SSE, and BackgroundTasks. Contract is in `architecture.md`.
 
 - **OBSERVED.** Ingestion runs in-process on BackgroundTasks. Do not add Celery or Redis unless load requires it.
-- **OBSERVED.** Chat and ingestion status stream as server-sent events with the event types listed in `architecture.md`. The chat planner runs a golden-set query or refuses. It does not call a model.
+- **OBSERVED.** Chat and ingestion status stream as server-sent events with the event types listed in `architecture.md`. A tool line is sent when that tool starts and updated when it finishes. Answer tokens follow as they are written, including the leading space on each token, so the markdown on screen matches the stored answer. The chat route stores the turn on `runs` after the stream ends.
 
 ## UI (`app/apps/web`)
 
-Owns the single three-pane dashboard in `app/apps/web`. It calls the API in `app/apps/api`.
+Owns the single chat screen in `app/apps/web`. It calls the API in `app/apps/api`.
 
-- **OBSERVED.** Do not add routes for extra pages. Left is data and health, center is chat, right is trace and eval.
-- **OBSERVED.** Every rendered number links to its SQL and row count. Show a verified badge, a caveat, or a refusal. Do not show an unverified number as fact.
+- **OBSERVED.** Do not add routes for extra pages. The conversation is the screen. The data room, a column confirmation, and the golden-set score sit in the sidebar.
+- **OBSERVED.** The answer comes first. The SQL, row count, and chart open from that answer. A caveat or a refusal is a sentence under the answer. Do not show an unverified number as fact, and do not put a badge on a verified one.
+- **OBSERVED.** Do not render a control for a tool that is not built. Document search has no chip.

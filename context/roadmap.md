@@ -23,7 +23,7 @@ Ingestion: parsing, header detection, RapidFuzz mapping with LLM fallback, quara
 
 ## Week 3 — screen and API connected
 
-Single-dashboard Next.js UI. FastAPI SSE. Trace panel. Data health. Answer cards with source chips. The planner answers the golden set only. Document search is not built.
+Single-dashboard Next.js UI. FastAPI SSE. The screen is a chat with the data room in a sidebar. The agent chooses its tools, and the room reloads its chat history. Document search is not built.
 
 ## Week 4
 
@@ -61,3 +61,8 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: Week 3 screen started at `app/apps/web`. The three panes render. Upload and answers are not connected.
 - 2026-11-08: The v2.2 product file matches the incorporated v2 document. No second copy was added.
 - 2026-11-08: Week 3 screen is connected to FastAPI. Chat streams a golden-set answer or a refusal. `runs`, `feedback`, and `eval_results` exist. Document search is still absent.
+- 2026-11-08: The chat loop is an agent. It chooses `get_schema`, `run_sql`, or `read_kb`, and a later turn can see the earlier one. Groq `openai/gpt-oss-120b` is the first model. Document search is still absent.
+- 2026-11-08: The screen is a chat. Health, trace, and eval are no longer a second and third column. Unused UI components were removed. No model call was made for this change.
+- 2026-11-08: Chat streams a status line as each tool starts, then the answer tokens as they are written. Scripted tests cover the event order. No live model call was made for this change.
+- 2026-11-08: Streamed tokens keep their spaces, so markdown renders as the answer is written. The prompt now asks for a sentence instead of a field dump such as `subcategories=17`.
+- 2026-11-08: The question path is written as one file per step in `context/agent/`. No model call was made for this change.

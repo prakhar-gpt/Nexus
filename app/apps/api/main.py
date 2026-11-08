@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from eval.runner import THRESHOLDS, evaluate
 from packages.agent.run_sql import SqlRejected, run_sql
-from packages.agent.loop import ask
+from packages.agent.loop import stream
 from packages.ingest.clean import make_inert
 from packages.ingest.pipeline import confirm_mappings, ingest, reserve_upload
 from packages.ingest.store import StoreError, execute, sql_literal
@@ -126,6 +126,32 @@ def create_workspace(body: WorkspaceCreate):
     return {"id": int(rows[0]["id"]), "name": name}
 
 
+def _turns(workspace_id: int) -> list[dict]:
+    rows = execute(
+        "SELECT id, question, answer, sql_list, checker_result FROM runs "
+        f"WHERE workspace_id = {int(workspace_id)} ORDER BY id DESC LIMIT 20"
+    )
+    turns = []
+    for row in reversed(rows):
+        raw = row.get("checker_result") or "{}"
+        try:
+            check = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            check = {}
+        turns.append(
+            {
+                "run_id": int(row["id"]),
+                "question": row.get("question") or "",
+                "answer": row.get("answer") or "",
+                "sql": row.get("sql_list") or None,
+                "kind": check.get("kind"),
+                "verified": check.get("verified"),
+                "rows": check.get("rows") or [],
+            }
+        )
+    return turns
+
+
 @app.get("/workspaces/{workspace_id}")
 def get_workspace(workspace_id: int):
     room = _workspace(workspace_id)
@@ -149,6 +175,7 @@ def get_workspace(workspace_id: int):
         "health": _health(workspace_id),
         "quarantine": quarantine,
         "mappings": _mappings(int(latest)) if latest else [],
+        "turns": _turns(workspace_id),
     }
 
 
@@ -283,18 +310,47 @@ def chat(workspace_id: int, body: ChatRequest):
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="question is required")
-    result = ask(question, workspace_id)
-    run_id = _save_run(workspace_id, question, result)
-
     def events():
-        for step in result["steps"]:
-            yield _sse("step", step)
+        result = None
+        try:
+            for kind, payload in stream(question, workspace_id):
+                if kind == "step" and isinstance(payload, dict):
+                    yield _sse(
+                        "step",
+                        {
+                            key: payload[key]
+                            for key in ("id", "tool", "status", "detail", "ms")
+                            if payload.get(key) is not None
+                        },
+                    )
+                    if payload.get("query"):
+                        yield _sse(
+                            "sql",
+                            {
+                                "query": payload["query"],
+                                "row_count": payload.get("row_count") or 0,
+                            },
+                        )
+                elif kind == "token":
+                    yield _sse("token", {"text": payload})
+                elif kind == "result":
+                    result = payload
+        except Exception:
+            yield _sse("error", {})
+            return
+        if not isinstance(result, dict):
+            yield _sse("error", {})
+            return
+        try:
+            run_id = _save_run(workspace_id, question, result)
+        except HTTPException:
+            yield _sse("error", {})
+            return
         if result["sql"]:
             yield _sse(
                 "sql",
                 {"query": result["sql"], "row_count": len(result["rows"])},
             )
-        yield _sse("token", {"text": result["answer"]})
         yield _sse("check", {"kind": result["kind"], **result["check"]})
         yield _sse(
             "done",
@@ -303,12 +359,17 @@ def chat(workspace_id: int, body: ChatRequest):
                 "latency_ms": result["latency_ms"],
                 "cost": 0,
                 "tokens": 0,
-                "model": "deterministic",
+                "model": result.get("model") or "langgraph",
                 "rows": result["rows"],
+                "answer": result.get("answer") or "",
             },
         )
 
-    return StreamingResponse(events(), media_type="text/event-stream")
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _save_run(workspace_id: int, question: str, result: dict) -> int:
@@ -328,7 +389,7 @@ def _save_run(workspace_id: int, question: str, result: dict) -> int:
             f"VALUES ({int(workspace_id)}, {sql_literal(question)}, "
             f"{sql_literal(result['plan'])}, {sql_literal(result['sql'])}, "
             f"{sql_literal(result['answer'])}, {sql_literal(payload)}::jsonb, "
-            f"{int(result['latency_ms'])}, 0, 0, 'deterministic') "
+            f"{int(result['latency_ms'])}, 0, 0, {sql_literal(result.get('model') or 'langgraph')}) "
             "RETURNING id"
         )
     except StoreError as exc:

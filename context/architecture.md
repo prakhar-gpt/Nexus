@@ -37,15 +37,11 @@ Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `
 
 ## UI
 
-One dashboard, three panes. No multi-page routing.
+One screen, one route, at `app/apps/web`. The conversation is the screen. A quiet sidebar holds the data room: the file, a confirmation when a column is uncertain, rows set aside, and the golden-set score. The query, the row count, and the chart stay behind "Show the query" on an answer. There is no third pane and no document chip. Decision 23.
 
-- **Left — Data & Health.** Drag-and-drop upload, per-file progress (safety, structure, profiling, mapping), mapping confirmation, data health, quarantine list, quarantine CSV download.
-- **Center — Chat.** Message box, suggested questions, streaming answer, verified and caveat badges, source chips (SQL, doc passage, row count), thumbs up/down, CSV export.
-- **Right — Trace & Eval, collapsible.** Live steps (schema, KB read, SQL, doc search, checker), timing, verification result; a tab for golden-set score, latency, cost, and failure types.
+The palette is the one in `app/apps/web/app/globals.css`: a white field, warm stone text, a red primary, and square corners. Dark mode is the same hues inverted. It does not follow the operating system theme. Type is JetBrains Mono. The stack is still Next.js, TypeScript, Tailwind, and the shadcn `base-nova` preset (Decision 19). Recharts loads only when a query is opened.
 
-Show uncertainty. Every number links to its SQL and row count. Answer first, trace one click away. Design empty, loading, and error states for every pane.
-
-The screen is `app/apps/web`, one route, shadcn/ui preset `base-nova` (Decision 19). It talks to the FastAPI app in `app/apps/api`. A question streams schema, SQL, the checker, and the answer. The SQL is one of the golden-set questions (Decision 21). The document chip stays inactive.
+The screen talks to the FastAPI app in `app/apps/api`. Assistant answers are rendered as markdown while the tokens arrive. A streamed token keeps its spaces. A question streams the tools the agent chose as each one starts, then the answer tokens as they are written, then the checker. Opening a data room reloads the last 20 turns from `runs`. A failed upload, a dropped stream, a mapping that does not save, and a rating that does not save each surface as a short error. They do not leave the control looking successful.
 
 ## Data model
 
@@ -59,13 +55,13 @@ Nine tables. `workspaces` is the Data Room.
 | `sales_clean` | `workspace_id`, `upload_id`, `order_date`, `customer_id`, `product_id`, `quantity`, `revenue`, `unit_price`, `discount_pct`, `cost`, `profit`, `segment`, `region`, `category`, `sub_category`, `channel` | Both `workspace_id` and `upload_id` |
 | `quarantine` | `upload_id`, `row_number`, `reason`, `raw_json` | `upload_id` → `uploads` |
 | `documents` / `chunks` | `doc_id`, `chunk_id`, `text`, `embedding`, `page`, `section`, `metadata` | `chunk_id` under `doc_id` |
-| `runs` | `id`, `question`, `plan`, `sql_list`, `answer`, `checker_result`, `latency_ms`, `tokens`, `cost`, `model`, `created_at` | No workspace column listed |
+| `runs` | `id`, `workspace_id`, `question`, `plan`, `sql_list`, `answer`, `checker_result`, `latency_ms`, `tokens`, `cost`, `model`, `created_at` | `workspace_id` → `workspaces` |
 | `feedback` | `run_id`, `rating`, `reason` | `run_id` → `runs` |
 | `eval_results` | `eval_run_id`, `question_id`, `passed`, `metrics_json` | Not linked to `runs` in the listed columns |
 
 `run_sql` reads `sales_clean` only. A row is in domain if it has a date, a customer or product identifier, and a revenue or quantity measure. Cost and profit are optional. Margin questions are refused when cost or profit is absent.
 
-The spec requires workspace-scoped retrieval and per-workspace isolation, and the listed columns for `documents` / `chunks` and `runs` do not include `workspace_id`. That gap is unresolved in `active-context.md`.
+The spec's column list for `documents` / `chunks` still has no `workspace_id`. `runs.workspace_id` was added (Decision 20). That documents gap is unresolved in `active-context.md`.
 
 ## Ingestion
 
@@ -85,7 +81,7 @@ Six test files and their expected results are in `roadmap.md`.
 
 Tools: `get_schema` (columns, types, mapping, samples); `run_sql` (SELECT only on that workspace's clean data); `search_docs` (pgvector, metadata filter, page numbers); `read_kb` (one knowledge-base file by path); `run_python` (pandas/sklearn for segmentation, correlation, cohorts); `web_search` optional and off by default.
 
-Loop: read the question, `get_schema`, `read_kb` per the KB routing rules; plan and refuse if required columns are missing; `run_sql` and/or `search_docs`; optional `run_python`; draft using only numbers present in tool outputs; the checker compares every number and claim to those outputs; emit the answer, SQL, row counts, sources, and caveats or a refusal.
+Loop, as built: one LangGraph thread per workspace. The model sees the conversation and chooses the next tool. The tools in the graph are `get_schema`, `run_sql`, and `read_kb`. `search_docs`, `run_python`, and `web_search` are not wired. Each step of a question, and the code that implements it, is in `context/agent/`. Start at `context/agent/README.md`.
 
 The checker is deterministic Python. It is not another model. LLM-as-judge is allowed for narrative quality only, never for numbers.
 

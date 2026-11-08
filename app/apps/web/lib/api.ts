@@ -22,9 +22,21 @@ export type Room = {
   }
   quarantine: { row_number: string; reason: string }[]
   mappings: Mapping[]
+  turns?: Turn[]
+}
+
+export type Turn = {
+  run_id: number
+  question: string
+  answer: string
+  sql: string | null
+  kind: string | null
+  verified: boolean | null
+  rows: Record<string, string>[]
 }
 
 export type TraceStep = {
+  id?: string
   tool: string
   status: string
   ms?: number
@@ -60,7 +72,11 @@ export async function readSse(
         }
       }
       if (dataLines.length > 0) {
-        onEvent(event, JSON.parse(dataLines.join("\n")) as Record<string, unknown>)
+        try {
+          onEvent(event, JSON.parse(dataLines.join("\n")) as Record<string, unknown>)
+        } catch {
+          onEvent("error", {})
+        }
       }
     }
   }

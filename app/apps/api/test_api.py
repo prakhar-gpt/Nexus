@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "app"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+import apps.api.main as api  # noqa: E402
 from apps.api.main import app  # noqa: E402
 from packages.ingest.store import execute, sql_literal  # noqa: E402
 
@@ -49,6 +50,35 @@ def main() -> int:
         str(body.get("health")),
     )
 
+    api.stream = lambda question, workspace_id: iter(
+        [
+            (
+                "step",
+                {
+                    "id": "rev",
+                    "tool": "run_sql",
+                    "status": "running",
+                    "detail": "Running a query…",
+                },
+            ),
+            ("token", "total_revenue="),
+            ("token", "2261536.78"),
+            (
+                "result",
+                {
+                    "kind": "sql",
+                    "plan": "run_sql, checker",
+                    "sql": "SELECT round(sum(revenue), 2) AS total_revenue FROM sales_clean",
+                    "rows": [{"total_revenue": "2261536.78"}],
+                    "answer": "total_revenue=2261536.78",
+                    "check": {"verified": True, "untraced": []},
+                    "steps": [{"tool": "run_sql", "status": "ok", "ms": 1}],
+                    "latency_ms": 1,
+                    "model": "test",
+                },
+            ),
+        ]
+    )
     with client.stream(
         "POST",
         "/workspaces/1/chat",
@@ -60,6 +90,13 @@ def main() -> int:
     payload = json.loads(done.split("data: ", 1)[1].strip())
     exported = client.get(f"/results/{payload['run_id']}/export")
     check("export", exported.status_code == 200 and b"2261536.78" in exported.content)
+    again = client.get("/workspaces/1")
+    turns = again.json().get("turns") or []
+    check(
+        "chat history",
+        any(item.get("question") == "What is total revenue?" for item in turns),
+        str(len(turns)),
+    )
 
     room = room_id()
     payroll = FIXTURES / "05_payroll.csv"

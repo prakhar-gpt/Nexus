@@ -59,3 +59,27 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* No provider has been chosen. Inventing SQL for a free-form question would put numbers on screen that the golden set does not stand behind.
   * *Rejected:* Calling a hosted model. Generating SQL from keywords.
   * *Files affected:* `app/packages/agent/loop.py`, `app/apps/api/main.py`.
+* **Decision 22 (2026-11-08):** The agent chooses its next tool. The route is not fixed. Chat history is the workspace thread: prior turns stay in memory, and the last eight questions and answers are reloaded from `runs` after a restart. The first configured key is used, in order Groq `openai/gpt-oss-120b`, OpenRouter, then DeepSeek. This supersedes the fixed golden-set planner in Decision 21. The SQL guard and the deterministic checker stay.
+  * *Reason:* A follow-up only makes sense if the agent can see the earlier turn and decide what to run. The golden set remains the eval, not the router.
+  * *Rejected:* Keeping the four-node schema, plan, SQL, checker sequence. Sending the whole conversation from the browser as the source of truth.
+  * *Files affected:* `app/packages/agent/graph.py`, `app/packages/agent/model.py`, `app/packages/agent/prompts/system.md`, `app/apps/api/main.py`, `app/apps/web/components/dashboard.tsx`.
+* **Decision 23 (2026-11-08):** The screen is a chat. The data room stays in a sidebar. The query, the chart, and the golden-set score open on demand. The palette is warm ivory and clay, and it does not follow the operating system theme.
+  * *Reason:* A three-column dashboard put health, trace, eval, and a document chip on screen at once. A chat does not. The black-and-white theme made that density harsher.
+  * *Rejected:* Keeping the right-hand trace pane. Rendering a document chip before document search exists. Following the system theme into pure black.
+  * *Files affected:* `app/apps/web/`, `context/architecture.md`.
+* **Decision 24 (2026-11-08):** The screen uses the supplied theme tokens: white field, warm stone text, red primary, square corners. Dark mode uses the matching inverted set.
+  * *Reason:* The user replaced the earlier ivory and clay palette with this one.
+  * *Rejected:* Keeping the previous oklch values.
+  * *Files affected:* `app/apps/web/app/globals.css`.
+* **Decision 25 (2026-11-08):** Chat streams each tool as it starts, then the answer tokens as they are written. The screen shows one status line per tool while it runs.
+  * *Reason:* The previous stream waited for the whole graph, then sent every event at once. A running tool was invisible until the answer arrived.
+  * *Rejected:* Buffering the answer and dumping it in one token event. Showing the tool name only after the checker.
+  * *Files affected:* `app/packages/agent/graph.py`, `app/packages/agent/model.py`, `app/apps/api/main.py`, `app/apps/web/components/dashboard.tsx`, `app/apps/web/components/chat-pane.tsx`.
+* **Decision 26 (2026-11-08):** Streamed tokens keep their spaces, and the answer is a sentence rather than a field dump. The finished answer in the `done` event replaces the live text so it matches what a refresh loads.
+  * *Reason:* Each model token arrives with a leading space. Stripping that space glued the words together, so markdown such as `**Total revenue:**` only rendered after a refresh loaded the stored sentence. The model was also copying tool output like `subcategories=17`.
+  * *Rejected:* Leaving the live text as the concatenation of stripped tokens. Teaching the model to answer with `name=value`.
+  * *Files affected:* `app/packages/agent/graph.py`, `app/packages/agent/prompts/system.md`, `app/apps/api/main.py`, `app/apps/web/components/dashboard.tsx`.
+* **Decision 27 (2026-11-08):** Each step of a question has its own file under `context/agent/`. `architecture.md` keeps the product shape and points there.
+  * *Reason:* The loop now spans the graph, the SQL guard, the stream, and the screen. A later session needs that path in order, without pasting `graph.py` into the architecture note.
+  * *Rejected:* One long section inside `architecture.md`. Copying the source files into `context/`.
+  * *Files affected:* `context/agent/`, `context/INDEX.md`, `context/architecture.md`, `context/agents.md`.

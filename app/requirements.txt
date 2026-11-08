@@ -1,5 +1,8 @@
 rapidfuzz>=3
 openpyxl>=3
+langgraph>=0.2
+langchain-core>=0.3
+langchain-openai>=0.3
 fastapi>=0.115
 uvicorn>=0.32
 python-multipart>=0.0.9

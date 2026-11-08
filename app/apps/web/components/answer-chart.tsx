@@ -29,10 +29,10 @@ export function AnswerChart({ rows }: { rows: Record<string, string>[] }) {
     <div className="h-48 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data}>
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} />
-          <YAxis tick={{ fontSize: 11 }} width={72} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fontFamily: "inherit" }} interval={0} />
+          <YAxis tick={{ fontSize: 11, fontFamily: "inherit" }} width={72} />
           <Tooltip />
-          <Bar dataKey="value" fill="var(--foreground)" radius={4} />
+          <Bar dataKey="value" fill="var(--chart-4)" radius={0} />
         </BarChart>
       </ResponsiveContainer>
     </div>

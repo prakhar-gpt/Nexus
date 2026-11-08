@@ -23,6 +23,7 @@ files below. A later file with the same text was checked on 8 November
 | Past decisions, tradeoffs, rejected alternatives | decisions.md | Append after approved decisions |
 | Build plan, phases, milestones | roadmap.md | Update after completing a phase |
 | What's in progress / unresolved right now | active-context.md | Overwrite, don't append |
+| How a question becomes an answer | agent/README.md | Read the step files in order the first time. Then open only the step you are changing |
 | Where to start / which doc | This INDEX | Always read first |
 
 ## Folder map
@@ -33,7 +34,18 @@ context/
 ├── agents.md             ← module rules and responsibilities
 ├── decisions.md          ← dated decision log
 ├── roadmap.md            ← build plan and progress
-└── active-context.md     ← current unresolved state
+├── active-context.md     ← current unresolved state
+└── agent/                ← one file per step of a question
+    ├── README.md         ← read this before the step files
+    ├── 01-entry.md       ← POST /chat to stream()
+    ├── 02-model.md       ← Groq, then OpenRouter, then DeepSeek
+    ├── 03-thread.md      ← workspace memory
+    ├── 04-choose.md      ← the model picks the tool
+    ├── 05-tools.md       ← get_schema, run_sql, read_kb
+    ├── 06-sql.md         ← guard, reader role, 200 row cap
+    ├── 07-checker.md     ← numbers must trace to this turn
+    ├── 08-stream.md      ← tool lines and tokens
+    └── 09-screen.md      ← how the chat paints them
 
 ## Default search scope
 
