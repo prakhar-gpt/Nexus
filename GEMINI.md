@@ -24,3 +24,4 @@ Whenever a new chat session begins or you receive a new user request:
 - **Database Isolation**: Queries are SELECT-only under non-superuser `nexus_reader` with RLS (`app.workspace_id`), 5s timeout, and 25-row preview cap.
 - **Python Sandbox**: Code executed via `run_python` is pre-normalized via `clean_code()` to strip code fences and flatten whitespace, then run in a networkless, memory-capped subprocess.
 - **Verification Mandatory**: Always run `pytest backend/tests` and `python backend/eval/runner.py` before completing turns.
+

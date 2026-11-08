@@ -49,3 +49,4 @@ Before completing any task, always run and verify:
 2. `python backend/eval/runner.py` (Must pass 100% sql correctness, 100% numeric faithfulness, 100% refusal accuracy).
 3. If frontend files were modified: `npm.cmd run typecheck --prefix frontend` (0 errors).
 4. Update `context/active-context.md` and append any architectural decision to `context/decisions.md`.
+
