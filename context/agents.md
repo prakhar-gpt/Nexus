@@ -47,11 +47,11 @@ Owns chunking, embeddings, and pgvector search.
 Owns routes, SSE, and BackgroundTasks. Contract is in `architecture.md`.
 
 - **OBSERVED.** Ingestion runs in-process on BackgroundTasks. Do not add Celery or Redis unless load requires it.
-- **OBSERVED.** Chat and ingestion status stream as server-sent events with the event types listed in `architecture.md`.
+- **OBSERVED.** Chat and ingestion status stream as server-sent events with the event types listed in `architecture.md`. The chat planner runs a golden-set query or refuses. It does not call a model.
 
 ## UI (`app/apps/web`)
 
-Owns the single three-pane dashboard in `app/apps/web`. The current screen does not call the API.
+Owns the single three-pane dashboard in `app/apps/web`. It calls the API in `app/apps/api`.
 
 - **OBSERVED.** Do not add routes for extra pages. Left is data and health, center is chat, right is trace and eval.
 - **OBSERVED.** Every rendered number links to its SQL and row count. Show a verified badge, a caveat, or a refusal. Do not show an unverified number as fact.

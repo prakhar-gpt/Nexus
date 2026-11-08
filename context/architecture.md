@@ -45,7 +45,7 @@ One dashboard, three panes. No multi-page routing.
 
 Show uncertainty. Every number links to its SQL and row count. Answer first, trace one click away. Design empty, loading, and error states for every pane.
 
-The screen is `app/apps/web`, one route, shadcn/ui preset `base-nova` (Decision 19). It does not call the API yet. A chosen file stays in the browser, and a question renders a waiting card with inactive source chips.
+The screen is `app/apps/web`, one route, shadcn/ui preset `base-nova` (Decision 19). It talks to the FastAPI app in `app/apps/api`. A question streams schema, SQL, the checker, and the answer. The SQL is one of the golden-set questions (Decision 21). The document chip stays inactive.
 
 ## Data model
 
@@ -110,6 +110,7 @@ Prompts live in versioned files with typed structured outputs. A provider interf
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/workspaces` | POST, GET | Create and list Data Rooms |
+| `/workspaces/{id}` | GET | One room: uploads, health, quarantine, latest mapping |
 | `/workspaces/{id}/uploads` | POST | Upload a file; return upload id |
 | `/uploads/{id}/events` | GET SSE | Ingestion status |
 | `/uploads/{id}/mapping` | GET, PUT | Read the proposal; save edits and confirm |

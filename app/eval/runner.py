@@ -64,7 +64,7 @@ def _score(passed: int, total: int) -> float:
     return passed / total
 
 
-def run() -> int:
+def evaluate() -> dict:
     golden = _load_golden()
     expected = {item["id"]: item.get("expected_rows") for item in golden["questions"]}
     guard_failures = _guard_failures()
@@ -124,19 +124,29 @@ def run() -> int:
         "numeric_faithfulness": _score(faith_passed, faith_total),
         "refusal_accuracy": _score(refusal_passed, refusal_total),
     }
-    print(f"questions={len(QUESTIONS)} guard_failures={len(guard_failures)}")
-    for name, score in scores.items():
-        target = THRESHOLDS[name]
-        print(f"{name}={score:.2%} target={target:.0%}")
-    for problem in problems:
-        print(problem)
-    for failure in guard_failures:
-        print(f"guard failed: {failure}")
-
     below = [name for name, score in scores.items() if score < THRESHOLDS[name]]
-    if guard_failures or below or problems:
-        return 1
-    return 0
+    exit_code = 1 if guard_failures or below or problems else 0
+    return {
+        "exit_code": exit_code,
+        "scores": scores,
+        "problems": problems,
+        "guard_failures": guard_failures,
+        "questions": len(QUESTIONS),
+        "thresholds": THRESHOLDS,
+    }
+
+
+def run() -> int:
+    result = evaluate()
+    print(f"questions={result['questions']} guard_failures={len(result['guard_failures'])}")
+    for name, score in result["scores"].items():
+        target = result["thresholds"][name]
+        print(f"{name}={score:.2%} target={target:.0%}")
+    for problem in result["problems"]:
+        print(problem)
+    for failure in result["guard_failures"]:
+        print(f"guard failed: {failure}")
+    return result["exit_code"]
 
 
 if __name__ == "__main__":

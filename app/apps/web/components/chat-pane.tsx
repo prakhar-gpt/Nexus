@@ -1,8 +1,11 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
 import { ThumbsDown, ThumbsUp } from "lucide-react"
 
+import { AnswerChart } from "@/components/answer-chart"
 import { SUGGESTIONS } from "@/components/suggestions"
+import { API_URL } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,40 +22,68 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+
+export type AnswerBadge = "waiting" | "verified" | "caveat" | "refused" | "unanswered"
 
 export type ChatMessage = {
   id: string
   role: "user" | "assistant"
   text: string
+  badge?: AnswerBadge
+  sql?: string | null
+  rowCount?: number | null
+  runId?: number | null
+  rows?: Record<string, string>[]
+  feedback?: "up" | "down"
 }
 
-const SOURCE_CHIPS = ["SQL", "Row count", "Doc passage"] as const
+const BADGE_LABEL: Record<AnswerBadge, string> = {
+  waiting: "Running",
+  verified: "Verified",
+  caveat: "Caveat",
+  refused: "Refused",
+  unanswered: "Not answered",
+}
 
 export function ChatPane({
   draft,
   messages,
   onDraft,
   onAsk,
+  onFeedback,
 }: {
   draft: string
   messages: ChatMessage[]
   onDraft: (value: string) => void
   onAsk: (question: string) => void
+  onFeedback: (runId: number, rating: "up" | "down") => void
 }) {
+  const threadEnd = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ block: "nearest" })
+  }, [messages])
   return (
-    <section className="flex min-h-[36rem] min-w-0 flex-col border-b xl:min-h-0 xl:border-r xl:border-b-0">
+    <section className="flex min-h-[36rem] min-w-0 flex-col overflow-hidden border-b xl:h-full xl:min-h-0 xl:border-r xl:border-b-0">
       <header className="flex h-12 shrink-0 items-center px-4">
         <h2 className="text-sm font-medium">Chat</h2>
       </header>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1 basis-0 overflow-hidden">
         <div className="flex flex-col gap-4 px-4 pb-4">
           {messages.length === 0 ? (
             <Empty className="min-h-48 border">
               <EmptyHeader>
                 <EmptyTitle>Ask a question about this data room</EmptyTitle>
                 <EmptyDescription>
-                  Answers, verified badges, and source chips appear here. Nothing is answered on this screen yet.
+                  A verified answer shows its SQL and row count. A question the table cannot support is refused.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -66,41 +97,11 @@ export function ChatPane({
                   {message.text}
                 </p>
               ) : (
-                <Card key={message.id} className="max-w-[40rem]">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      Answer
-                      <Badge variant="outline">Not connected</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-3">
-                    <p>{message.text}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {SOURCE_CHIPS.map((chip) => (
-                        <Badge key={chip} variant="secondary">
-                          {chip}
-                        </Badge>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Source chips stay inactive until an answer has SQL and a row count.
-                    </p>
-                  </CardContent>
-                  <CardFooter className="gap-2">
-                    <Button variant="ghost" size="icon-sm" disabled aria-label="Thumbs up">
-                      <ThumbsUp />
-                    </Button>
-                    <Button variant="ghost" size="icon-sm" disabled aria-label="Thumbs down">
-                      <ThumbsDown />
-                    </Button>
-                    <Button variant="outline" size="sm" disabled className="ml-auto">
-                      Export CSV
-                    </Button>
-                  </CardFooter>
-                </Card>
+                <AnswerCard key={message.id} message={message} onFeedback={onFeedback} />
               ),
             )
           )}
+          <div ref={threadEnd} />
         </div>
       </ScrollArea>
       <form
@@ -142,5 +143,106 @@ export function ChatPane({
         </div>
       </form>
     </section>
+  )
+}
+
+function AnswerCard({
+  message,
+  onFeedback,
+}: {
+  message: ChatMessage
+  onFeedback: (runId: number, rating: "up" | "down") => void
+}) {
+  const [showSql, setShowSql] = useState(false)
+  const badge = message.badge ?? "waiting"
+  const rows = message.rows ?? []
+  const columns = Object.keys(rows[0] ?? {})
+  return (
+    <Card className="max-w-[40rem]">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Answer
+          <Badge variant={badge === "refused" || badge === "caveat" ? "destructive" : "outline"}>
+            {BADGE_LABEL[badge]}
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="whitespace-pre-wrap">{message.text || "Running the query."}</p>
+        {rows.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {columns.map((column) => (
+                  <TableHead key={column}>{column}</TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row, index) => (
+                <TableRow key={index}>
+                  {columns.map((column) => (
+                    <TableCell key={column}>{row[column]}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : null}
+        <AnswerChart rows={rows} />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!message.sql}
+            onClick={() => setShowSql((open) => !open)}
+          >
+            SQL
+          </Button>
+          <Badge variant="secondary">
+            {message.rowCount == null ? "Row count" : `${message.rowCount} rows`}
+          </Badge>
+          <Badge variant="secondary">Doc passage</Badge>
+        </div>
+        {showSql && message.sql ? (
+          <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs">{message.sql}</pre>
+        ) : null}
+      </CardContent>
+      <CardFooter className="gap-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={message.runId == null || message.feedback != null}
+          aria-label="Thumbs up"
+          onClick={() => message.runId != null && onFeedback(message.runId, "up")}
+        >
+          <ThumbsUp />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          disabled={message.runId == null || message.feedback != null}
+          aria-label="Thumbs down"
+          onClick={() => message.runId != null && onFeedback(message.runId, "down")}
+        >
+          <ThumbsDown />
+        </Button>
+        {message.runId != null ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
+            render={<a href={`${API_URL}/results/${message.runId}/export`} />}
+          >
+            Export CSV
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" className="ml-auto" disabled>
+            Export CSV
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   )
 }

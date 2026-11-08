@@ -11,7 +11,8 @@ match the task. Do not load this whole folder.
    Session close protocol in `.cursorrules`.
 
 The 8 November 2026 v2 product document is incorporated across the
-files below. There is no second copy in this folder.
+files below. A later file with the same text was checked on 8 November
+2026 and did not change these notes. There is no second copy in this folder.
 
 ## Routing
 

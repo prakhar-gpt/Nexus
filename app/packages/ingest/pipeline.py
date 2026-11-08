@@ -44,39 +44,95 @@ class IngestResult:
     mappings: list[Proposal] = field(default_factory=list)
 
 
-def ingest(path: Path, workspace_id: int, confirm=None) -> IngestResult:
+def _emit(progress, stage: str, status: str, **extra) -> None:
+    if progress is not None:
+        progress({"event": "step", "stage": stage, "status": status, **extra})
+
+
+def _mapping_payload(proposal: Proposal) -> dict:
+    return {
+        "source": proposal.source,
+        "canonical": proposal.canonical,
+        "confidence": proposal.confidence,
+        "method": proposal.method,
+        "needs_confirmation": proposal.needs_confirmation,
+        "confirmed_by_user": proposal.confirmed_by_user,
+    }
+
+
+def ingest(
+    path: Path,
+    workspace_id: int,
+    confirm=None,
+    *,
+    upload_id: int | None = None,
+    progress=None,
+) -> IngestResult:
+    result = _ingest(path, workspace_id, confirm, upload_id, progress)
+    if progress is not None:
+        progress(
+            {
+                "event": "done",
+                "status": result.status,
+                "reason": result.reason,
+                "upload_id": result.upload_id,
+                "stored_name": result.stored_name,
+                "header_line": result.header_line,
+                "loaded_rows": result.loaded_rows,
+                "quarantined_rows": result.quarantined_rows,
+                "mappings": [_mapping_payload(item) for item in result.mappings],
+            }
+        )
+    return result
+
+
+def _ingest(path, workspace_id: int, confirm, existing_id, progress) -> IngestResult:
     path = Path(path)
     try:
         data, extension = inspect(path)
     except RejectedFile as exc:
-        upload_id, name = _record_upload(path, workspace_id, "rejected", path.read_bytes() if path.is_file() else b"")
-        return IngestResult("rejected", exc.reason, upload_id, name)
+        _emit(progress, "safety", "error", reason=exc.reason)
+        saved_id, name = _record_upload(
+            path,
+            workspace_id,
+            "rejected",
+            path.read_bytes() if path.is_file() else b"",
+            existing_id,
+        )
+        return IngestResult("rejected", exc.reason, saved_id, name)
+    _emit(progress, "safety", "done")
 
     try:
         rows = read_rows(path, extension)
     except TableRejected as exc:
-        upload_id, name = _record_upload(path, workspace_id, "rejected", data)
-        return IngestResult("rejected", exc.reason, upload_id, name)
+        _emit(progress, "structure", "error", reason=exc.reason)
+        saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+        return IngestResult("rejected", exc.reason, saved_id, name)
+    _emit(progress, "structure", "done")
 
     header_line, headers = find_header(rows)
     if header_line is None:
-        upload_id, name = _record_upload(path, workspace_id, "rejected", data)
-        return IngestResult("rejected", "could not find a header row", upload_id, name)
+        _emit(progress, "profiling", "error", reason="could not find a header row")
+        saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+        return IngestResult("rejected", "could not find a header row", saved_id, name)
+    _emit(progress, "profiling", "done", columns=len(headers))
 
     proposals = propose_columns(headers)
     pending = [item for item in proposals if item.needs_confirmation]
     if pending and confirm is None:
         if domain_gap(_accepted_columns(proposals, include_pending=True)):
             reason = domain_gap(_accepted_columns(proposals, include_pending=True))
-            upload_id, name = _record_upload(path, workspace_id, "rejected", data)
-            _save_mappings(upload_id, proposals)
-            return IngestResult("rejected", reason, upload_id, name, header_line, mappings=proposals)
-        upload_id, name = _record_upload(path, workspace_id, "needs_confirmation", data)
-        _save_mappings(upload_id, proposals)
+            _emit(progress, "mapping", "error", reason=reason)
+            saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+            _save_mappings(saved_id, proposals)
+            return IngestResult("rejected", reason, saved_id, name, header_line, mappings=proposals)
+        _emit(progress, "mapping", "needs_confirmation", pending=len(pending))
+        saved_id, name = _record_upload(path, workspace_id, "needs_confirmation", data, existing_id)
+        _save_mappings(saved_id, proposals)
         return IngestResult(
             "needs_confirmation",
             "confirm the low-confidence columns before loading rows",
-            upload_id,
+            saved_id,
             name,
             header_line,
             mappings=proposals,
@@ -93,18 +149,129 @@ def ingest(path: Path, workspace_id: int, confirm=None) -> IngestResult:
     columns = _accepted_columns(proposals, include_pending=False)
     gap = domain_gap(columns)
     if gap:
-        upload_id, name = _record_upload(path, workspace_id, "rejected", data)
-        _save_mappings(upload_id, proposals)
-        return IngestResult("rejected", gap, upload_id, name, header_line, mappings=proposals)
+        _emit(progress, "mapping", "error", reason=gap)
+        saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+        _save_mappings(saved_id, proposals)
+        return IngestResult("rejected", gap, saved_id, name, header_line, mappings=proposals)
 
-    upload_id, name = _record_upload(path, workspace_id, "accepted", data)
-    _save_mappings(upload_id, proposals)
-    loaded, quarantined = _load_rows(upload_id, workspace_id, rows, header_line, proposals)
+    _emit(progress, "mapping", "done", pending=len(pending))
+    saved_id, name = _record_upload(path, workspace_id, "accepted", data, existing_id)
+    _save_mappings(saved_id, proposals)
+    _emit(progress, "load", "running")
+    loaded, quarantined = _load_rows(saved_id, workspace_id, rows, header_line, proposals)
+    return IngestResult(
+        "accepted",
+        None,
+        saved_id,
+        name,
+        header_line,
+        loaded,
+        quarantined,
+        proposals,
+    )
+
+
+def reserve_upload(original_name: str, workspace_id: int, data: bytes) -> tuple[int, Path]:
+    suffix = Path(original_name).suffix.lower()
+    extension = suffix if suffix in {".csv", ".xlsx"} else ".bin"
+    digest = hashlib.sha256(data).hexdigest()
+    name = stored_name(digest, extension)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / name
+    path.write_bytes(data)
+    rows = execute(
+        "INSERT INTO uploads "
+        "(workspace_id, original_name, stored_name, sha256, size, status) "
+        f"VALUES ({int(workspace_id)}, {sql_literal(Path(original_name).name)}, "
+        f"{sql_literal(name)}, {sql_literal(digest)}, {len(data)}, 'received') "
+        "RETURNING id"
+    )
+    return int(rows[0]["id"]), path
+
+
+def confirm_mappings(upload_id: int, decisions: dict[str, str]) -> IngestResult:
+    found = execute(
+        "SELECT workspace_id, stored_name, status FROM uploads "
+        f"WHERE id = {int(upload_id)}"
+    )
+    if not found:
+        return IngestResult("rejected", "upload not found", upload_id)
+    current = found[0]
+    if current["status"] == "accepted":
+        return IngestResult("accepted", None, upload_id, current["stored_name"])
+    if current["status"] != "needs_confirmation":
+        return IngestResult(
+            current["status"],
+            "this upload is not waiting for confirmation",
+            upload_id,
+            current["stored_name"],
+        )
+    saved = execute(
+        "SELECT source_column, canonical_column, confidence, method, confirmed_by_user "
+        f"FROM column_mapping WHERE upload_id = {int(upload_id)} ORDER BY id"
+    )
+    proposals = []
+    for item in saved:
+        confirmed = str(item["confirmed_by_user"]).lower() in {"t", "true"}
+        canonical = item["canonical_column"] or None
+        proposals.append(
+            Proposal(
+                item["source_column"],
+                canonical,
+                float(item["confidence"] or 0),
+                item["method"],
+                item["method"] == "llm" and not confirmed,
+                confirmed,
+            )
+        )
+    for proposal in proposals:
+        if proposal.source not in decisions:
+            continue
+        chosen = decisions[proposal.source].strip()
+        if chosen != "" and chosen not in CANONICAL:
+            continue
+        proposal.canonical = chosen or None
+        proposal.needs_confirmation = False
+        proposal.confirmed_by_user = True
+        execute(
+            "UPDATE column_mapping SET "
+            f"canonical_column = {sql_literal(proposal.canonical)}, "
+            "confirmed_by_user = true "
+            f"WHERE upload_id = {int(upload_id)} "
+            f"AND source_column = {sql_literal(proposal.source)}"
+        )
+    if any(item.needs_confirmation for item in proposals):
+        return IngestResult(
+            "needs_confirmation",
+            "confirm the low-confidence columns before loading rows",
+            upload_id,
+            current["stored_name"],
+            mappings=proposals,
+        )
+    gap = domain_gap(_accepted_columns(proposals, include_pending=False))
+    if gap:
+        execute(f"UPDATE uploads SET status = 'rejected' WHERE id = {int(upload_id)}")
+        return IngestResult("rejected", gap, upload_id, current["stored_name"], mappings=proposals)
+    path = UPLOAD_DIR / current["stored_name"]
+    table_rows = read_rows(path, path.suffix.lower())
+    header_line, _headers = find_header(table_rows)
+    if header_line is None:
+        execute(f"UPDATE uploads SET status = 'rejected' WHERE id = {int(upload_id)}")
+        return IngestResult("rejected", "could not find a header row", upload_id, mappings=proposals)
+    execute(f"UPDATE uploads SET status = 'loading' WHERE id = {int(upload_id)}")
+    loaded, quarantined = _load_rows(
+        upload_id,
+        int(current["workspace_id"]),
+        table_rows,
+        header_line,
+        proposals,
+    )
+    execute(f"UPDATE uploads SET status = 'accepted' WHERE id = {int(upload_id)}")
     return IngestResult(
         "accepted",
         None,
         upload_id,
-        name,
+        current["stored_name"],
         header_line,
         loaded,
         quarantined,
@@ -123,13 +290,27 @@ def _accepted_columns(proposals: list[Proposal], include_pending: bool) -> set[s
     return columns
 
 
-def _record_upload(path: Path, workspace_id: int, status: str, data: bytes) -> tuple[int, str]:
+def _record_upload(
+    path: Path,
+    workspace_id: int,
+    status: str,
+    data: bytes,
+    existing_id: int | None = None,
+) -> tuple[int, str]:
     digest = hashlib.sha256(data).hexdigest()
     extension = path.suffix.lower() if path.suffix else ".csv"
     name = stored_name(digest, extension if extension in {".csv", ".xlsx"} else ".bin")
     if data:
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         (UPLOAD_DIR / name).write_bytes(data)
+    if existing_id is not None:
+        execute(
+            "UPDATE uploads SET "
+            f"stored_name = {sql_literal(name)}, sha256 = {sql_literal(digest)}, "
+            f"size = {len(data)}, status = {sql_literal(status)} "
+            f"WHERE id = {int(existing_id)}"
+        )
+        return int(existing_id), name
     rows = execute(
         "INSERT INTO uploads "
         "(workspace_id, original_name, stored_name, sha256, size, status) "

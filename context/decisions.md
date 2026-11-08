@@ -51,3 +51,11 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* The user asked for the UI first, with shadcn, before the API.
   * *Rejected:* Scaffolding at the repo root. `shadcn init` created a nested `.git` in `app/apps/web`; that directory was removed so Nexus stays one local repository.
   * *Files affected:* `app/apps/web/`.
+* **Decision 20 (2026-11-08):** `runs` stores `workspace_id`. `feedback` and `eval_results` are created with the v2 columns.
+  * *Reason:* Chat is per data room. The v2 column list for `runs` has no workspace column, and a trace from one room must not be mixed with another.
+  * *Rejected:* Leaving runs unscoped.
+  * *Files affected:* `app/infra/week3.sql`, `app/infra/schema.sql`, `app/apps/api/main.py`.
+* **Decision 21 (2026-11-08):** The chat planner runs SQL only when the question matches the golden set. Anything else is refused when a required column is empty, or left unanswered. No model is called.
+  * *Reason:* No provider has been chosen. Inventing SQL for a free-form question would put numbers on screen that the golden set does not stand behind.
+  * *Rejected:* Calling a hosted model. Generating SQL from keywords.
+  * *Files affected:* `app/packages/agent/loop.py`, `app/apps/api/main.py`.
