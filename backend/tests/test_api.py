@@ -11,8 +11,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-import api.main as api  # noqa: E402
-from api.main import app  # noqa: E402
+import main as api  # noqa: E402
+from main import app  # noqa: E402
 from ingest.store import execute, sql_literal  # noqa: E402
 
 FIXTURES = ROOT / "datasets" / "tests"

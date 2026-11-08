@@ -1,15 +1,23 @@
 """Nexus FastAPI application entry point.
 
 Assembles routers, middleware, and application lifecycle.
+Run with: uvicorn main:app --reload
 """
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Ensure backend root is on sys.path
+_BACKEND_ROOT = Path(__file__).resolve().parent
+if str(_BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_ROOT))
+
 from api.routers import eval_router, runs_router, uploads_router, workspaces_router
-from api.services.chat_service import save_run as _save_run
+from api.services.chat_service import format_sse as _sse, save_run as _save_run
 from api.services.upload_service import PROGRESS
 from api.services.workspace_service import (
     HEALTH_SQL,
@@ -18,7 +26,6 @@ from api.services.workspace_service import (
     get_turns as _turns,
     get_workspace_meta as _workspace,
 )
-from api.sse import format_sse as _sse
 from agent import stream
 
 app = FastAPI(

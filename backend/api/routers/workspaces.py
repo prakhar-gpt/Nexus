@@ -6,7 +6,14 @@ import sys
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
-from api.schemas import ChatRequest, WorkspaceCreate
+from pydantic import BaseModel, Field
+
+class WorkspaceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    thread_id: str | None = Field(default=None, max_length=100)
 from api.services.chat_service import generate_chat_events
 from api.services.upload_service import handle_file_upload
 from api.services.workspace_service import (
@@ -25,7 +32,7 @@ router = APIRouter()
 
 
 def _get_stream_callable():
-    main_mod = sys.modules.get("api.main")
+    main_mod = sys.modules.get("main") or sys.modules.get("api.main")
     if main_mod and hasattr(main_mod, "stream"):
         return getattr(main_mod, "stream")
     return default_stream

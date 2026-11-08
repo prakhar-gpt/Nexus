@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-from api.schemas import MappingUpdate
 from api.services.upload_service import (
     get_upload_health_summary,
     get_upload_mapping_detail,
@@ -15,6 +15,10 @@ from api.services.upload_service import (
 from api.services.workspace_service import get_mappings
 
 router = APIRouter()
+
+
+class MappingUpdate(BaseModel):
+    decisions: dict[str, str]
 
 
 @router.get("/uploads/{upload_id}/events")
@@ -27,19 +31,19 @@ async def upload_events_endpoint(upload_id: int):
 
 
 @router.get("/uploads/{upload_id}/mapping")
-def get_mapping_endpoint(upload_id: int):
-    """Retrieve column mapping proposals, capabilities, and preview for an upload."""
+def get_upload_mapping_endpoint(upload_id: int):
+    """Fetch column mappings, preview, capabilities, and dynamic attributes for an upload."""
     return get_upload_mapping_detail(upload_id)
 
 
+@router.post("/uploads/{upload_id}/mapping")
 @router.put("/uploads/{upload_id}/mapping")
-def put_mapping_endpoint(upload_id: int, body: MappingUpdate):
-    """Confirm or update column mapping choices for an upload."""
+def update_mapping_endpoint(upload_id: int, body: MappingUpdate):
+    """Confirm user column mappings and transition upload to active status."""
     return update_column_mappings(upload_id, body.decisions)
 
 
-@router.get("/uploads/{upload_id}/health")
-def upload_health_endpoint(upload_id: int, download: str | None = None):
-    """Retrieve upload summary or download quarantine report CSV."""
-    return get_upload_health_summary(upload_id, download=download)
-
+@router.get("/uploads/{upload_id}/quarantine")
+def get_upload_quarantine_endpoint(upload_id: int):
+    """Fetch quarantined rows and reason breakdown for an upload."""
+    return get_upload_health_summary(upload_id)

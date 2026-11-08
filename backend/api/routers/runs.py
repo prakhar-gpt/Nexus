@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Literal
 from fastapi import APIRouter
+from pydantic import BaseModel
 
-from api.schemas import FeedbackRequest
 from api.services.chat_service import export_result_csv, record_feedback
 
 router = APIRouter()
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal["up", "down"]
+    reason: str | None = None
 
 
 @router.post("/runs/{run_id}/feedback")
@@ -20,4 +26,3 @@ def add_feedback_endpoint(run_id: int, body: FeedbackRequest):
 def export_result_endpoint(run_id: int):
     """Export query output rows as a sanitized CSV file."""
     return export_result_csv(run_id)
-

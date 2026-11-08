@@ -8,7 +8,8 @@ import json
 import traceback
 from fastapi import HTTPException, Response
 
-from api.sse import format_sse
+def format_sse(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 from ingest.clean import make_inert
 from ingest.store import StoreError, execute, sql_literal
 
