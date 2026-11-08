@@ -1,12 +1,14 @@
 # Active Context
 
-The v2 product document is incorporated. No application code and no DDL exist yet. Week 1 has not started.
+Week 1 is in progress. `app/infra/schema.sql` and `app/infra/load_superstore.py` are written for database `nexus_db` and have not been applied.
 
-Unresolved before the schema is created:
+Blocked: local PostgreSQL 18 on port 5432 requires a password for role `postgres`. No `PGPASSWORD` is set, and no `.env` exists. Do not store the password in the repo.
 
-- Which existing Postgres database to use, and whether that server already has pgvector.
-- `documents` / `chunks` and `runs` have no `workspace_id` in the v2 column list, but retrieval and queries must be workspace-scoped.
-- `datasets/Superstore/Superstore.csv` has sales and identifiers only. It has no quantity, unit price, discount, cost, or profit. Cost and profit are optional; margin and discount questions cannot be answered from this file until those columns exist.
-- v2 open questions: hosted model and monthly budget; whether the repo and demo video are public; which role is first and therefore which one or two add-ons; authentication in v1 or single-user local mode.
+Unresolved after the load:
 
-Next action, when asked: Week 1 on the existing Postgres. Create the schema, then load Superstore into `sales_clean`. Do not add a Docker database.
+- Whether this server has pgvector. Not required for `sales_clean`.
+- `documents` / `chunks` and `runs` still have no `workspace_id` in the v2 column list.
+- This Superstore extract cannot answer discount, quantity, cost, or profit questions. Those `sales_clean` columns will be null.
+- v2 open questions: hosted model and budget; public repo and demo or not; first role and add-on; auth in v1 or single-user local mode.
+
+Next action: apply the schema and loader once a password is available, then verify `sales_clean` has 9800 rows.

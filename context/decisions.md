@@ -29,3 +29,10 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Rejected:* A nine-screen app and multi-page routing.
 * **Decision 13 (2026-11-08):** v1 accepts one canonical sales shape plus optional documents.
   * *Rejected:* Chat with any file. Payroll, wide pivots, and free-form reports are out of scope.
+* **Decision 14 (2026-11-08):** The Week 1 database on the existing PostgreSQL 18 server is named `nexus_db`.
+  * *Reason:* The user named it.
+  * *Files affected:* `app/infra/schema.sql`, `app/infra/load_superstore.py`.
+* **Decision 15 (2026-11-08):** The first DDL creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean` has a surrogate `id`. Quantity, unit price, discount, cost, profit, and channel are nullable.
+  * *Reason:* `sales_clean` foreign keys need the two parent tables. Business columns do not uniquely identify a line. The checked-in Superstore extract has revenue and no quantity, discount, cost, profit, unit price, or channel.
+  * *Rejected:* Creating all nine tables before any of them are used. Loading this file into NOT NULL measure columns.
+  * *Files affected:* `app/infra/schema.sql`, `app/infra/load_superstore.py`.

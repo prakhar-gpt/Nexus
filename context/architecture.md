@@ -33,7 +33,7 @@ The project is evidence for four Bain Capability Network roles: Capabilities Tec
 | Observability | `runs` table; Langfuse optional | — |
 | Packaging | Docker Compose, pytest, GitHub Actions | Azure Container Apps or App Service, Blob storage |
 
-Week 1 uses the existing local PostgreSQL and pgAdmin. See Decision 5.
+Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `nexus_db`. See Decisions 5 and 14. DDL is `app/infra/schema.sql`; the Superstore seed loader is `app/infra/load_superstore.py`. That step creates `workspaces`, `uploads`, and `sales_clean` only. `sales_clean.id` is a surrogate key because an order line is not unique on the business columns. Quantity, unit price, discount, cost, profit, and channel are nullable; `datasets/Superstore/Superstore.csv` does not contain them.
 
 ## UI
 

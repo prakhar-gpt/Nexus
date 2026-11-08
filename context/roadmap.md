@@ -52,3 +52,4 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 ## Progress
 
 - 2026-11-08: v2 product document incorporated into `architecture.md`, `agents.md`, `decisions.md`, and this file. No week has been executed. No DDL has been applied.
+- 2026-11-08: Week 1 DDL and Superstore loader written (`app/infra/schema.sql`, `app/infra/load_superstore.py`). Not applied. Local PostgreSQL 18 requires a password, and none is available to the session.
