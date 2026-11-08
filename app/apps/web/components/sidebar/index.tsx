@@ -1,24 +1,19 @@
 "use client"
 
-import { RefreshCw } from "lucide-react"
+import { Plus, Database } from "lucide-react"
 import { type Mapping, type Thread, type WorkspaceSummary } from "@/lib/api"
 import { ThreadList } from "./thread-list"
 import { WorkspaceSelector } from "./workspace-selector"
 import { IngestionSection } from "./ingestion-section"
-
-const SCORE_LABEL: Record<string, string> = {
-  sql_correctness: "SQL",
-  numeric_faithfulness: "Numbers",
-  refusal_accuracy: "Refusals",
-}
+import { UserProfileFooter } from "./user-profile-footer"
 
 interface SidebarProps {
   roomName: string
   workspaces: WorkspaceSummary[]
   currentRoomId: number | null
   onSelectWorkspace: (id: number) => void
-  onCreateWorkspace: (name: string) => void
-  onOpenWorkspacesModal: () => void
+  onOpenCreateWorkspace: () => void
+  onDeleteWorkspace: (id: number) => void
   threads: Thread[]
   activeThreadId: string
   onSelectThread: (threadId: string) => void
@@ -45,6 +40,7 @@ interface SidebarProps {
   onFile: (file: File) => void
   onConfirm: (decisions: Record<string, string>) => void
   onRunEval: () => void
+  onOpenAuthModal: () => void
 }
 
 export function Sidebar({
@@ -52,8 +48,8 @@ export function Sidebar({
   workspaces,
   currentRoomId,
   onSelectWorkspace,
-  onCreateWorkspace,
-  onOpenWorkspacesModal,
+  onOpenCreateWorkspace,
+  onDeleteWorkspace,
   threads,
   activeThreadId,
   onSelectThread,
@@ -74,6 +70,7 @@ export function Sidebar({
   onFile,
   onConfirm,
   onRunEval,
+  onOpenAuthModal,
 }: SidebarProps) {
   const rows = health?.rows && health.rows !== "0" ? `${Number(health.rows).toLocaleString()} rows` : null
   const dates =
@@ -82,10 +79,10 @@ export function Sidebar({
       : null
 
   return (
-    <div className="flex h-full flex-col justify-between overflow-y-auto px-4 py-4 text-[13px]">
-      <div className="flex flex-col gap-4">
-        {/* App Branding */}
-        <div className="flex items-center justify-between pb-3 border-b border-sidebar-border/60">
+    <div className="flex h-full flex-col justify-between overflow-y-auto px-3.5 py-4 text-[13px]">
+      <div className="flex flex-col gap-5">
+        {/* App Header & Brand */}
+        <div className="flex items-center justify-between pb-1 px-1">
           <div className="flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded bg-primary text-[11px] font-bold text-primary-foreground tracking-wider shadow-xs">
               N
@@ -95,19 +92,28 @@ export function Sidebar({
               Copilot
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={onNewThread}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent/40 transition-colors"
+            title="Start new chat"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
 
-        {/* Data Room Switcher */}
+        {/* Data Room Switcher (Shadcn Dropdown) */}
         <WorkspaceSelector
           workspaces={workspaces}
           currentRoomId={currentRoomId}
           onSelectWorkspace={onSelectWorkspace}
-          onCreateWorkspace={onCreateWorkspace}
-          onOpenWorkspacesModal={onOpenWorkspacesModal}
+          onOpenCreateModal={onOpenCreateWorkspace}
+          onDeleteWorkspace={onDeleteWorkspace}
           healthSummary={{ rows, dates }}
         />
 
-        {/* Conversation Threads */}
+        {/* Conversation Threads (Claude Style) */}
         <ThreadList
           threads={threads}
           activeThreadId={activeThreadId}
@@ -137,27 +143,13 @@ export function Sidebar({
         ) : null}
       </div>
 
-      {/* Footer: Evaluation Scorecard */}
-      <div className="flex flex-col gap-1.5 pt-4 border-t border-sidebar-border/50 text-[11px] text-muted-foreground">
-        {scores ? (
-          <div className="flex justify-between items-center text-[10px] tracking-wide font-mono bg-muted/40 px-2 py-1 rounded">
-            {Object.entries(scores).map(([name, score]) => (
-              <span key={name}>
-                {SCORE_LABEL[name] ?? name}: {Math.round(score * 100)}%
-              </span>
-            ))}
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className="flex items-center gap-1.5 text-left text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-          disabled={runningEval}
-          onClick={onRunEval}
-        >
-          <RefreshCw className={`h-3 w-3 ${runningEval ? "animate-spin" : ""}`} />
-          <span>{runningEval ? "Running eval..." : "Run Golden Set Eval"}</span>
-        </button>
-      </div>
+      {/* User Profile & Auth Footer */}
+      <UserProfileFooter
+        scores={scores}
+        runningEval={runningEval}
+        onRunEval={onRunEval}
+        onOpenAuthModal={onOpenAuthModal}
+      />
     </div>
   )
 }

@@ -5,7 +5,8 @@ import { Menu } from "lucide-react"
 
 import { ChatPane, type AnswerBadge, type ChatMessage } from "@/components/chat-pane"
 import { Sidebar } from "@/components/sidebar"
-import { WorkspacesModal } from "@/components/workspaces-modal"
+import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
+import { AuthModal } from "@/components/auth-modal"
 import {
   API_URL,
   readSse,
@@ -27,9 +28,12 @@ export function Dashboard() {
   const [draft, setDraft] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [workspacesModalOpen, setWorkspacesModalOpen] = useState(false)
 
-  // Upload & ingestion tracking state
+  // Dialog Modals
+  const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+
+  // Ingestion states
   const [liveName, setLiveName] = useState<string | null>(null)
   const [liveStatus, setLiveStatus] = useState<string | null>(null)
   const [liveReason, setLiveReason] = useState<string | null>(null)
@@ -129,6 +133,23 @@ export function Dashboard() {
       }
     } catch {
       setRoomError("Could not create data room.")
+    }
+  }
+
+  async function handleDeleteWorkspace(workspaceId: number) {
+    try {
+      const res = await fetch(`${API_URL}/workspaces/${workspaceId}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        const remaining = workspaces.filter((w) => w.id !== workspaceId)
+        setWorkspaces(remaining)
+        if (room?.id === workspaceId && remaining.length > 0) {
+          await selectRoom(remaining[0].id)
+        }
+      }
+    } catch {
+      setRoomError("Could not delete data room.")
     }
   }
 
@@ -390,10 +411,10 @@ export function Dashboard() {
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground md:flex-row">
-      {/* Sidebar with modular sub-components */}
+      {/* Clean, De-cluttered Left Sidebar */}
       <aside
         className={cn(
-          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-72 md:border-r md:border-sidebar-border shadow-[1px_0_0_0_rgba(0,0,0,0.03)]",
+          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-64 md:border-r md:border-sidebar-border shadow-[1px_0_0_0_rgba(0,0,0,0.03)]",
           mobileMenuOpen || pending ? "max-h-96 overflow-y-auto border-b border-sidebar-border" : "hidden",
         )}
       >
@@ -402,8 +423,8 @@ export function Dashboard() {
           workspaces={workspaces}
           currentRoomId={room?.id ?? null}
           onSelectWorkspace={(id) => selectRoom(id)}
-          onCreateWorkspace={handleCreateWorkspace}
-          onOpenWorkspacesModal={() => setWorkspacesModalOpen(true)}
+          onOpenCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+          onDeleteWorkspace={handleDeleteWorkspace}
           threads={threads}
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
@@ -424,10 +445,11 @@ export function Dashboard() {
           onFile={chooseFile}
           onConfirm={confirm}
           onRunEval={runEval}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
         />
       </aside>
 
-      {/* Main Chat Canvas */}
+      {/* Main Canvas / Chat Experience */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Mobile Header */}
         <div className="flex h-12 items-center justify-between px-4 border-b border-border md:hidden">
@@ -457,14 +479,17 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Full Workspaces Modal */}
-      <WorkspacesModal
-        isOpen={workspacesModalOpen}
-        onClose={() => setWorkspacesModalOpen(false)}
-        workspaces={workspaces}
-        currentRoomId={room?.id ?? null}
-        onSelectWorkspace={(id) => selectRoom(id)}
-        onCreateWorkspace={handleCreateWorkspace}
+      {/* Shadcn Dialog: Create Workspace */}
+      <CreateWorkspaceModal
+        isOpen={createWorkspaceOpen}
+        onClose={() => setCreateWorkspaceOpen(false)}
+        onCreate={handleCreateWorkspace}
+      />
+
+      {/* Shadcn Dialog: Auth Modal (Sign In / Register) */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
       />
     </div>
   )

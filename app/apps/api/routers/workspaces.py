@@ -12,6 +12,7 @@ from apps.api.services.upload_service import handle_file_upload
 from apps.api.services.workspace_service import (
     create_workspace,
     delete_thread,
+    delete_workspace,
     get_turns,
     get_workspace_detail,
     get_workspace_meta,
@@ -32,7 +33,7 @@ def _get_stream_callable():
 
 @router.get("/workspaces")
 def get_workspaces_endpoint():
-    """List all workspaces."""
+    """List all active workspaces."""
     return list_workspaces()
 
 
@@ -40,6 +41,12 @@ def get_workspaces_endpoint():
 def create_workspace_endpoint(body: WorkspaceCreate):
     """Create a new workspace."""
     return create_workspace(body.name)
+
+
+@router.delete("/workspaces/{workspace_id}")
+def delete_workspace_endpoint(workspace_id: int):
+    """Delete / archive a workspace."""
+    return delete_workspace(workspace_id)
 
 
 @router.get("/workspaces/{workspace_id}")

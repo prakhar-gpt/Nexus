@@ -17,16 +17,16 @@ HEALTH_SQL = (
 
 
 def get_workspace_meta(workspace_id: int) -> dict | None:
-    """Return basic workspace record or None if absent."""
+    """Return basic workspace record or None if absent or archived."""
     rows = execute(
         "SELECT id, name FROM workspaces "
-        f"WHERE id = {int(workspace_id)}"
+        f"WHERE id = {int(workspace_id)} AND NOT (name LIKE '[archived]%')"
     )
     return rows[0] if rows else None
 
 
 def list_workspaces() -> list[dict]:
-    """List all available workspaces with stats."""
+    """List all active (non-archived) workspaces with file and run counts."""
     sql = (
         "SELECT w.id, w.name, w.created_at, "
         "count(DISTINCT u.id) AS upload_count, "
@@ -34,6 +34,7 @@ def list_workspaces() -> list[dict]:
         "FROM workspaces w "
         "LEFT JOIN uploads u ON u.workspace_id = w.id "
         "LEFT JOIN runs r ON r.workspace_id = w.id "
+        "WHERE NOT (w.name LIKE '[archived]%') "
         "GROUP BY w.id, w.name, w.created_at "
         "ORDER BY w.id"
     )
@@ -50,6 +51,19 @@ def create_workspace(name: str) -> dict:
         f"VALUES ({sql_literal(clean_name)}) RETURNING id"
     )
     return {"id": int(rows[0]["id"]), "name": clean_name}
+
+
+def delete_workspace(workspace_id: int) -> dict:
+    """Soft-delete / archive a workspace."""
+    ws = get_workspace_meta(workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    archived_name = f"[archived] {ws['name']}"
+    execute(
+        f"UPDATE workspaces SET name = {sql_literal(archived_name)} "
+        f"WHERE id = {int(workspace_id)}"
+    )
+    return {"ok": True, "id": workspace_id}
 
 
 def list_threads(workspace_id: int) -> list[dict]:
