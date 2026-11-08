@@ -40,3 +40,10 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* Agent SQL must not run as the table owner. The owner is a superuser and bypasses row-level security.
   * *Rejected:* Executing agent SQL as `postgres`.
   * *Files affected:* `app/packages/agent/`, `app/infra/reader.sql`, `app/eval/`.
+* **Decision 17 (2026-11-08):** Week 2 adds `column_mapping` and `quarantine`. `sales_clean` allows a customer id or a product id, and revenue or quantity. Segment, region, category, and sub-category may be empty.
+  * *Reason:* Domain fit requires one identifier and one measure, not every canonical column. The Week 1 file happened to contain the extra columns.
+  * *Files affected:* `app/infra/ingest_tables.sql`, `app/infra/schema.sql`.
+* **Decision 18 (2026-11-08):** Headers below a RapidFuzz score of 70 are proposed from `app/kb/column_hints.md` and must be confirmed before load. Ambiguous dates are read day-month-year first.
+  * *Reason:* No model key is configured. The hint file is the fallback the spec would hand to a model. The saved method for that path is `llm`, which is the spec's name for the non-fuzzy path.
+  * *Rejected:* Calling a hosted model during ingestion. Reading ambiguous dates as month-day-year.
+  * *Files affected:* `app/packages/ingest/`, `app/kb/column_hints.md`.

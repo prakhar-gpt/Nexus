@@ -1,17 +1,17 @@
 # Active Context
 
-Week 1 is complete on local PostgreSQL 18, database `nexus_db`.
+Week 2 is complete. Ingestion lives in `app/packages/ingest/`. `column_mapping` and `quarantine` exist on `nexus_db`. The six test files pass, and the Week 1 eval still passes.
 
-`sales_clean` has 9800 Superstore rows. `run_sql` reads them as `nexus_reader` with workspace row-level security. The checker and `app/eval/runner.py` pass the 25-question golden set at 100% (targets 85% SQL correctness, 98% numeric faithfulness, 90% refusal accuracy). Five of the questions are refusals because quantity, unit price, discount, cost, profit, and channel are null.
+A header at RapidFuzz 70 or above is auto-mapped. Below 70, `app/kb/column_hints.md` proposes the column and load waits for confirmation. No model is called. Ambiguous dates are day-month-year. Formula-like text is stored with a leading apostrophe.
 
-Do not store the database password in the repo. The reader password is only in `.env`.
+The writer role password is only in `.env`.
 
 Unresolved:
 
-- Whether this server has pgvector. Not required for `sales_clean`.
+- Whether this server has pgvector.
 - `documents` / `chunks` and `runs` still have no `workspace_id` in the v2 column list.
-- This Superstore extract cannot answer discount, quantity, cost, or profit questions.
+- The Superstore extract still cannot answer discount, quantity, cost, or profit questions.
 - v2 open questions: hosted model and budget; public repo and demo or not; first role and add-on; auth in v1 or single-user local mode.
-- GitHub Actions for the eval script is Week 4, not built.
+- GitHub Actions for the eval script is Week 4.
 
-Next action: Week 2 ingestion when asked. Parsing, header detection, RapidFuzz mapping, quarantine, and the six test files.
+Next action: Week 3 when asked. The single dashboard, SSE streaming, the trace panel, and data health.

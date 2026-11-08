@@ -79,7 +79,16 @@ def ensure_reader(admin_password: str, reader_password_value: str) -> None:
     psql(admin_sql, user="postgres", password=admin_password, database=DATABASE)
     policy = READER_SQL.read_text(encoding="utf-8")
     psql(policy, user="postgres", password=admin_password, database=DATABASE)
-    ENV_PATH.write_text(
-        f"NEXUS_READER_PASSWORD={reader_password_value}\n",
-        encoding="utf-8",
-    )
+    _set_env_line("NEXUS_READER_PASSWORD", reader_password_value)
+
+
+def _set_env_line(key: str, value: str) -> None:
+    lines = []
+    if ENV_PATH.exists():
+        lines = [
+            line
+            for line in ENV_PATH.read_text(encoding="utf-8").splitlines()
+            if not line.startswith(f"{key}=")
+        ]
+    lines.append(f"{key}={value}")
+    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -75,7 +75,7 @@ Order: file safety, structure, domain fit, row validation, text safety.
 4. **Row validation — quarantine.** Date parse, numeric types, negatives, duplicates, impossible discounts. Keep `row_number`, `reason`, and `raw_json`.
 5. **Text safety — sanitise.** Cells are data. On any export, prefix cells that start with `=`, `+`, `-`, or `@`. Never pass cell or document text to the model as instructions.
 
-Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, an LLM proposes a mapping from `column_hints.md` plus samples; the user confirms or edits; save `method`.
+Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `app/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `app/packages/ingest/`. Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
 
 Six test files and their expected results are in `roadmap.md`.
 

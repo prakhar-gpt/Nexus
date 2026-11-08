@@ -4,7 +4,7 @@ Rules and responsibilities per module. No pre-commit hook or CI check exists yet
 
 ## Ingest (`app/packages/ingest`)
 
-Owns file safety, profiling, RapidFuzz mapping, cleaning, and quarantine. Does not answer questions.
+Owns file safety, profiling, RapidFuzz mapping, cleaning, and quarantine. Does not answer questions. `python app/packages/ingest/test_week2.py` exercises these rules. It is not a git hook or GitHub Action yet.
 
 - **OBSERVED.** Accept only csv and xlsx. Sniff content. Reject macro-enabled files. Store under a generated name, never the original filename.
 - **OBSERVED.** Reject empty files, single-column files, and files that lack a date, an identifier, and a revenue or quantity measure.
