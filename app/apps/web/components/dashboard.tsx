@@ -1,11 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Menu } from "lucide-react"
+import { Menu, ArrowLeft } from "lucide-react"
 
 import { ChatPane, type AnswerBadge, type ChatMessage } from "@/components/chat-pane"
 import { Sidebar } from "@/components/sidebar"
+import { WorkspacesView } from "@/components/workspaces-view"
 import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
+import { DataRoomModal } from "@/components/data-room-modal"
 import { AuthModal } from "@/components/auth-modal"
 import {
   API_URL,
@@ -21,6 +23,7 @@ import { cn } from "@/lib/utils"
 
 export function Dashboard() {
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
+  const [currentView, setCurrentView] = useState<"rooms" | "chat">("rooms")
   const [room, setRoom] = useState<Room | null>(null)
   const [roomError, setRoomError] = useState<string | null>(null)
   const [threads, setThreads] = useState<Thread[]>([])
@@ -31,6 +34,7 @@ export function Dashboard() {
 
   // Dialog Modals
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [dataRoomModalOpen, setDataRoomModalOpen] = useState(false)
   const [authModalOpen, setAuthModalOpen] = useState(false)
 
   // Ingestion states
@@ -42,22 +46,14 @@ export function Dashboard() {
   const [liveUploadId, setLiveUploadId] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
 
-  // Eval scorecard state
-  const [scores, setScores] = useState<Record<string, number> | null>(null)
-  const [runningEval, setRunningEval] = useState(false)
-
   async function loadWorkspaces(preferredId?: number) {
     try {
       const res = await fetch(`${API_URL}/workspaces`)
       if (!res.ok) throw new Error("Could not list data rooms.")
       const list = (await res.json()) as WorkspaceSummary[]
       setWorkspaces(list)
-      const chosen =
-        list.find((item) => item.id === preferredId) ??
-        list.find((item) => item.name === "Superstore") ??
-        list[0]
-      if (chosen) {
-        await selectRoom(chosen.id)
+      if (preferredId) {
+        await selectRoom(preferredId)
       }
     } catch {
       setRoomError("The API is not running on localhost:8000.")
@@ -79,6 +75,7 @@ export function Dashboard() {
       setActiveThreadId(targetThread)
 
       await loadThreadTurns(roomId, targetThread, loaded.turns ?? [])
+      setCurrentView("chat")
       setRoomError(null)
     } catch (e: any) {
       setRoomError(e.message || "Could not read data room.")
@@ -105,13 +102,6 @@ export function Dashboard() {
 
   useEffect(() => {
     loadWorkspaces()
-    fetch(`${API_URL}/eval/runs`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { scores?: { scores?: Record<string, number> } | null } | null) => {
-        const stored = body?.scores?.scores
-        if (stored) setScores(stored)
-      })
-      .catch(() => undefined)
   }, [])
 
   function updateAssistant(id: string, patch: Partial<ChatMessage>) {
@@ -144,8 +134,9 @@ export function Dashboard() {
       if (res.ok) {
         const remaining = workspaces.filter((w) => w.id !== workspaceId)
         setWorkspaces(remaining)
-        if (room?.id === workspaceId && remaining.length > 0) {
-          await selectRoom(remaining[0].id)
+        if (room?.id === workspaceId) {
+          setCurrentView("rooms")
+          setRoom(null)
         }
       }
     } catch {
@@ -390,75 +381,79 @@ export function Dashboard() {
     }
   }
 
-  async function runEval() {
-    setRunningEval(true)
-    try {
-      const res = await fetch(`${API_URL}/eval/runs`, { method: "POST" })
-      if (!res.ok) return
-      const body = (await res.json()) as { scores: Record<string, number> }
-      setScores(body.scores)
-    } catch {
-      setRoomError("The eval could not be run.")
-    } finally {
-      setRunningEval(false)
-    }
-  }
-
   const latest = room?.uploads[0]
   const mappings = liveMappings ?? room?.mappings ?? []
-  const pending = mappings.some((item) => item.needs_confirmation)
   const busy = messages.some((msg) => msg.badge === "waiting")
 
-  return (
-    <div className="flex h-svh flex-col bg-background text-foreground md:flex-row">
-      {/* Clean, De-cluttered Left Sidebar */}
-      <aside
-        className={cn(
-          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-64 md:border-r md:border-sidebar-border shadow-[1px_0_0_0_rgba(0,0,0,0.03)]",
-          mobileMenuOpen || pending ? "max-h-96 overflow-y-auto border-b border-sidebar-border" : "hidden",
-        )}
-      >
-        <Sidebar
-          roomName={room?.name ?? "Data room"}
+  const rows = room?.health?.rows && room.health.rows !== "0" ? `${Number(room.health.rows).toLocaleString()} rows` : null
+  const dates =
+    room?.health?.first_order && room.health.last_order
+      ? `${room.health.first_order} – ${room.health.last_order}`
+      : null
+
+  // 1. Full Data Rooms View
+  if (currentView === "rooms") {
+    return (
+      <div className="h-svh w-full flex flex-col bg-background text-foreground">
+        <WorkspacesView
           workspaces={workspaces}
           currentRoomId={room?.id ?? null}
           onSelectWorkspace={(id) => selectRoom(id)}
-          onOpenCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+          onOpenCreateModal={() => setCreateWorkspaceOpen(true)}
           onDeleteWorkspace={handleDeleteWorkspace}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
+        />
+
+        <CreateWorkspaceModal
+          isOpen={createWorkspaceOpen}
+          onClose={() => setCreateWorkspaceOpen(false)}
+          onCreate={handleCreateWorkspace}
+        />
+
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+        />
+      </div>
+    )
+  }
+
+  // 2. Focused Data Room Chat View
+  return (
+    <div className="flex h-svh flex-col bg-background text-foreground md:flex-row">
+      {/* Clean, Focused Sidebar with Back to Data Rooms button */}
+      <aside
+        className={cn(
+          "shrink-0 bg-sidebar md:block md:h-svh md:max-h-none md:w-64 md:border-r md:border-sidebar-border shadow-[1px_0_0_0_rgba(0,0,0,0.03)]",
+          mobileMenuOpen ? "max-h-96 overflow-y-auto border-b border-sidebar-border" : "hidden",
+        )}
+      >
+        <Sidebar
+          roomName={room?.name ?? "Data Room"}
+          onBackToWorkspaces={() => setCurrentView("rooms")}
           threads={threads}
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
           onNewThread={handleNewThread}
           onDeleteThread={handleDeleteThread}
-          fileName={liveName ?? latest?.original_name ?? null}
-          status={liveStatus ?? latest?.status ?? null}
-          reason={liveReason}
-          stages={liveStages}
-          mappings={mappings}
-          health={room?.health ?? null}
-          quarantine={room?.quarantine ?? []}
-          uploadId={liveUploadId ?? latest?.id ?? null}
-          error={roomError}
-          confirming={confirming}
-          scores={scores}
-          runningEval={runningEval}
-          onFile={chooseFile}
-          onConfirm={confirm}
-          onRunEval={runEval}
+          onOpenDataModal={() => setDataRoomModalOpen(true)}
           onOpenAuthModal={() => setAuthModalOpen(true)}
+          healthSummary={{ rows, dates }}
         />
       </aside>
 
-      {/* Main Canvas / Chat Experience */}
+      {/* Main Chat Canvas */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Mobile Header */}
         <div className="flex h-12 items-center justify-between px-4 border-b border-border md:hidden">
-          <div className="flex items-center gap-2">
-            <span className="flex h-5 w-5 items-center justify-center rounded bg-primary text-[10px] font-bold text-primary-foreground">
-              N
-            </span>
-            <span className="font-semibold text-sm">Nexus</span>
-          </div>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setCurrentView("rooms")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Data Rooms</span>
+          </button>
           <button
             type="button"
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -479,14 +474,25 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Shadcn Dialog: Create Workspace */}
-      <CreateWorkspaceModal
-        isOpen={createWorkspaceOpen}
-        onClose={() => setCreateWorkspaceOpen(false)}
-        onCreate={handleCreateWorkspace}
+      {/* Dataset & Ingestion Modal */}
+      <DataRoomModal
+        isOpen={dataRoomModalOpen}
+        onClose={() => setDataRoomModalOpen(false)}
+        roomName={room?.name ?? "Data Room"}
+        fileName={liveName ?? latest?.original_name ?? null}
+        status={liveStatus ?? latest?.status ?? null}
+        reason={liveReason}
+        stages={liveStages}
+        mappings={mappings}
+        uploadId={liveUploadId ?? latest?.id ?? null}
+        quarantine={room?.quarantine ?? []}
+        confirming={confirming}
+        onFile={chooseFile}
+        onConfirm={confirm}
+        healthSummary={{ rows, dates }}
       />
 
-      {/* Shadcn Dialog: Auth Modal (Sign In / Register) */}
+      {/* Auth Modal */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

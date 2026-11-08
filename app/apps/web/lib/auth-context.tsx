@@ -24,26 +24,30 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: DEFAULT_USER,
+  user: null,
   login: () => {},
   signup: () => {},
   logout: () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("nexus_user")
-      if (stored) {
-        try {
-          return JSON.parse(stored)
-        } catch {
-          return DEFAULT_USER
-        }
+  const [user, setUser] = useState<User | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    const stored = localStorage.getItem("nexus_user")
+    if (stored) {
+      try {
+        setUser(JSON.parse(stored))
+      } catch {
+        setUser(DEFAULT_USER)
       }
+    } else {
+      setUser(DEFAULT_USER)
+      localStorage.setItem("nexus_user", JSON.stringify(DEFAULT_USER))
     }
-    return DEFAULT_USER
-  })
+  }, [])
 
   function login(email: string, name?: string) {
     const formattedName = name?.trim() || email.split("@")[0].replace(".", " ")

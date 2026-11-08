@@ -2,12 +2,14 @@ The question path is documented in `context/agent/`. Start at `context/agent/REA
 
 The backend is fully modularized with strict separation of concerns across `app/packages/agent/` (`state.py`, `formatting.py`, `tools/`, `nodes/`, `graph.py`) and `app/apps/api/` (`schemas.py`, `sse.py`, `services/`, `routers/`, `main.py`).
 
-The frontend is built with official shadcn/ui components (`DropdownMenu`, `Dialog`, `Tabs`, `Avatar`, `Badge`, `Sheet`, `Button`, `Table`), featuring:
-- Clean, de-cluttered left sidebar with streamlined Claude-style navigation.
-- Native shadcn `DropdownMenu` for Data Room switching, instant creation, and room deletion (`DELETE /workspaces/{id}`).
-- Dedicated chat threads with hover-revealed deletion (`DELETE /workspaces/{id}/threads/{thread_id}`).
-- Full user authentication state (`AuthProvider`, `AuthModal`) with user profile, role pill, and Logout at the bottom left.
-- Interactive Recharts bar visualization and read-only SQL inspection under "Show the query".
+The frontend features a clean two-level navigation model:
+1. **Data Rooms Hub (`WorkspacesView`)**: A clean landing page displaying all data rooms with file & query metrics, quick creation, and deletion.
+2. **Focused Chat Interface**: When entering a data room, the user enters a clean conversation environment. The left sidebar is strictly focused on:
+   - "← Data Rooms" navigation button to return to the hub.
+   - Active data room card with a "Dataset" button to open the spreadsheet ingestion modal on demand.
+   - Clean, lightweight thread list (+ New Chat, thread switching, thread deletion).
+   - User profile with instant working Log Out.
+3. Developer evaluation metrics (`SQL: 100%`, `Numbers: 100%`, `Refusals: 100%`) were removed from the user interface and remain an offline CI harness under `app/eval/runner.py`.
 
 The UI runs on `http://localhost:3000` and the FastAPI backend runs on `http://localhost:8000`.
 
