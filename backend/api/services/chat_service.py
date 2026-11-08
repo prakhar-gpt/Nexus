@@ -106,7 +106,7 @@ def generate_chat_events(workspace_id: int, question: str, stream_func, thread_i
                     "step",
                     {
                         key: payload[key]
-                        for key in ("id", "tool", "status", "detail", "ms")
+                        for key in ("id", "tool", "status", "detail", "ms", "query", "row_count", "input", "output")
                         if payload.get(key) is not None
                     },
                 )
@@ -155,5 +155,6 @@ def generate_chat_events(workspace_id: int, question: str, stream_func, thread_i
             "tools_used": result.get("tools_used", []),
             "answer": result.get("answer") or "",
             "thread_id": clean_thread,
+            "steps": result.get("steps", []),
         },
     )

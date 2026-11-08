@@ -172,3 +172,12 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
     3. Unified `backend/eval/`: Merged all question definitions (`sql`, `code`, `missing`, `fixture`) and ground-truth expectations into `golden_set.json` as the single source of truth, eliminating the redundant `questions.py` and simplifying `runner.py`.
   * *Rejected:* Monolithic loose infra scripts; scattered 40-line micro-files in ingest; dual-maintaining test cases across Python code and JSON.
   * *Files affected:* `backend/db/`, `backend/ingest/`, `backend/eval/`, `backend/agent/db.py`, `backend/api/services/chat_service.py`, `backend/api/services/upload_service.py`.
+
+* **Decision 46 (2026-11-09):** Comprehensive multi-tool execution inspection ("Show tool execution") across input and output.
+  * *Reason:*
+    1. Previously, the assistant interface displayed only a single "Show the query" button that rendered the final SQL query and row table. When queries made multiple tool calls (e.g. `get_schema`, `run_sql`, `run_python`, `read_kb`), users could not inspect intermediate tool inputs or outputs.
+    2. Replaced the single query toggle with "Show tool execution" (and "Hide tool execution"), showing the full chronological list of every tool call made in that turn.
+    3. Enhanced `backend/agent/nodes.py` to record both `input` (tool arguments) and `output` (tool execution text/preview) inside each step item, emitting them over SSE and persisting them in `runs.checker_result.steps`.
+    4. Extended `QueryPanel` to render each step card with step index, tool badge, status indicator, duration, formatted `Input` (with dedicated copy button and SQL/Python syntax highlighting), and `Output` (with copy button and monospace viewer), while preserving the interactive SQL result table and distribution chart under SQL query steps.
+  * *Rejected:* Leaving tool calls invisible beyond SQL; hiding Python calculation inputs and intermediate schema inquiries from analysts.
+  * *Files affected:* `backend/agent/nodes.py`, `backend/api/services/chat_service.py`, `frontend/lib/api.ts`, `frontend/lib/chat-store.tsx`, `frontend/components/chat-pane.tsx`, `frontend/components/audit-bar.tsx`, `frontend/components/query-panel.tsx`.

@@ -287,6 +287,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               text: (data.answer as string) || streamText,
               runId: data.run_id != null ? Number(data.run_id) : null,
               rows: (data.rows as Record<string, string>[]) ?? [],
+              steps: (data.steps as TraceStep[]) ?? [],
               activity: [],
             })
             if (!notifiedFirstToken) {
@@ -397,6 +398,7 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
       rowCount: turn.rows?.length ?? 0,
       runId: turn.run_id,
       rows: turn.rows ?? [],
+      steps: turn.steps ?? [],
       missingMeasure: (turn.checker_result?.missing_measure as string) || undefined,
       untraced: (turn.checker_result?.untraced as string[]) || undefined,
     },

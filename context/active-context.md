@@ -1,5 +1,5 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T01:50:00+05:30
+Updated At: 2026-11-09T01:20:00+05:30
 
 Nexus is organized with a clean, senior-engineer root layout:
 - `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette).
@@ -48,9 +48,10 @@ Nexus is organized with a clean, senior-engineer root layout:
   - Eliminated `"That step was rejected"` bugs caused by LLM leading spaces / code fences via `clean_code()` in `backend/agent/tools/run_python.py`.
   - Preview size increased from 15 to 25 rows in `run_sql.py` to prevent category truncation (e.g. Fasteners at #17) and multi-query token bloat.
   - Increased `MAX_TOOL_STEPS` to 8 in `backend/agent/state.py`.
-- **Full Chat Audit Trail Persistence**:
-  - `save_run` in `backend/api/services/chat_service.py` stores intermediate tool calls (`steps`), durations, statuses, queries, and outputs into `runs.checker_result` and `runs.python_results`.
+- **Full Chat Audit Trail Persistence & Multi-Tool Execution**:
+  - `save_run` in `backend/api/services/chat_service.py` stores intermediate tool calls (`steps`), inputs, outputs, durations, statuses, queries, and results into `runs.checker_result` and `runs.python_results`.
   - `get_workspace_turns` in `backend/api/services/workspace_service.py` re-hydrates full tool steps upon room/thread reload.
+  - "Show tool execution" disclosure in `frontend/components/audit-bar.tsx` and `frontend/components/query-panel.tsx` renders every tool call made (input, output, syntax-highlighted code, SQL preview table, and chart) with copy controls.
 
 ### Unresolved / Planned for Implementation
 - **CI & Deployment**: GitHub Actions workflow for `python backend/eval/runner.py` and `pytest backend/tests` regression checks on push; Docker Compose packaging.

@@ -149,6 +149,8 @@ def tools_node(state: AgentState) -> dict:
                 "detail": format_status_line(name, status),
                 "query": query,
                 "row_count": len(found),
+                "input": args,
+                "output": text,
             }
         )
 
@@ -160,6 +162,8 @@ def tools_node(state: AgentState) -> dict:
                 "ms": elapsed,
                 "detail": format_status_line(name, status),
                 "query": query,
+                "input": args,
+                "output": text,
             }
         )
         messages.append(ToolMessage(content=text, tool_call_id=call_id))

@@ -11,12 +11,14 @@ import {
 } from "lucide-react"
 import { StatusBadge, type AnswerBadge } from "./status-badge"
 import { QueryPanel } from "./query-panel"
+import type { TraceStep } from "@/lib/api"
 
 interface AuditBarProps {
   badge?: AnswerBadge
   sql?: string | null
   rowCount?: number | null
   rows?: Record<string, string | number>[]
+  steps?: TraceStep[]
   untraced?: string[]
   missingMeasure?: string
   sources?: { document: string; page?: number | string }[]
@@ -32,6 +34,7 @@ export function AuditBar({
   sql,
   rowCount,
   rows = [],
+  steps,
   untraced,
   missingMeasure,
   sources,
@@ -47,7 +50,8 @@ export function AuditBar({
   const [downReason, setDownReason] = useState("")
   const [submittingReason, setSubmittingReason] = useState(false)
 
-  const hasDetail = Boolean(sql) || rows.length > 0
+  const activeSteps = (steps || []).filter((s) => s.tool !== "checker")
+  const hasDetail = activeSteps.length > 0 || Boolean(sql) || rows.length > 0
   const finalRowCount = rowCount ?? (rows.length > 0 ? rows.length : null)
 
   async function handleCopyAnswer() {
@@ -96,7 +100,7 @@ export function AuditBar({
               aria-expanded={open}
               className="inline-flex items-center gap-1 font-medium text-foreground/80 hover:text-foreground transition-colors"
             >
-              <span>{open ? "Hide the query" : "Show the query"}</span>
+              <span>{open ? "Hide tool execution" : "Show tool execution"}</span>
               {open ? (
                 <ChevronUp className="h-3.5 w-3.5" />
               ) : (
@@ -212,6 +216,7 @@ export function AuditBar({
         <QueryPanel
           sql={sql}
           rows={rows}
+          steps={activeSteps}
           sources={sources}
           runId={runId}
           onToast={onToast}

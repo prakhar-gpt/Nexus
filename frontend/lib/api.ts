@@ -52,6 +52,9 @@ export type Turn = {
   verified: boolean | null
   rows: Record<string, string>[]
   thread_id?: string
+  steps?: TraceStep[]
+  tools_used?: string[]
+  python_results?: Array<{ label: string; value: unknown }>
   checker_result?: {
     untraced?: string[]
     missing_measure?: string
@@ -65,6 +68,10 @@ export type TraceStep = {
   status: string
   ms?: number
   detail?: string
+  query?: string | null
+  row_count?: number
+  input?: Record<string, unknown> | string | null
+  output?: string | null
 }
 
 // Registry for 401 unauthenticated cleanup (cache, chat-store, etc.)

@@ -30,6 +30,7 @@ export type ChatMessage = {
   runId?: number | null
   rows?: Record<string, string | number>[]
   activity?: TraceStep[]
+  steps?: TraceStep[]
   untraced?: string[]
   missingMeasure?: string
   sources?: { document: string; page?: number | string }[]
@@ -296,12 +297,13 @@ const MessageItem = memo(function MessageItem({
       ) : null}
 
       {/* 3. Checker Audit Bar: fades in under answer after check */}
-      {(isComplete || (!isStreaming && (message.sql || (message.rows && message.rows.length > 0)))) && (
+      {(isComplete || (!isStreaming && (message.sql || (message.rows && message.rows.length > 0) || (message.steps && message.steps.length > 0)))) && (
         <AuditBar
           badge={message.badge}
           sql={message.sql}
           rowCount={message.rowCount}
           rows={message.rows}
+          steps={message.steps}
           untraced={message.untraced}
           missingMeasure={message.missingMeasure}
           sources={message.sources}
