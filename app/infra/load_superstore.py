@@ -72,7 +72,14 @@ def psql(database: str, *args: str, input_text: str | None = None) -> str:
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
         sys.exit(result.returncode)
-    return result.stdout.strip()
+    # psql can print a status line such as "INSERT 0 1" ahead of RETURNING output.
+    data_lines = []
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("INSERT ", "UPDATE ", "DELETE ")):
+            continue
+        data_lines.append(stripped)
+    return data_lines[-1] if data_lines else ""
 
 
 def ensure_database() -> None:

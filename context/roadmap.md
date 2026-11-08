@@ -54,3 +54,4 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: v2 product document incorporated into `architecture.md`, `agents.md`, `decisions.md`, and this file. No week has been executed. No DDL has been applied.
 - 2026-11-08: Week 1 DDL and Superstore loader written (`app/infra/schema.sql`, `app/infra/load_superstore.py`). Not applied. Local PostgreSQL 18 requires a password, and none is available to the session.
 - 2026-11-08: User created empty `nexus_db`. Schema and Superstore load still blocked on the `postgres` role password.
+- 2026-11-08: Applied `app/infra/schema.sql` and loaded Superstore. `sales_clean` has 9800 rows, order dates 2015-01-03 through 2018-12-30, revenue 2261536.78. Quantity, unit price, discount, cost, profit, and channel are null.
