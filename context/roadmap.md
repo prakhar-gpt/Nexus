@@ -69,3 +69,7 @@ Week 1 uses Superstore. Week 2's upload demo adds Online Retail II. Olist is onl
 - 2026-11-08: Fixed UI tool call display: shows one pulsating step while running, disappears with no persistence when answer begins.
 - 2026-11-08: Enforced UTF-8 encoding on Windows `psql` subprocess calls in `db.py` to fix `UnicodeEncodeError` on narrow spaces and quotes.
 - 2026-11-08: Made number checker context-aware (includes prompt and SQL text) and supported ordinal suffixes (`8th`, `26th`). Added clarification question support in `system.md`, `checker.py`, and `graph.py` so ambiguous filters ask the user without tripping the checker.
+- 2026-11-08: Production-grade backend refactor: decomposed `graph.py` and `main.py` into dedicated modules (`state.py`, `formatting.py`, `nodes/`, `tools/`, `schemas.py`, `sse.py`, `services/`, `routers/`). All test suites pass 100%.
+- 2026-11-08: Logged architectural plans for implementation:
+  1. `run_python` sandboxed math execution tool, expanding `checker.py` to trace and verify Python computation output.
+  2. Dynamic column ingestion via `sales_clean.attributes JSONB` payload to preserve arbitrary commercial columns while retaining strict domain-fit guardrails.

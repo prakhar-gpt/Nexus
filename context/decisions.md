@@ -103,3 +103,11 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
   * *Reason:* `graph.py` (440 lines) and `main.py` (464 lines) had accumulated tool declarations, handlers, nodes, routers, schemas, services, and route definitions into large monolithic files.
   * *Rejected:* Leaving the monolithic files in place.
   * *Files affected:* `app/packages/agent/` (`state.py`, `formatting.py`, `tools/`, `nodes/`, `graph.py`), `app/apps/api/` (`schemas.py`, `sse.py`, `services/`, `routers/`, `main.py`).
+* **Decision 33 (2026-11-08):** Planned deterministic Python math tool (`run_python`).
+  * *Reason:* Pure SQL arithmetic is insufficient for complex multi-step financial modeling, compound growth (CAGR), projections, and statistical correlations. Numbers returned by `run_python` will be recorded in state and whitelisted by `checker.py` as verified figures.
+  * *Rejected:* Allowing LLM to do mental arithmetic in answer text without deterministic tool execution.
+  * *Files to be affected:* `app/packages/agent/tools/`, `app/packages/agent/nodes/`, `app/packages/agent/checker.py`, `app/packages/agent/prompts/system.md`.
+* **Decision 34 (2026-11-08):** Planned dynamic dataset column support via canonical core anchors (`order_date`, `revenue`/`quantity`) plus an `attributes JSONB` payload column.
+  * *Reason:* Real-world commercial datasets contain arbitrary domain-specific columns (e.g. `carrier`, `ad_spend`, `plan_tier`). Storing unmapped non-canonical columns in a JSONB dictionary allows dynamic SQL querying (`attributes->>'field'`) while preserving the strict retail domain guardrails (date + financial measure) preventing scope creep into arbitrary non-commercial files.
+  * *Rejected:* Complete unstructured schema-free ingestion of any file (hospital, sports, payroll) without domain validation; and rigidly rejecting files with non-canonical attributes.
+  * *Files to be affected:* `app/infra/schema.sql`, `app/packages/ingest/clean.py`, `app/packages/agent/tools/handlers.py`.
