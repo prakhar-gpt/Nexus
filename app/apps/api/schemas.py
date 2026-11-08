@@ -21,3 +21,4 @@ class MappingUpdate(BaseModel):
 class FeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     reason: str | None = None
+

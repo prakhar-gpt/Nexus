@@ -71,3 +71,4 @@ def chat_endpoint(workspace_id: int, body: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+

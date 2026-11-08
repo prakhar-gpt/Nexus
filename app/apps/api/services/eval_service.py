@@ -33,3 +33,4 @@ def create_eval_run() -> dict:
         f"{'true' if passed else 'false'}, {sql_literal(payload)}::jsonb)"
     )
     return {"eval_run_id": eval_run_id, "passed": passed, "scores": scores}
+

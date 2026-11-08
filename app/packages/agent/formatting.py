@@ -37,3 +37,4 @@ def chunk_text(message) -> str:
     if getattr(message, "tool_call_chunks", None):
         return ""
     return extract_visible_text(message)
+

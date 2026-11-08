@@ -19,3 +19,4 @@ def list_eval_runs_endpoint():
 def create_eval_run_endpoint():
     """Trigger an evaluation run against the golden set."""
     return create_eval_run()
+

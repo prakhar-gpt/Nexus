@@ -18,3 +18,4 @@ def agent_node(state: AgentState, model, system_prompt: str) -> dict:
     except Exception:
         response = AIMessage(content="The model could not be reached.")
     return {"messages": [response]}
+

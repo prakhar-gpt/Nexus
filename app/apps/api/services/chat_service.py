@@ -137,3 +137,4 @@ def generate_chat_events(workspace_id: int, question: str, stream_func):
             "answer": result.get("answer") or "",
         },
     )
+

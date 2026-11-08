@@ -137,3 +137,4 @@ def get_workspace_detail(workspace_id: int) -> dict:
         "mappings": get_mappings(int(latest)) if latest else [],
         "turns": get_turns(workspace_id),
     }
+

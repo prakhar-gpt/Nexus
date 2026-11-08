@@ -135,3 +135,4 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
         "summary": summary[0] if summary else {},
         "mappings": get_mappings(upload_id),
     }
+

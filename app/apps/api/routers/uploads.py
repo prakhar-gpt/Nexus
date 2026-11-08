@@ -41,3 +41,4 @@ def put_mapping_endpoint(upload_id: int, body: MappingUpdate):
 def upload_health_endpoint(upload_id: int, download: str | None = None):
     """Retrieve upload summary or download quarantine report CSV."""
     return get_upload_health_summary(upload_id, download=download)
+

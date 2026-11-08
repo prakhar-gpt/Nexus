@@ -25,3 +25,4 @@ def read_kb(path: str) -> str:
 
 
 TOOLS = [get_schema, run_sql, read_kb]
+
