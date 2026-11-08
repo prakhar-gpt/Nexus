@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { LogIn, Sparkles, UserPlus } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,117 +22,270 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { login, signup } = useAuth()
   const [activeTab, setActiveTab] = useState<"login" | "signup">("login")
 
-  const [email, setEmail] = useState("")
-  const [name, setName] = useState("")
-  const [password, setPassword] = useState("")
+  // Login fields
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [loginLoading, setLoginLoading] = useState(false)
 
-  function handleLoginSubmit(e: React.FormEvent) {
+  // Signup fields
+  const [signupName, setSignupName] = useState("")
+  const [signupEmail, setSignupEmail] = useState("")
+  const [signupPassword, setSignupPassword] = useState("")
+  const [signupError, setSignupError] = useState<string | null>(null)
+  const [signupLoading, setSignupLoading] = useState(false)
+
+  async function handleLoginSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (email.trim()) {
-      login(email.trim())
+    setLoginError(null)
+
+    if (!loginEmail.trim()) {
+      setLoginError("Email is required.")
+      return
+    }
+    if (!loginPassword) {
+      setLoginError("Password is required.")
+      return
+    }
+
+    setLoginLoading(true)
+    try {
+      // Simulate quick auth resolve
+      await new Promise((r) => setTimeout(r, 400))
+      login(loginEmail.trim())
       onClose()
+    } catch {
+      setLoginError("Invalid email or password.")
+    } finally {
+      setLoginLoading(false)
     }
   }
 
-  function handleSignupSubmit(e: React.FormEvent) {
+  async function handleSignupSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (email.trim() && name.trim()) {
-      signup(email.trim(), name.trim())
+    setSignupError(null)
+
+    if (!signupName.trim()) {
+      setSignupError("Full name is required.")
+      return
+    }
+    if (!signupEmail.trim()) {
+      setSignupError("Work email is required.")
+      return
+    }
+    if (signupPassword.length < 6) {
+      setSignupError("Password must be at least 6 characters.")
+      return
+    }
+
+    setSignupLoading(true)
+    try {
+      await new Promise((r) => setTimeout(r, 400))
+      signup(signupEmail.trim(), signupName.trim())
       onClose()
+    } catch {
+      setSignupError("Account creation failed. Try another email.")
+    } finally {
+      setSignupLoading(false)
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">Nexus Copilot</DialogTitle>
+      <DialogContent className="max-w-[400px] rounded-[var(--radius)] border border-border bg-popover p-6 shadow-none">
+        <DialogHeader className="gap-1 p-0 text-left">
+          <DialogTitle className="text-base font-medium text-foreground">
+            Nexus
+          </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Sign in to access your retail diligence data rooms and audit history.
+            Commercial due diligence & retail analytics
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="login" className="text-xs">Sign In</TabsTrigger>
-            <TabsTrigger value="signup" className="text-xs">Create Account</TabsTrigger>
+        <Tabs
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val as "login" | "signup")
+            setLoginError(null)
+            setSignupError(null)
+          }}
+          className="w-full mt-4"
+        >
+          <TabsList className="grid w-full grid-cols-2 bg-muted/60 p-1 border border-border">
+            <TabsTrigger
+              value="login"
+              className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground"
+            >
+              Sign in
+            </TabsTrigger>
+            <TabsTrigger
+              value="signup"
+              className="text-xs data-[state=active]:bg-card data-[state=active]:text-foreground"
+            >
+              Create account
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="login">
+          <TabsContent value="login" className="mt-4">
             <form onSubmit={handleLoginSubmit} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">Email</label>
+                <label className="text-xs font-medium text-foreground">
+                  Email
+                </label>
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="analyst@bain.com"
-                  required
-                  className="h-8 rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={loginEmail}
+                  onChange={(e) => {
+                    setLoginEmail(e.target.value)
+                    setLoginError(null)
+                  }}
+                  placeholder="analyst@firm.com"
+                  autoFocus
+                  disabled={loginLoading}
+                  className="h-8 border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">Password</label>
+                <label className="text-xs font-medium text-foreground">
+                  Password
+                </label>
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={loginPassword}
+                  onChange={(e) => {
+                    setLoginPassword(e.target.value)
+                    setLoginError(null)
+                  }}
                   placeholder="••••••••"
-                  required
-                  className="h-8 rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  disabled={loginLoading}
+                  className="h-8 border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
-              <Button type="submit" size="sm" className="w-full text-xs mt-2">
-                <LogIn className="h-3.5 w-3.5 mr-1.5" />
-                Sign In
-              </Button>
+              {loginError ? (
+                <p role="alert" className="text-xs text-destructive">
+                  {loginError}
+                </p>
+              ) : null}
+
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={loginLoading}
+                  className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={loginLoading}
+                  className="h-8 px-3 text-xs"
+                >
+                  {loginLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Signing in…
+                    </>
+                  ) : (
+                    "Sign in"
+                  )}
+                </Button>
+              </div>
             </form>
           </TabsContent>
 
-          <TabsContent value="signup">
+          <TabsContent value="signup" className="mt-4">
             <form onSubmit={handleSignupSubmit} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">Full Name</label>
+                <label className="text-xs font-medium text-foreground">
+                  Full name
+                </label>
                 <input
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={signupName}
+                  onChange={(e) => {
+                    setSignupName(e.target.value)
+                    setSignupError(null)
+                  }}
                   placeholder="Alex Mercer"
-                  required
-                  className="h-8 rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                  disabled={signupLoading}
+                  className="h-8 border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">Work Email</label>
+                <label className="text-xs font-medium text-foreground">
+                  Work email
+                </label>
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="alex.mercer@bain.com"
-                  required
-                  className="h-8 rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={signupEmail}
+                  onChange={(e) => {
+                    setSignupEmail(e.target.value)
+                    setSignupError(null)
+                  }}
+                  placeholder="alex.mercer@firm.com"
+                  disabled={signupLoading}
+                  className="h-8 border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-foreground">Password</label>
+                <label className="text-xs font-medium text-foreground">
+                  Password
+                </label>
                 <input
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a password"
-                  required
-                  className="h-8 rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={signupPassword}
+                  onChange={(e) => {
+                    setSignupPassword(e.target.value)
+                    setSignupError(null)
+                  }}
+                  placeholder="Minimum 6 characters"
+                  disabled={signupLoading}
+                  className="h-8 border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
-              <Button type="submit" size="sm" className="w-full text-xs mt-2">
-                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                Create Account
-              </Button>
+              {signupError ? (
+                <p role="alert" className="text-xs text-destructive">
+                  {signupError}
+                </p>
+              ) : null}
+
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                  disabled={signupLoading}
+                  className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={signupLoading}
+                  className="h-8 px-3 text-xs"
+                >
+                  {signupLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Creating account…
+                    </>
+                  ) : (
+                    "Create account"
+                  )}
+                </Button>
+              </div>
             </form>
           </TabsContent>
         </Tabs>

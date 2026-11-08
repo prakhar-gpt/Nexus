@@ -1,6 +1,5 @@
 "use client"
 
-import { Database, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -8,8 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { IngestionSection } from "@/components/sidebar/ingestion-section"
-import { type Mapping } from "@/lib/api"
+import { Dropzone } from "@/components/dropzone"
+import { PipelineStepper } from "@/components/pipeline-stepper"
+import { MappingTable } from "@/components/mapping-table"
+import { API_URL, type Mapping } from "@/lib/api"
+import { Download } from "lucide-react"
 
 interface DataRoomModalProps {
   isOpen: boolean
@@ -18,17 +20,16 @@ interface DataRoomModalProps {
   fileName: string | null
   status: string | null
   reason: string | null
-  stages: { stage: string; status: string }[]
+  stages: { stage: string; status: string; reason?: string }[]
   mappings: Mapping[]
   uploadId: string | null
-  quarantine: { row_number: string; reason: string }[]
+  quarantine: { row_number: string; reason: string; raw_value?: string }[]
   confirming: boolean
   onFile: (file: File) => void
-  onConfirm: (decisions: Record<string, string>) => void
+  onConfirm: (decisions: Record<string, string>) => Promise<boolean>
   healthSummary?: {
     rows: string | null
     dates: string | null
-    revenue?: string | null
   }
 }
 
@@ -48,52 +49,130 @@ export function DataRoomModal({
   onConfirm,
   healthSummary,
 }: DataRoomModalProps) {
+  const isUploading = status === "uploading" || (stages.length > 0 && status !== "loaded" && status !== "rejected")
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2 mb-1">
-            <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary">
-              <Database className="h-4 w-4" />
-            </div>
-            <DialogTitle className="text-base font-semibold">{roomName} Dataset</DialogTitle>
-          </div>
+      <DialogContent className="max-w-[720px] max-h-[85vh] overflow-y-auto rounded-[var(--radius)] border border-border bg-popover p-6 shadow-none">
+        <DialogHeader className="gap-1 p-0 text-left pb-4 border-b border-border">
+          <DialogTitle className="text-base font-medium text-foreground">
+            {roomName} dataset
+          </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Manage spreadsheet ingestion, column mapping decisions, and quarantine reports.
+            Manage spreadsheet ingestion, column mapping decisions, and quarantine audits.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Quick Health Stats */}
-        <div className="grid grid-cols-2 gap-2 p-3 bg-muted/40 rounded-lg text-xs">
-          <div>
-            <span className="text-muted-foreground block text-[11px]">Rows Loaded</span>
-            <span className="font-semibold text-foreground">{healthSummary?.rows ?? "0"}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground block text-[11px]">Date Range</span>
-            <span className="font-semibold text-foreground font-mono text-[11px]">
-              {healthSummary?.dates ?? "None"}
+        <div className="flex flex-col divide-y divide-border pt-1">
+          {/* Section 1: Summary */}
+          <div className="py-4">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-2">
+              Dataset summary
             </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="border border-border/60 bg-muted/20 p-2.5">
+                <span className="text-[11px] text-muted-foreground block">Rows loaded</span>
+                <span className="font-mono text-sm font-medium tabular-nums text-foreground">
+                  {healthSummary?.rows ?? "0 rows"}
+                </span>
+              </div>
+              <div className="border border-border/60 bg-muted/20 p-2.5">
+                <span className="text-[11px] text-muted-foreground block">Date range</span>
+                <span className="font-mono text-xs font-medium tabular-nums text-foreground truncate block">
+                  {healthSummary?.dates ?? "None"}
+                </span>
+              </div>
+              <div className="border border-border/60 bg-muted/20 p-2.5">
+                <span className="text-[11px] text-muted-foreground block">Last upload</span>
+                <span className="font-mono text-xs font-medium text-foreground truncate block">
+                  {fileName ?? "No file"}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Ingestion & Quarantine Pipeline */}
-        <div className="py-2">
-          <IngestionSection
-            fileName={fileName}
-            status={status}
-            reason={reason}
-            stages={stages}
-            mappings={mappings}
-            uploadId={uploadId}
-            quarantine={quarantine}
-            confirming={confirming}
-            onFile={onFile}
-            onConfirm={onConfirm}
-          />
+          {/* Section 2: Dropzone */}
+          <div className="py-4">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-2">
+              Upload spreadsheet
+            </span>
+            <Dropzone
+              onFileSelect={onFile}
+              disabled={isUploading}
+              currentFileName={fileName}
+              errorReason={reason}
+            />
+          </div>
+
+          {/* Section 3: Pipeline stepper */}
+          {(stages.length > 0 || status) && (
+            <div className="py-4">
+              <PipelineStepper
+                stages={stages}
+                overallStatus={status}
+                overallReason={reason}
+              />
+            </div>
+          )}
+
+          {/* Section 4: Column mapping */}
+          {mappings.length > 0 && (
+            <div className="py-4">
+              <MappingTable
+                mappings={mappings}
+                confirming={confirming}
+                onConfirm={onConfirm}
+              />
+            </div>
+          )}
+
+          {/* Section 5: Quarantine (hidden if quarantine is empty) */}
+          {quarantine.length > 0 && (
+            <div className="py-4 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Quarantine ({quarantine.length}{" "}
+                  {quarantine.length === 1 ? "row set aside" : "rows set aside"})
+                </span>
+                {uploadId ? (
+                  <a
+                    href={`${API_URL}/uploads/${uploadId}/health?download=quarantine`}
+                    className="inline-flex items-center gap-1 text-[11px] text-foreground hover:underline"
+                  >
+                    <Download className="h-3 w-3" />
+                    <span>Download report CSV</span>
+                  </a>
+                ) : null}
+              </div>
+
+              <div className="overflow-x-auto border border-border">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40 font-mono text-[11px] text-muted-foreground">
+                      <th className="py-1.5 px-3 w-20">Row</th>
+                      <th className="py-1.5 px-3">Reason</th>
+                      <th className="py-1.5 px-3">Raw value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {quarantine.slice(0, 10).map((q, idx) => (
+                      <tr key={idx} className="hover:bg-muted/20">
+                        <td className="py-1.5 px-3 font-mono tabular-nums text-muted-foreground">
+                          {q.row_number}
+                        </td>
+                        <td className="py-1.5 px-3 text-destructive">{q.reason}</td>
+                        <td className="py-1.5 px-3 font-mono text-[11px] text-muted-foreground truncate max-w-xs">
+                          {q.raw_value ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
   )
 }
-

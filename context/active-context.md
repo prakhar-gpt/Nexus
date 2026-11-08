@@ -1,19 +1,15 @@
-The question path is documented in `context/agent/`. Start at `context/agent/README.md`. Each step has its own file detailing entry, model selection, thread state, model routing, tools execution, SQL execution, checker verification, streaming, and UI rendering.
+The question path is documented in `context/agent/`. Start at `context/agent/README.md`. Each step has its own file detailing entry, model selection, thread state, model routing, tools execution, SQL execution, checker verification, streaming, and UI rendering. The complete design system is documented in `context/design-language.md`.
 
 The backend is fully modularized with strict separation of concerns across `app/packages/agent/` (`state.py`, `formatting.py`, `tools/`, `nodes/`, `graph.py`) and `app/apps/api/` (`schemas.py`, `sse.py`, `services/`, `routers/`, `main.py`).
 
-The frontend features a clean two-level navigation model:
-1. **Data Rooms Hub (`WorkspacesView`)**: A clean landing page displaying all data rooms with file & query metrics, quick creation, and deletion.
-2. **Focused Chat Interface**: When entering a data room, the user enters a clean conversation environment. The left sidebar is strictly focused on:
-   - "← Data Rooms" navigation button to return to the hub.
-   - Active data room card with a "Dataset" button to open the spreadsheet ingestion modal on demand.
-   - Clean, lightweight thread list (+ New Chat, thread switching, thread deletion).
-   - User profile with instant working Log Out.
-3. Developer evaluation metrics (`SQL: 100%`, `Numbers: 100%`, `Refusals: 100%`) were removed from the user interface and remain an offline CI harness under `app/eval/runner.py`.
+The frontend redesign embodies the Claude.ai design language (calm, text-first, defensible):
+1. **Data Rooms Hub (`WorkspacesView`)**: Clean 960px container, slim 56px top row, first-tile "New data room" dashed action, and responsive room cards with file/query metrics, date, and delete confirmation.
+2. **Focused Chat Interface**: Centered 720px column. Assistant answers are rendered as open prose (no bubbles, no background, 16px/1.65 line-height). Verified answers remain completely unbadged. Tool lines display quietly without circle dots.
+3. **Progressive Audit Disclosure**: Inline `AuditBar` toggling SQL syntax highlighting, compact result table with TSV copy, lazy-loaded Recharts bar chart, source references, and up/down feedback with optional reason input.
+4. **Dataset Management (`DataRoomModal`)**: 720px modal featuring dropzone validation, pipeline stepper (safety → structure → mapping → load), uncertain column mapping table (<70% confidence), and quarantine anomaly table with CSV download.
+5. **Fixed Warm Stone Palette**: Preserved existing token hierarchy with only two semantic status tokens (`--ok` and `--warn`) passing WCAG AA. JetBrains Mono font and square corners (`--radius: 0`).
 
 The UI runs on `http://localhost:3000` and the FastAPI backend runs on `http://localhost:8000`.
-
-A second `Superstore.csv` upload on workspace 1 is waiting for confirmation of `Sales` → `revenue`. Confirming it would load those rows again on top of the 9800 already stored.
 
 Unresolved / Planned for Implementation:
 - **Deterministic Python Math Tool (`run_python`)**: Sandboxed execution for compound growth and statistical metrics, registering outputs into `state` and expanding `checker.py` to trace Python results without caveats.

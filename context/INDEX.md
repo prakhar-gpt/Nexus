@@ -21,6 +21,7 @@ files below. A later file with the same text was checked on 8 November
 | System design, stack, patterns | architecture.md | Check before structural changes |
 | Module roles, responsibilities, rules | agents.md | Check before touching unfamiliar code |
 | Past decisions, tradeoffs, rejected alternatives | decisions.md | Append after approved decisions |
+| Design language, tokens, typography, UI patterns | design-language.md | Claude-like design system and specs |
 | Build plan, phases, milestones | roadmap.md | Update after completing a phase |
 | What's in progress / unresolved right now | active-context.md | Overwrite, don't append |
 | How a question becomes an answer | agent/README.md | Read the step files in order the first time. Then open only the step you are changing |
@@ -33,6 +34,7 @@ context/
 ├── architecture.md       ← system design and stack
 ├── agents.md             ← module rules and responsibilities
 ├── decisions.md          ← dated decision log
+├── design-language.md    ← Claude-like design system & specs
 ├── roadmap.md            ← build plan and progress
 ├── active-context.md     ← current unresolved state
 └── agent/                ← one file per step of a question

@@ -34,19 +34,31 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+      <AlertDialogContent className="max-w-[420px] rounded-[var(--radius)] border border-border bg-popover p-6 shadow-none">
+        <AlertDialogHeader className="text-left gap-1.5 p-0">
+          <AlertDialogTitle className="text-base font-medium text-foreground">
+            {title}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-xs text-muted-foreground leading-normal">
+            {description}
+          </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={onClose}>{cancelText}</AlertDialogCancel>
+
+        <AlertDialogFooter className="mt-6 flex-row justify-end gap-2 border-0 bg-transparent p-0">
+          <AlertDialogCancel
+            variant="ghost"
+            onClick={onClose}
+            className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {cancelText}
+          </AlertDialogCancel>
           <AlertDialogAction
             variant={variant}
             onClick={() => {
               onConfirm()
               onClose()
             }}
+            className="h-8 px-3 text-xs"
           >
             {confirmText}
           </AlertDialogAction>
@@ -55,4 +67,3 @@ export function ConfirmDialog({
     </AlertDialog>
   )
 }
-

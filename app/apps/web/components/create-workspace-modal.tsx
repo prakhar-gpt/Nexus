@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Database, Plus } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,7 +15,7 @@ import {
 interface CreateWorkspaceModalProps {
   isOpen: boolean
   onClose: () => void
-  onCreate: (name: string) => void
+  onCreate: (name: string) => Promise<boolean | void>
 }
 
 export function CreateWorkspaceModal({
@@ -24,60 +24,96 @@ export function CreateWorkspaceModal({
   onCreate,
 }: CreateWorkspaceModalProps) {
   const [name, setName] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (name.trim()) {
-      onCreate(name.trim())
-      setName("")
-      onClose()
+    const trimmed = name.trim()
+    if (!trimmed) return
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await onCreate(trimmed)
+      if (result === false) {
+        setError("Could not create data room. Try again.")
+      } else {
+        setName("")
+        onClose()
+      }
+    } catch (err: any) {
+      setError(err?.message || "Could not create data room.")
+    } finally {
+      setSubmitting(false)
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[420px]">
+      <DialogContent className="max-w-[420px] rounded-[var(--radius)] border border-border bg-popover p-6 shadow-none">
         <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary">
-                <Database className="h-4 w-4" />
-              </div>
-              <DialogTitle className="text-base font-semibold">New Data Room</DialogTitle>
-            </div>
+          <DialogHeader className="gap-1 p-0 text-left">
+            <DialogTitle className="text-base font-medium text-foreground">
+              New data room
+            </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Create an isolated workspace to upload diligence datasets and run audits.
+              Isolated workspace for querying sales data, inspecting SQL, and auditing metrics.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4">
-            <label className="text-xs font-medium text-foreground block mb-1.5">
-              Data Room Name
+            <label
+              htmlFor="room-name-input"
+              className="text-xs font-medium text-foreground block mb-1.5"
+            >
+              Name
             </label>
             <input
+              id="room-name-input"
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Project Apollo Diligence"
+              onChange={(e) => {
+                setName(e.target.value)
+                if (error) setError(null)
+              }}
+              placeholder="e.g. Project Apollo diligence"
               autoFocus
-              required
-              className="h-8 w-full rounded border border-input bg-background px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              disabled={submitting}
+              className="h-8 w-full border border-input bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
             />
+            {error ? (
+              <p role="alert" className="mt-1.5 text-xs text-destructive">
+                {error}
+              </p>
+            ) : null}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="flex-row justify-end gap-2 border-0 bg-transparent p-0">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="text-xs h-8"
+              disabled={submitting}
+              className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="text-xs h-8">
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              Create Room
+            <Button
+              type="submit"
+              size="sm"
+              disabled={!name.trim() || submitting}
+              className="h-8 px-3 text-xs font-medium"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  Creating…
+                </>
+              ) : (
+                "Create"
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -85,4 +121,3 @@ export function CreateWorkspaceModal({
     </Dialog>
   )
 }
-

@@ -1,30 +1,24 @@
 "use client"
 
-import dynamic from "next/dynamic"
-import { useEffect, useRef, useState } from "react"
-import { ArrowUp, ThumbsDown, ThumbsUp } from "lucide-react"
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  memo,
+} from "react"
+import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkBreaks from "remark-breaks"
 import remarkGfm from "remark-gfm"
 
-import { SUGGESTIONS } from "@/components/suggestions"
-import { API_URL, type TraceStep } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { ToolLine } from "@/components/tool-line"
+import { AuditBar } from "@/components/audit-bar"
+import { Composer, type ComposerHandle } from "@/components/composer"
+import type { AnswerBadge } from "@/components/status-badge"
+import type { TraceStep } from "@/lib/api"
 
-const AnswerChart = dynamic(
-  () => import("@/components/answer-chart").then((mod) => mod.AnswerChart),
-  { ssr: false },
-)
-
-export type AnswerBadge = "waiting" | "verified" | "caveat" | "refused" | "unanswered"
+export type { AnswerBadge }
 
 export type ChatMessage = {
   id: string
@@ -34,216 +28,376 @@ export type ChatMessage = {
   sql?: string | null
   rowCount?: number | null
   runId?: number | null
-  rows?: Record<string, string>[]
+  rows?: Record<string, string | number>[]
   activity?: TraceStep[]
+  untraced?: string[]
+  missingMeasure?: string
+  sources?: { document: string; page?: number | string }[]
   feedback?: "up" | "down"
+  feedbackReason?: string
+  error?: string | null
+  streamDropped?: boolean
+  isFirstInRun?: boolean
 }
 
-const NOTE: Partial<Record<AnswerBadge, string>> = {
-  caveat: "A figure in this answer is not in the query result.",
-  refused: "This question was refused.",
+export const DEFAULT_SUGGESTIONS = [
+  "What is total revenue by category?",
+  "Top 10 customers by revenue",
+  "Which sub-categories generate the highest sales?",
+  "Monthly sales trend for 2017",
+] as const
+
+interface ChatPaneProps {
+  draft: string
+  messages: ChatMessage[]
+  busy: boolean
+  datasetName?: string
+  suggestions?: readonly string[]
+  onDraft: (value: string) => void
+  onAsk: (question: string) => void
+  onAbort?: () => void
+  onRetry?: (messageId: string) => void
+  onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
+  onToast: (message: string) => void
 }
 
 export function ChatPane({
   draft,
   messages,
   busy,
+  datasetName = "Superstore",
+  suggestions = DEFAULT_SUGGESTIONS,
   onDraft,
   onAsk,
+  onAbort,
+  onRetry,
   onFeedback,
-}: {
-  draft: string
-  messages: ChatMessage[]
-  busy: boolean
-  onDraft: (value: string) => void
-  onAsk: (question: string) => void
-  onFeedback: (runId: number, rating: "up" | "down") => void
-}) {
-  const threadEnd = useRef<HTMLDivElement>(null)
+  onToast,
+}: ChatPaneProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const composerRef = useRef<ComposerHandle>(null)
+  const [showScrollBottom, setShowScrollBottom] = useState(false)
+  const isNearBottomRef = useRef(true)
+
+  // Find last user question for ArrowUp recall
+  const lastUserQuestion = [...messages]
+    .reverse()
+    .find((m) => m.role === "user")?.text
+
+  // Check scroll position to decide auto-scroll vs "↓ New content" pill
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    const isNear = distanceFromBottom <= 80
+    isNearBottomRef.current = isNear
+    if (isNear && showScrollBottom) {
+      setShowScrollBottom(false)
+    }
+  }, [showScrollBottom])
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    setShowScrollBottom(false)
+  }, [])
+
+  // Auto-scroll only when user is within 80px from bottom; otherwise show pill
   useEffect(() => {
-    threadEnd.current?.scrollIntoView({ block: "nearest" })
-  }, [messages])
+    const el = scrollContainerRef.current
+    if (!el) return
+
+    if (isNearBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+    } else if (busy) {
+      setShowScrollBottom(true)
+    }
+  }, [messages, busy])
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+    <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+      {/* Scrollable messages area */}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-8"
+      >
         {messages.length === 0 ? (
-          <div className="mx-auto flex h-full w-full max-w-2xl flex-col justify-center px-6">
-            <h1 className="text-4xl tracking-tight text-foreground/90">
+          /* Empty state: Vertically centered heading + 4 suggestions */
+          <div className="mx-auto flex h-full w-full max-w-[720px] flex-col justify-center py-12">
+            <h1 className="text-[32px] font-medium tracking-tight text-foreground">
               What should we look at?
             </h1>
-            <div className="mt-8 flex flex-col">
-              {SUGGESTIONS.map((question) => (
+
+            <div className="mt-8 flex flex-col border-y border-border divide-y divide-border">
+              {suggestions.map((question) => (
                 <button
                   key={question}
                   type="button"
-                  className="border-b border-border py-3 text-left text-[15px] text-muted-foreground transition-colors hover:text-foreground"
                   onClick={() => onAsk(question)}
+                  className="group flex w-full items-center justify-between py-3.5 text-left text-[15px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:bg-accent/40"
                 >
-                  {question}
+                  <span className="font-normal">{question}</span>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0 ml-2" />
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-10">
-            {messages.map((message) =>
-              message.role === "user" ? (
-                <p
+          /* Message List in centered 720px column */
+          <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 pb-4">
+            {messages.map((message, index) => {
+              // Tag the first assistant message in a run
+              const isFirstInRun =
+                message.role === "assistant" &&
+                (index === 0 || messages[index - 1]?.role === "user")
+
+              return (
+                <MessageItem
                   key={message.id}
-                  className="ml-auto max-w-[34rem] bg-muted px-4 py-2.5 text-[15px] leading-relaxed"
-                >
-                  {message.text}
-                </p>
-              ) : (
-                <AssistantMessage
-                  key={message.id}
-                  message={message}
+                  message={{ ...message, isFirstInRun }}
+                  isStreaming={busy && index === messages.length - 1}
+                  onRetry={onRetry}
                   onFeedback={onFeedback}
+                  onToast={onToast}
                 />
-              ),
-            )}
-            <div ref={threadEnd} />
+              )
+            })}
           </div>
         )}
       </div>
-      <form
-        className="mx-auto w-full max-w-2xl px-4 pb-5"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!busy) {
-            onAsk(draft)
-          }
-        }}
-      >
-        <div className="flex items-end gap-2 border border-border bg-card px-3 py-2">
-          <textarea
-            value={draft}
-            rows={1}
-            placeholder="Ask about this data room"
-            aria-label="Question"
-            className="max-h-40 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-[15px] leading-relaxed outline-none placeholder:text-muted-foreground"
-            onChange={(event) => onDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault()
-                if (!busy) {
-                  onAsk(draft)
-                }
-              }
-            }}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            className="mb-1"
-            disabled={busy || draft.trim().length === 0}
-            aria-label="Send"
+
+      {/* Floating "↓ New content" pill when scrolled up */}
+      {showScrollBottom && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="flex items-center gap-1.5 border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-xs hover:bg-accent transition-all cursor-pointer"
           >
-            <ArrowUp />
-          </Button>
+            <ArrowDown className="h-3 w-3" />
+            <span>New content</span>
+          </button>
         </div>
-      </form>
+      )}
+
+      {/* Pinned Composer */}
+      <Composer
+        ref={composerRef}
+        draft={draft}
+        busy={busy}
+        lastQuestion={lastUserQuestion}
+        placeholder={`Ask a question about ${datasetName}…`}
+        onDraft={onDraft}
+        onAsk={onAsk}
+        onAbort={onAbort}
+      />
     </section>
   )
 }
 
-function AssistantMessage({
-  message,
-  onFeedback,
-}: {
+interface MessageItemProps {
   message: ChatMessage
-  onFeedback: (runId: number, rating: "up" | "down") => void
-}) {
-  const [open, setOpen] = useState(false)
-  const rows = message.rows ?? []
-  const activity = (message.activity ?? []).filter((step) => step.tool !== "checker")
-  const activeStep = activity.length > 0 ? activity[activity.length - 1] : null
-  const waiting = message.badge === "waiting" && !message.text && !activeStep
-  const note = message.badge ? NOTE[message.badge] : undefined
-  const hasDetail = Boolean(message.sql) || rows.length > 0
-  return (
-    <div className="max-w-2xl text-[15px] leading-7">
-      {!message.text && activeStep ? (
-        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-          <span>{activeStep.detail ?? activeStep.tool}</span>
-        </div>
-      ) : null}
-      {waiting ? (
-        <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground animate-pulse">
-          <span>Looking at the table…</span>
-        </div>
-      ) : null}
-      {message.text ? <AnswerBody text={message.text} /> : null}
-      {note ? <p className="mt-2 text-sm text-destructive">{note}</p> : null}
-      {hasDetail ? (
-        <button
-          type="button"
-          className="mt-3 text-sm text-muted-foreground hover:text-foreground"
-          onClick={() => setOpen((current) => !current)}
-        >
-          {open ? "Hide the query" : "Show the query"}
-        </button>
-      ) : null}
-      {open ? <QueryDetail message={message} rows={rows} /> : null}
-      {message.runId != null ? (
-        <div className="mt-2 flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={message.feedback != null}
-            aria-label="Thumbs up"
-            aria-pressed={message.feedback === "up"}
-            onClick={() => onFeedback(message.runId as number, "up")}
-          >
-            <ThumbsUp />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={message.feedback != null}
-            aria-label="Thumbs down"
-            aria-pressed={message.feedback === "down"}
-            onClick={() => onFeedback(message.runId as number, "down")}
-          >
-            <ThumbsDown />
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  )
+  isStreaming: boolean
+  onRetry?: (messageId: string) => void
+  onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
+  onToast: (message: string) => void
 }
 
-function AnswerBody({ text }: { text: string }) {
+const MessageItem = memo(function MessageItem({
+  message,
+  isStreaming,
+  onRetry,
+  onFeedback,
+  onToast,
+}: MessageItemProps) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end w-full">
+        <div className="max-w-[80%] bg-accent text-accent-foreground px-4 py-2.5 text-[15px] leading-relaxed">
+          {message.text}
+        </div>
+      </div>
+    )
+  }
+
+  // Assistant Message
+  const hasTokens = Boolean(message.text)
+  const isComplete = !isStreaming && Boolean(message.badge && message.badge !== "waiting")
+
+  return (
+    <div className="w-full text-[16px] leading-[1.65] text-foreground">
+      {/* Small "Nexus" label appears above ONLY the first assistant message in a run */}
+      {message.isFirstInRun ? (
+        <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-1.5 select-none">
+          Nexus
+        </span>
+      ) : null}
+
+      {/* 1. Tool line (disappears completely when the first token arrives) */}
+      {!hasTokens ? (
+        <ToolLine
+          activity={message.activity}
+          isWaiting={message.badge === "waiting" || isStreaming}
+        />
+      ) : null}
+
+      {/* 2. Answer text with progressive markdown & blinking caret while streaming */}
+      {hasTokens ? (
+        <div className="prose-nexus text-[16px] leading-[1.65] text-foreground">
+          <RenderedMarkdown text={message.text} />
+          {isStreaming ? (
+            <span
+              className="inline-block w-[2px] h-[1em] bg-foreground align-middle animate-pulse ml-0.5"
+              aria-hidden="true"
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Dropped stream notice: "Connection lost. [Retry]" */}
+      {message.streamDropped ? (
+        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <span>Connection lost.</span>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={() => onRetry(message.id)}
+              className="font-medium text-foreground underline underline-offset-2 hover:opacity-80"
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Fatal error event in destructive-tinted row */}
+      {message.error ? (
+        <div
+          role="alert"
+          className="mt-3 flex items-center justify-between p-2.5 bg-destructive/10 border border-destructive/20 text-xs text-destructive"
+        >
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{message.error}</span>
+          </div>
+          {onRetry ? (
+            <button
+              type="button"
+              onClick={() => onRetry(message.id)}
+              className="inline-flex items-center gap-1 font-medium underline underline-offset-2"
+            >
+              <RefreshCw className="h-3 w-3" />
+              <span>Retry</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 3. Checker Audit Bar: fades in under answer after check */}
+      {(isComplete || (!isStreaming && (message.sql || (message.rows && message.rows.length > 0)))) && (
+        <AuditBar
+          badge={message.badge}
+          sql={message.sql}
+          rowCount={message.rowCount}
+          rows={message.rows}
+          untraced={message.untraced}
+          missingMeasure={message.missingMeasure}
+          sources={message.sources}
+          runId={message.runId}
+          feedback={message.feedback}
+          answerText={message.text}
+          onFeedback={onFeedback}
+          onToast={onToast}
+        />
+      )}
+    </div>
+  )
+})
+
+function RenderedMarkdown({ text }: { text: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
-        p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-        ul: ({ children }) => <ul className="mb-3 list-disc pl-5 last:mb-0">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-3 list-decimal pl-5 last:mb-0">{children}</ol>,
-        li: ({ children }) => <li className="my-0.5">{children}</li>,
-        strong: ({ children }) => <strong className="font-medium">{children}</strong>,
-        h1: ({ children }) => <p className="mb-2 font-medium">{children}</p>,
-        h2: ({ children }) => <p className="mb-2 font-medium">{children}</p>,
-        h3: ({ children }) => <p className="mb-2 font-medium">{children}</p>,
-        pre: ({ children }) => (
-          <pre className="mb-3 overflow-x-auto bg-muted px-3 py-2 text-[13px] last:mb-0">{children}</pre>
+        p: ({ children }) => <p className="mb-3.5 last:mb-0">{children}</p>,
+        ul: ({ children }) => (
+          <ul className="mb-3.5 list-disc pl-5 space-y-1 last:mb-0">{children}</ul>
         ),
-        code: ({ children }) => <code>{children}</code>,
+        ol: ({ children }) => (
+          <ol className="mb-3.5 list-decimal pl-5 space-y-1 last:mb-0">{children}</ol>
+        ),
+        li: ({ children }) => <li className="my-0.5">{children}</li>,
+        strong: ({ children }) => (
+          <strong className="font-medium text-foreground">{children}</strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        h1: ({ children }) => (
+          <h2 className="mb-2 text-lg font-medium text-foreground tracking-tight">
+            {children}
+          </h2>
+        ),
+        h2: ({ children }) => (
+          <h3 className="mb-2 text-base font-medium text-foreground tracking-tight">
+            {children}
+          </h3>
+        ),
+        h3: ({ children }) => (
+          <h4 className="mb-1.5 text-sm font-medium text-foreground">
+            {children}
+          </h4>
+        ),
+        pre: ({ children }) => (
+          <pre className="my-3 overflow-x-auto border border-border bg-muted/30 p-3 font-mono text-[13px] leading-relaxed last:mb-0">
+            {children}
+          </pre>
+        ),
+        code: ({ className, children }) => {
+          const isInline = !className
+          if (isInline) {
+            return (
+              <code className="font-mono text-[14px] bg-muted/60 px-1 py-0.5 border border-border/40">
+                {children}
+              </code>
+            )
+          }
+          return <code>{children}</code>
+        },
         table: ({ children }) => (
-          <div className="mb-3 overflow-x-auto last:mb-0">
-            <table className="w-full border-collapse text-sm">{children}</table>
+          <div className="my-3 overflow-x-auto border border-border last:mb-0">
+            <table className="w-full border-collapse text-xs tabular-nums">
+              {children}
+            </table>
           </div>
         ),
         th: ({ children }) => (
-          <th className="border-b border-border px-2 py-1 text-left font-medium">{children}</th>
+          <th className="border-b border-border bg-muted/40 px-3 py-1.5 text-left font-medium text-foreground">
+            {children}
+          </th>
         ),
-        td: ({ children }) => <td className="border-b border-border px-2 py-1 align-top">{children}</td>,
+        td: ({ children }) => {
+          const content = String(children ?? "")
+          const isNumeric = /^\s*[$€£]?\s*[\d,]+(\.\d+)?%?\s*$/.test(content)
+          return (
+            <td
+              className={`border-b border-border/60 px-3 py-1.5 align-top ${
+                isNumeric ? "text-right font-mono" : "text-left"
+              }`}
+            >
+              {children}
+            </td>
+          )
+        },
         a: ({ href, children }) => {
           const safe = href && /^https?:\/\//.test(href) ? href : undefined
           return safe ? (
-            <a href={safe} rel="noreferrer" className="underline underline-offset-4">
+            <a
+              href={safe}
+              rel="noreferrer"
+              target="_blank"
+              className="text-foreground underline underline-offset-4 hover:opacity-80"
+            >
               {children}
             </a>
           ) : (
@@ -255,56 +409,5 @@ function AnswerBody({ text }: { text: string }) {
     >
       {text}
     </ReactMarkdown>
-  )
-}
-
-function QueryDetail({
-  message,
-  rows,
-}: {
-  message: ChatMessage
-  rows: Record<string, string>[]
-}) {
-  const columns = Object.keys(rows[0] ?? {})
-  return (
-    <div className="mt-3 flex flex-col gap-3 text-sm">
-      {message.sql ? (
-        <pre className="overflow-x-auto bg-muted px-4 py-3 text-xs leading-relaxed">
-          {message.sql}
-        </pre>
-      ) : null}
-      {message.rowCount != null ? (
-        <p className="text-muted-foreground">{message.rowCount} rows</p>
-      ) : null}
-      {rows.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((column) => (
-                <TableHead key={column}>{column}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, index) => (
-              <TableRow key={index}>
-                {columns.map((column) => (
-                  <TableCell key={column}>{row[column]}</TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      ) : null}
-      <AnswerChart rows={rows} />
-      {message.runId != null ? (
-        <a
-          className="w-fit text-muted-foreground underline-offset-4 hover:underline"
-          href={`${API_URL}/results/${message.runId}/export`}
-        >
-          Export
-        </a>
-      ) : null}
-    </div>
   )
 }

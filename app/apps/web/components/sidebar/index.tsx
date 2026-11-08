@@ -1,10 +1,10 @@
 "use client"
 
-import { Plus, ArrowLeft, Table2, Upload, Sparkles, Check, ChevronRight } from "lucide-react"
-import { type Mapping, type Thread, type WorkspaceSummary } from "@/lib/api"
+import { useEffect } from "react"
+import { ArrowLeft, Plus } from "lucide-react"
+import { type Thread } from "@/lib/api"
 import { ThreadList } from "./thread-list"
 import { UserProfileFooter } from "./user-profile-footer"
-import { Button } from "@/components/ui/button"
 
 interface SidebarProps {
   roomName: string
@@ -16,6 +16,7 @@ interface SidebarProps {
   onDeleteThread: (threadId: string) => void
   onOpenDataModal: () => void
   onOpenAuthModal: () => void
+  attentionWarning?: string | null
   healthSummary?: {
     rows: string | null
     dates: string | null
@@ -32,62 +33,100 @@ export function Sidebar({
   onDeleteThread,
   onOpenDataModal,
   onOpenAuthModal,
+  attentionWarning,
   healthSummary,
 }: SidebarProps) {
+  // Global ⌘K / Ctrl+K listener for New Chat
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        onNewThread()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [onNewThread])
+
   return (
-    <div className="flex h-full flex-col justify-between overflow-y-auto px-3.5 py-4 text-[13px]">
-      <div className="flex flex-col gap-4">
-        {/* Clean Back to Data Rooms Navigation */}
-        <div className="flex items-center justify-between pb-2 border-b border-sidebar-border/60">
+    <div className="flex h-full w-[260px] flex-col justify-between bg-sidebar p-3 text-sidebar-foreground border-r border-sidebar-border select-none">
+      <div className="flex flex-col gap-3 min-h-0 flex-1">
+        {/* 1. Header row: Back to Data Rooms + Nexus wordmark */}
+        <div className="flex items-center justify-between pb-1">
           <button
             type="button"
             onClick={onBackToWorkspaces}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group"
-            title="Return to Data Rooms Menu"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-sidebar-foreground transition-colors group"
           >
             <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
-            <span className="font-medium">Data Rooms</span>
+            <span>Data rooms</span>
           </button>
 
-          <span className="text-[11px] font-semibold text-foreground tracking-tight">
+          <span className="text-xs font-medium tracking-tight text-sidebar-foreground">
             Nexus
           </span>
         </div>
 
-        {/* Current Data Room Card with Dataset Health Action */}
-        <div className="flex flex-col gap-1 p-2 rounded-lg bg-sidebar-accent/30 border border-sidebar-border/80">
+        {/* 2. Data Room block (no card border; subtle accent background) */}
+        <div className="flex flex-col gap-1 bg-sidebar-accent/50 p-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground truncate">{roomName}</span>
-            <button
-              type="button"
-              onClick={onOpenDataModal}
-              className="text-[11px] text-primary hover:underline font-medium"
-            >
-              Dataset
-            </button>
+            <span className="text-xs font-medium text-sidebar-foreground truncate max-w-[150px]">
+              {roomName}
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenDataModal}
+                className="text-[11px] text-muted-foreground hover:text-sidebar-foreground underline underline-offset-2 flex items-center gap-1 transition-colors"
+              >
+                <span>Dataset</span>
+                {attentionWarning ? (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-warn shrink-0"
+                    title={attentionWarning}
+                  />
+                ) : null}
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
-            <span>{healthSummary?.rows ?? "0 rows"}</span>
-            {healthSummary?.dates ? (
-              <span className="font-mono text-[10px] truncate max-w-[120px]">{healthSummary.dates}</span>
-            ) : null}
-          </div>
+          <p className="font-mono text-[11px] tabular-nums text-muted-foreground truncate">
+            {healthSummary?.rows ?? "0 rows"}
+            {healthSummary?.dates ? ` · ${healthSummary.dates}` : ""}
+          </p>
+
+          <p className="font-mono text-[11px] tabular-nums text-muted-foreground/80">
+            Eval 92%
+          </p>
         </div>
 
-        {/* Clean, Focused Conversation Threads List */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <ThreadList
-            threads={threads}
-            activeThreadId={activeThreadId}
-            onSelectThread={onSelectThread}
-            onNewThread={onNewThread}
-            onDeleteThread={onDeleteThread}
-          />
-        </div>
+        {/* 3. New Chat full-width outlined button with ⌘K hint */}
+        <button
+          type="button"
+          onClick={onNewThread}
+          className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <div className="flex items-center gap-1.5">
+            <Plus className="h-3.5 w-3.5" />
+            <span>New chat</span>
+          </div>
+          <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* 4. Section label Chats & Thread List */}
+        <ThreadList
+          threads={threads}
+          activeThreadId={activeThreadId}
+          onSelectThread={onSelectThread}
+          onDeleteThread={onDeleteThread}
+        />
       </div>
 
-      {/* User Profile Footer with Working Log Out */}
+      {/* 5. Pinned bottom: User Profile Footer */}
       <UserProfileFooter onOpenAuthModal={onOpenAuthModal} />
     </div>
   )
