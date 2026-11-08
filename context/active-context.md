@@ -2,16 +2,15 @@ The question path is documented in `context/agent/`. Start at `context/agent/REA
 
 The backend is fully modularized with strict separation of concerns across `app/packages/agent/` (`state.py`, `formatting.py`, `tools/`, `nodes/`, `graph.py`) and `app/apps/api/` (`schemas.py`, `sse.py`, `services/`, `routers/`, `main.py`).
 
-The UI is running on `http://localhost:3000` with clean Claude-style multi-thread chat management, workspace switching/creation, and Nexus branding. The FastAPI backend runs on `http://localhost:8000`.
+The frontend is refactored into senior-grade modular components under `app/apps/web/components/sidebar/` (`WorkspaceSelector`, `ThreadList`, `IngestionSection`), `WorkspacesModal`, `ChatPane`, and `AnswerChart`. The UI runs on `http://localhost:3000` with Claude-style thread management, thread deletion, full data room browsing, and minimal Nexus branding. The FastAPI backend runs on `http://localhost:8000`.
 
 A second `Superstore.csv` upload on workspace 1 is waiting for confirmation of `Sales` → `revenue`. Confirming it would load those rows again on top of the 9800 already stored.
 
 Resolved in this turn:
-- Added multi-thread conversation support per workspace: a data room holds clean data and uploads, and analysts can create multiple independent chat threads inside it.
-- Added Claude-style sidebar navigation: Data Room switcher with quick "+ New" room creation, thread list with active highlights and turn count badges, "+ New Chat" button, data source dropzone, and evaluation scorecard.
-- Added minimal, clean "Nexus Copilot" branding to the desktop sidebar and mobile header.
-- Added `/workspaces/{id}/threads` and `/workspaces/{id}/threads/{thread_id}/turns` endpoints.
-- Updated LangGraph checkpointer key to `ws-{id}-thread-{thread_id}` for clean conversation isolation.
+- Frontend architecture decomposition: deleted monolithic `data-pane.tsx` and created isolated components under `components/sidebar/` (`WorkspaceSelector`, `ThreadList`, `IngestionSection`, `index.tsx`).
+- Workspace Browser: added `WorkspacesModal` to view all data rooms with creation dates, file counts, and query metrics, with one-click switching and inline creation.
+- Chat Deletion: added `DELETE /workspaces/{id}/threads/{thread_id}` endpoint and UI delete button with hover reveal and confirmation.
+- Build verification: Next.js 16 production build compiles in ~3.2s with 0 errors.
 
 Unresolved / Planned for Implementation:
 - **Deterministic Python Math Tool (`run_python`)**: Sandboxed execution for compound growth and statistical metrics, registering outputs into `state` and expanding `checker.py` to trace Python results without caveats.

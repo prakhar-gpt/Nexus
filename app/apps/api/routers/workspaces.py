@@ -11,6 +11,7 @@ from apps.api.services.chat_service import generate_chat_events
 from apps.api.services.upload_service import handle_file_upload
 from apps.api.services.workspace_service import (
     create_workspace,
+    delete_thread,
     get_turns,
     get_workspace_detail,
     get_workspace_meta,
@@ -61,6 +62,14 @@ def get_thread_turns_endpoint(workspace_id: int, thread_id: str):
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
     return get_turns(workspace_id, thread_id)
+
+
+@router.delete("/workspaces/{workspace_id}/threads/{thread_id}")
+def delete_thread_endpoint(workspace_id: int, thread_id: str):
+    """Delete a conversation thread in a workspace."""
+    if get_workspace_meta(workspace_id) is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return delete_thread(workspace_id, thread_id)
 
 
 @router.post("/workspaces/{workspace_id}/uploads")

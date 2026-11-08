@@ -26,8 +26,18 @@ def get_workspace_meta(workspace_id: int) -> dict | None:
 
 
 def list_workspaces() -> list[dict]:
-    """List all available workspaces."""
-    return execute("SELECT id, name, created_at FROM workspaces ORDER BY id")
+    """List all available workspaces with stats."""
+    sql = (
+        "SELECT w.id, w.name, w.created_at, "
+        "count(DISTINCT u.id) AS upload_count, "
+        "count(DISTINCT r.id) AS run_count "
+        "FROM workspaces w "
+        "LEFT JOIN uploads u ON u.workspace_id = w.id "
+        "LEFT JOIN runs r ON r.workspace_id = w.id "
+        "GROUP BY w.id, w.name, w.created_at "
+        "ORDER BY w.id"
+    )
+    return execute(sql)
 
 
 def create_workspace(name: str) -> dict:
@@ -43,13 +53,14 @@ def create_workspace(name: str) -> dict:
 
 
 def list_threads(workspace_id: int) -> list[dict]:
-    """List conversation threads for a workspace derived from runs."""
+    """List active (non-deleted) conversation threads for a workspace derived from runs."""
     sql = (
         "SELECT coalesce(checker_result->>'thread_id', 'default') AS id, "
         "min(created_at)::text AS created_at, "
         "min(question) AS title, "
         "count(*) AS turn_count "
         f"FROM runs WHERE workspace_id = {int(workspace_id)} "
+        "AND (checker_result->>'deleted') IS NULL "
         "GROUP BY coalesce(checker_result->>'thread_id', 'default') "
         "ORDER BY min(created_at) DESC"
     )
@@ -68,6 +79,20 @@ def list_threads(workspace_id: int) -> list[dict]:
             }
         )
     return threads
+
+
+def delete_thread(workspace_id: int, thread_id: str) -> dict:
+    """Soft-delete a conversation thread by flagging runs in its json audit record."""
+    clean_thread = (thread_id or "default").strip()
+    patch = json.dumps({"deleted": True})
+    sql = (
+        f"UPDATE runs SET checker_result = checker_result || {sql_literal(patch)}::jsonb "
+        f"WHERE workspace_id = {int(workspace_id)} "
+        f"AND coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)} "
+        "RETURNING id"
+    )
+    updated = execute(sql)
+    return {"ok": True, "deleted_turns": len(updated)}
 
 
 def get_mappings(upload_id: int) -> list[dict]:
@@ -114,8 +139,11 @@ def get_health(workspace_id: int) -> dict:
 
 
 def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
-    """Fetch conversation turns for a workspace, optionally filtered by thread_id."""
-    where_clauses = [f"workspace_id = {int(workspace_id)}"]
+    """Fetch conversation turns for a workspace, optionally filtered by thread_id, excluding deleted."""
+    where_clauses = [
+        f"workspace_id = {int(workspace_id)}",
+        "(checker_result->>'deleted') IS NULL",
+    ]
     if thread_id:
         clean_thread = thread_id.strip()
         where_clauses.append(f"coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)}")

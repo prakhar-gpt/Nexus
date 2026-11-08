@@ -16,6 +16,14 @@ export type Thread = {
   turn_count: number
 }
 
+export type WorkspaceSummary = {
+  id: number
+  name: string
+  created_at: string
+  upload_count?: string | number
+  run_count?: string | number
+}
+
 export type Room = {
   id: number
   name: string
