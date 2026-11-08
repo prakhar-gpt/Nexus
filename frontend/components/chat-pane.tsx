@@ -216,7 +216,7 @@ const MessageItem = memo(function MessageItem({
   if (message.role === "user") {
     return (
       <div className="flex justify-end w-full">
-        <div className="max-w-[80%] bg-accent text-accent-foreground px-4 py-2.5 text-[15px] leading-relaxed">
+        <div className="max-w-[80%] bg-primary text-primary-foreground px-4 py-2.5 text-[15px] leading-relaxed">
           {message.text}
         </div>
       </div>
