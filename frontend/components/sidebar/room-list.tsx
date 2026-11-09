@@ -12,8 +12,8 @@ interface RoomListProps {
   loading?: boolean
   error?: string | null
   onRetry?: () => void
-  onSelectWorkspace?: (id: number) => void
-  onDeleteWorkspace?: (id: number) => Promise<void> | void
+  onSelectWorkspace?: (id: string | number) => void
+  onDeleteWorkspace?: (id: string | number) => Promise<void> | void
 }
 
 function categorizeDate(dateStr?: string): "Today" | "Yesterday" | "Earlier" {
@@ -37,7 +37,7 @@ export function RoomList({
   onDeleteWorkspace,
 }: RoomListProps) {
   const router = useRouter()
-  const [roomToDelete, setRoomToDelete] = useState<{ id: number; name: string } | null>(null)
+  const [roomToDelete, setRoomToDelete] = useState<{ id: string | number; name: string } | null>(null)
 
   // Sort by last activity / created_at newest first
   const sorted = [...workspaces].sort((a, b) => {
@@ -48,7 +48,7 @@ export function RoomList({
 
   const shouldGroup = sorted.length > 8
 
-  function handleOpenRoom(id: number) {
+  function handleOpenRoom(id: string | number) {
     if (onSelectWorkspace) {
       onSelectWorkspace(id)
     } else {

@@ -107,7 +107,7 @@ export default function RoomShellLayout({
   const datasets = useMemo(() => room?.datasets || [], [room?.datasets])
   const allDatasetIds = useMemo(() => datasets.map((d) => d.id), [datasets])
 
-  const [ephemeralSelectedIds, setEphemeralSelectedIds] = useState<number[] | null>(null)
+  const [ephemeralSelectedIds, setEphemeralSelectedIds] = useState<(string | number)[] | null>(null)
 
   // When on an existing thread, read its selection; otherwise read ephemeral or all
   const selectedDatasetIds = useMemo(() => {
@@ -140,7 +140,7 @@ export default function RoomShellLayout({
   )
 
   const handleToggleDataset = useCallback(
-    async (datasetId: number, checked: boolean) => {
+    async (datasetId: string | number, checked: boolean) => {
       const current = selectedDatasetIds
       const next = checked
         ? Array.from(new Set([...current, datasetId]))
@@ -173,7 +173,7 @@ export default function RoomShellLayout({
   )
 
   const handleRemoveDataset = useCallback(
-    async (datasetId: number) => {
+    async (datasetId: string | number) => {
       mutateRoom((curr: Room | undefined) => {
         if (!curr) return curr!
         return {
@@ -197,7 +197,7 @@ export default function RoomShellLayout({
   )
 
   const handleRenameDataset = useCallback(
-    async (datasetId: number, newLabel: string) => {
+    async (datasetId: string | number, newLabel: string) => {
       mutateRoom((curr: Room | undefined) => {
         if (!curr) return curr!
         return {

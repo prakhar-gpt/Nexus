@@ -32,13 +32,13 @@ interface DatasetSectionProps {
   roomId: string | number
   datasets: Dataset[]
   pendingUploads?: PendingUploadItem[]
-  selectedDatasetIds: number[]
+  selectedDatasetIds: (string | number)[]
   isUploadRunning?: boolean
-  onToggleDataset: (datasetId: number, checked: boolean) => void
+  onToggleDataset: (datasetId: string | number, checked: boolean) => void
   onAddDatasetClick: () => void
   onOpenSetupCard?: (uploadId: string | number) => void
-  onRemoveDataset: (datasetId: number) => Promise<void> | void
-  onRenameDataset?: (datasetId: number, newLabel: string) => Promise<void> | void
+  onRemoveDataset: (datasetId: string | number) => Promise<void> | void
+  onRenameDataset?: (datasetId: string | number, newLabel: string) => Promise<void> | void
 }
 
 function DatasetSectionComponent({

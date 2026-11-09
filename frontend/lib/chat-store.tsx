@@ -1027,7 +1027,7 @@ export function useChatStore() {
 }
 
 function turnsToMessages(turns: Turn[]): ChatMessage[] {
-  return turns.flatMap((turn) => {
+  return turns.flatMap((turn): ChatMessage[] => {
     const cr = (turn.checker_result as any) || {}
     const isUploadHandoff =
       turn.kind === "upload" ||
@@ -1045,10 +1045,10 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
       }
 
       return [
-        { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
+        { id: `q-${turn.run_id}`, role: "user", text: turn.question },
         {
           id: `a-${turn.run_id}`,
-          role: "assistant" as const,
+          role: "assistant",
           text: turn.answer,
           handoffData: handoff,
         },
@@ -1056,15 +1056,15 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
     }
 
     return [
-      { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
+      { id: `q-${turn.run_id}`, role: "user", text: turn.question },
       {
         id: `a-${turn.run_id}`,
-        role: "assistant" as const,
+        role: "assistant",
         text: turn.answer,
         badge: badgeFor({ kind: turn.kind, verified: turn.verified }),
         sql: turn.sql,
         rowCount: turn.rows?.length ?? 0,
-        runId: turn.run_id,
+        runId: turn.run_id ? Number(turn.run_id) : null,
         rows: turn.rows ?? [],
         steps: turn.steps ?? [],
         missingMeasure: (turn.checker_result?.missing_measure as string) || undefined,

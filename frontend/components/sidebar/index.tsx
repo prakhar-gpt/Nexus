@@ -22,15 +22,15 @@ export interface SidebarProps {
   datasets?: Dataset[]
   pendingUploads?: PendingUploadItem[]
   activeThreadId?: string
-  selectedDatasetIds?: number[]
+  selectedDatasetIds?: (string | number)[]
   status?: RoomStatus
   isUploadRunning?: boolean
   isReviewPending?: boolean
-  onToggleDataset?: (datasetId: number, checked: boolean) => void
+  onToggleDataset?: (datasetId: string | number, checked: boolean) => void
   onAddDatasetClick?: () => void
   onOpenSetupCard?: (uploadId: string | number) => void
-  onRemoveDataset?: (datasetId: number) => Promise<void> | void
-  onRenameDataset?: (datasetId: number, newLabel: string) => Promise<void> | void
+  onRemoveDataset?: (datasetId: string | number) => Promise<void> | void
+  onRenameDataset?: (datasetId: string | number, newLabel: string) => Promise<void> | void
   onBackToWorkspaces?: () => void
   onSelectThread?: (threadId: string) => void
   onNewThread?: () => void
