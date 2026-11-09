@@ -47,6 +47,34 @@ def reader_password() -> str:
     raise DatabaseError("NEXUS_READER_PASSWORD is not set.")
 
 
+def _split_sql_statements(sql: str) -> list[str]:
+    """Split compound SQL string by semicolons outside of quotes."""
+    statements = []
+    buf = []
+    in_quote = False
+    quote_char = ""
+    for ch in sql:
+        if ch in ("'", '"'):
+            if not in_quote:
+                in_quote = True
+                quote_char = ch
+            elif ch == quote_char:
+                in_quote = False
+                quote_char = ""
+            buf.append(ch)
+        elif ch == ";" and not in_quote:
+            stmt = "".join(buf).strip()
+            if stmt:
+                statements.append(stmt)
+            buf = []
+        else:
+            buf.append(ch)
+    stmt = "".join(buf).strip()
+    if stmt:
+        statements.append(stmt)
+    return statements
+
+
 def psql(sql: str, *, user: str, password: str, database: str) -> str:
     db_name = database
     if (not db_name or db_name == "nexus_db") and getattr(settings, "PG_DATABASE", None):
@@ -82,12 +110,17 @@ def psql(sql: str, *, user: str, password: str, database: str) -> str:
             )
             conn.autocommit = True
             with conn.cursor() as cur:
-                cur.execute(sql)
-                if cur.description:
-                    out = io.StringIO()
-                    writer = csv.writer(out)
-                    writer.writerow([d[0] for d in cur.description])
-                    writer.writerows(cur.fetchall())
+                statements = _split_sql_statements(sql)
+                out = io.StringIO()
+                has_result = False
+                for stmt in statements:
+                    cur.execute(stmt)
+                    if cur.description:
+                        writer = csv.writer(out)
+                        writer.writerow([d[0] for d in cur.description])
+                        writer.writerows(cur.fetchall())
+                        has_result = True
+                if has_result:
                     return out.getvalue()
                 return ""
         except Exception as py_exc:
