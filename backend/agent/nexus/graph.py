@@ -105,6 +105,8 @@ class Agent:
             "steps": [],
             "python_rows": [],
             "step_count": 0,
+            "evidence_records": [],
+            "queries": [],
         }
         return config, payload
 
@@ -119,6 +121,7 @@ class Agent:
             "rows": list(values.get("rows") or []),
             "python_results": python_rows,
             "tools_used": list(values.get("tools_used") or []),
+            "queries": list(values.get("queries") or []),
             "answer": values.get("answer") or "",
             "check": values.get("check") or {"status": "caveat", "verified": False, "untraced": []},
             "steps": steps,

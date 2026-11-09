@@ -359,7 +359,7 @@ const MessageItem = memo(function MessageItem({
 
       {hasTokens ? (
         <div className="prose-nexus text-[16px] leading-[1.65] text-foreground">
-          <RenderedMarkdown text={message.text} />
+          <RenderedMarkdown text={message.text} untraced={message.untraced} />
           {isStreaming ? (
             <span
               className="inline-block w-[2px] h-[1em] bg-foreground align-middle animate-pulse ml-0.5"
@@ -427,35 +427,89 @@ const MessageItem = memo(function MessageItem({
   )
 })
 
-const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string }) {
+function highlightUntracedText(node: React.ReactNode, untracedList?: string[]): React.ReactNode {
+  if (!untracedList || untracedList.length === 0 || typeof node !== "string") {
+    return node
+  }
+
+  // Filter out general warning sentences like "Not checked against your data"
+  const tokens = untracedList
+    .map((item) => item.replace(/\s*\(stated in your message.*?\)$/i, "").trim())
+    .filter((item) => item.length > 0 && !item.toLowerCase().startsWith("not checked") && !item.toLowerCase().startsWith("method claim"))
+
+  if (tokens.length === 0) {
+    return node
+  }
+
+  // Escape regex specials and build alternation matching exact tokens
+  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  if (!escaped) return node
+  const regex = new RegExp(`(${escaped})`, "g")
+
+  const parts = node.split(regex)
+  if (parts.length <= 1) return node
+
+  return parts.map((part, idx) => {
+    if (tokens.includes(part)) {
+      return (
+        <span
+          key={idx}
+          className="underline decoration-warn/60 decoration-[1.5px] underline-offset-4 bg-warn/10 rounded-none px-0.5"
+          title="Untraced figure: not found in verified tool output"
+        >
+          {part}
+        </span>
+      )
+    }
+    return part
+  })
+}
+
+function wrapChildrenWithHighlight(children: React.ReactNode, untracedList?: string[]): React.ReactNode {
+  if (!untracedList || untracedList.length === 0) return children
+  return React.Children.map(children, (child) => {
+    if (typeof child === "string") {
+      return highlightUntracedText(child, untracedList)
+    }
+    return child
+  })
+}
+
+const RenderedMarkdown = memo(function RenderedMarkdown({
+  text,
+  untraced,
+}: {
+  text: string
+  untraced?: string[]
+}) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
-        p: ({ children }) => <p className="mb-3.5 last:mb-0">{children}</p>,
+        p: ({ children }) => <p className="mb-3.5 last:mb-0">{wrapChildrenWithHighlight(children, untraced)}</p>,
         ul: ({ children }) => (
           <ul className="mb-3.5 list-disc pl-5 space-y-1 last:mb-0">{children}</ul>
         ),
         ol: ({ children }) => (
           <ol className="mb-3.5 list-decimal pl-5 space-y-1 last:mb-0">{children}</ol>
         ),
-        li: ({ children }) => <li className="my-0.5">{children}</li>,
+        li: ({ children }) => <li className="my-0.5">{wrapChildrenWithHighlight(children, untraced)}</li>,
         strong: ({ children }) => (
-          <strong className="font-medium text-foreground">{children}</strong>
+          <strong className="font-medium text-foreground">{wrapChildrenWithHighlight(children, untraced)}</strong>
         ),
-        em: ({ children }) => <em className="italic">{children}</em>,
+        em: ({ children }) => <em className="italic">{wrapChildrenWithHighlight(children, untraced)}</em>,
         h1: ({ children }) => (
           <h2 className="mb-2 text-lg font-medium text-foreground tracking-tight">
-            {children}
+            {wrapChildrenWithHighlight(children, untraced)}
           </h2>
         ),
         h2: ({ children }) => (
           <h3 className="mb-2 text-base font-medium text-foreground tracking-tight">
-            {children}
+            {wrapChildrenWithHighlight(children, untraced)}
           </h3>
         ),
         h3: ({ children }) => (
-          <h4 className="mb-1.5 text-sm font-medium text-foreground">{children}</h4>
+          <h4 className="mb-1.5 text-sm font-medium text-foreground">{wrapChildrenWithHighlight(children, untraced)}</h4>
         ),
         pre: ({ children }) => (
           <pre className="my-3 overflow-x-auto border border-border bg-muted/30 p-3 font-mono text-[13px] leading-relaxed last:mb-0">
@@ -467,7 +521,7 @@ const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string
           if (isInline) {
             return (
               <code className="font-mono text-[14px] bg-muted/60 px-1 py-0.5 border border-border/40">
-                {children}
+                {wrapChildrenWithHighlight(children, untraced)}
               </code>
             )
           }

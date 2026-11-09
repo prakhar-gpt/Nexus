@@ -48,6 +48,8 @@ class AgentState(TypedDict, total=False):
     sql_results: dict  # results by id or alias: {"sql_1": [...], ...}
     tools_used: list  # list of tool names called this turn: ["run_sql", "run_python"]
     allowed_dataset_ids: list[str | int] | None  # filtered datasets allowed for this thread
+    evidence_records: list  # tagged EvidenceRecord objects collected during tools execution
+    queries: list  # per-query structured metadata: query_id, sql, dataset_id, truncated, etc.
 
 
 def format_status_line(name: str, status: str) -> str:

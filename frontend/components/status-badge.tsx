@@ -8,6 +8,7 @@ export type AnswerBadge =
   | "caveat"
   | "refused"
   | "unanswered"
+  | "not_checked"
   | "stopped"
 
 interface StatusBadgeProps {
@@ -25,6 +26,19 @@ export function StatusBadge({
 }: StatusBadgeProps) {
   if (!badge || badge === "waiting" || badge === "unanswered" || badge === "verified") {
     return null
+  }
+
+  if (badge === "not_checked") {
+    const titleText = tooltip || "Not checked against your data"
+    return (
+      <span
+        title={titleText}
+        className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border select-none cursor-default"
+        aria-label={`Status: Not checked. ${titleText}`}
+      >
+        <span>Not checked</span>
+      </span>
+    )
   }
 
   if (badge === "caveat") {

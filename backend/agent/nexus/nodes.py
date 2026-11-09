@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from langgraph.config import get_stream_writer
 
 from agent.nexus.checker import check_answer, is_clarification
+from agent.nexus.evidence_collector import collect_python_evidence, collect_sql_evidence
 from agent.nexus.state import AgentState, MAX_TOOL_STEPS, MESSAGE_TAIL, STEP_LIMIT, format_status_line
 from agent.nexus.tools import (
     TOOLS,
@@ -28,13 +29,8 @@ def extract_visible_text(message) -> str:
         for part in content:
             if isinstance(part, str):
                 parts.append(part)
-                continue
-            if not isinstance(part, dict):
-                continue
-            kind = str(part.get("type") or "")
-            if kind in {"reasoning", "thinking", "reasoning_content"}:
-                continue
-            parts.append(str(part.get("text") or ""))
+            elif isinstance(part, dict) and str(part.get("type") or "") not in {"reasoning", "thinking", "reasoning_content"}:
+                parts.append(str(part.get("text") or ""))
         return "".join(parts)
     return str(content or "")
 
@@ -47,9 +43,7 @@ def clean_answer_text(message) -> str:
 def chunk_text(message) -> str:
     """Return token delta text for streaming chunks, ignoring tool calls and non-assistant content."""
     kind = getattr(message, "type", "")
-    if kind in {"tool", "human", "system"}:
-        return ""
-    if getattr(message, "tool_call_chunks", None):
+    if kind in {"tool", "human", "system"} or getattr(message, "tool_call_chunks", None):
         return ""
     return extract_visible_text(message)
 
@@ -93,6 +87,8 @@ def tools_node(state: AgentState) -> dict:
     python_rows = list(state.get("python_rows") or [])
     tools_used = list(state.get("tools_used") or [])
     sql_results = dict(state.get("sql_results") or {})
+    evidence_records = list(state.get("evidence_records") or [])
+    queries = list(state.get("queries") or [])
     messages = []
 
     for call in last.tool_calls:
@@ -100,15 +96,7 @@ def tools_node(state: AgentState) -> dict:
         call_id = str(call.get("id") or f"{name}-{len(steps)}")
         args = parse_tool_args(call)
 
-        _emit(
-            {
-                "id": call_id,
-                "tool": name or "unknown",
-                "status": "running",
-                "detail": format_status_line(name, "running"),
-            }
-        )
-
+        _emit({"id": call_id, "tool": name or "unknown", "status": "running", "detail": format_status_line(name, "running")})
         started = time.perf_counter()
         query = None
         found: list[dict] = []
@@ -118,13 +106,18 @@ def tools_node(state: AgentState) -> dict:
             text = execute_schema(workspace_id, allowed_dataset_ids=allowed_dataset_ids)
         elif name == "run_sql":
             tools_used.append("run_sql")
-            text, found, query = execute_query(str(args.get("sql") or ""), workspace_id, allowed_dataset_ids=allowed_dataset_ids)
+            res = execute_query(str(args.get("sql") or ""), workspace_id, allowed_dataset_ids=allowed_dataset_ids)
+            text, found, query = res
             rows.extend(found)
             if query:
                 sqls.append(query)
-                sql_idx = len(sqls)
-                sql_results[f"sql_{sql_idx}"] = found
+                sql_results[f"sql_{len(sqls)}"] = found
                 sql_results[call_id] = found
+                truncated = getattr(res, "truncated", False)
+                table_name = getattr(res, "table_name", None)
+                q_info, ev_recs = collect_sql_evidence(workspace_id, len(queries) + 1, query, found, truncated, table_name)
+                queries.append(q_info)
+                evidence_records.extend(ev_recs)
         elif name == "read_kb":
             tools_used.append("read_kb")
             text = execute_kb(str(args.get("path") or ""))
@@ -135,38 +128,28 @@ def tools_node(state: AgentState) -> dict:
             text, py_results = execute_python(code, inputs, rows, sql_results)
             for label, value in py_results.items():
                 python_rows.append({"label": label, "value": value})
+            py_info, ev_recs = collect_python_evidence(len(queries) + 1, code, inputs, py_results)
+            queries.append(py_info)
+            evidence_records.extend(ev_recs)
         else:
             text = "rejected: unknown tool"
 
         elapsed = int((time.perf_counter() - started) * 1000)
         status = "error" if text.startswith("rejected") else "ok"
 
-        _emit(
-            {
-                "id": call_id,
-                "tool": name or "unknown",
-                "status": status,
-                "ms": elapsed,
-                "detail": format_status_line(name, status),
-                "query": query,
-                "row_count": len(found),
-                "input": args,
-                "output": text,
-            }
-        )
-
-        steps.append(
-            {
-                "id": call_id,
-                "tool": name or "unknown",
-                "status": status,
-                "ms": elapsed,
-                "detail": format_status_line(name, status),
-                "query": query,
-                "input": args,
-                "output": text,
-            }
-        )
+        step_dict = {
+            "id": call_id,
+            "tool": name or "unknown",
+            "status": status,
+            "ms": elapsed,
+            "detail": format_status_line(name, status),
+            "query": query,
+            "row_count": len(found),
+            "input": args,
+            "output": text,
+        }
+        _emit(step_dict)
+        steps.append(step_dict)
         messages.append(ToolMessage(content=text, tool_call_id=call_id))
 
     return {
@@ -177,21 +160,21 @@ def tools_node(state: AgentState) -> dict:
         "python_rows": python_rows,
         "tools_used": tools_used,
         "sql_results": sql_results,
+        "evidence_records": evidence_records,
+        "queries": queries,
         "step_count": state.get("step_count", 0) + len(last.tool_calls),
     }
 
 
 def checker_node(state: AgentState) -> dict:
-    """Audit the drafted answer against SQL results, Python results, and question context."""
+    """Audit drafted answer against SQL results, Python results, question context, and tagged evidence."""
     last = (state.get("messages") or [None])[-1]
-    if getattr(last, "tool_calls", None):
-        answer = STEP_LIMIT
-    else:
-        answer = clean_answer_text(last) or "No answer was produced."
-
+    answer = STEP_LIMIT if getattr(last, "tool_calls", None) else (clean_answer_text(last) or "No answer was produced.")
     rows = list(state.get("rows") or [])
     sqls = list(state.get("sqls") or [])
     python_rows = list(state.get("python_rows") or [])
+    evidence_records = list(state.get("evidence_records") or [])
+    queries = list(state.get("queries") or [])
     lowered = answer.lower()
 
     if sqls or python_rows:
@@ -220,24 +203,25 @@ def checker_node(state: AgentState) -> dict:
         rows,
         python_results=py_dict,
         question_text=question_text,
+        kind=kind,
+        evidence_records=evidence_records if evidence_records else None,
+        queries=queries if queries else None,
     )
 
-    if kind in ("refusal", "clarification"):
-        check = {"status": "verified", "verified": True, "untraced": [], "matched": []}
-
     steps = list(state.get("steps") or [])
+    checker_ms = int(check.get("ms") or 0)
     detail = "numbers match the tool output" if check.get("verified") else "untraced number"
     if kind == "clarification":
         detail = "clarification requested"
     elif kind == "refusal":
         detail = "question refused"
+    elif check.get("status") == "caveat" and "Not checked against your data" in check.get("untraced", []):
+        detail = "Not checked against your data"
 
-    steps.append(
-        {
-            "tool": "checker",
-            "status": "ok" if check.get("verified") else "caveat",
-            "ms": 0,
-            "detail": detail,
-        }
-    )
-    return {"answer": answer, "check": check, "kind": kind, "steps": steps}
+    steps.append({
+        "tool": "checker",
+        "status": "ok" if check.get("verified") else ("refused" if check.get("status") == "refused" else "caveat"),
+        "ms": checker_ms,
+        "detail": detail,
+    })
+    return {"answer": answer, "check": check, "kind": kind, "steps": steps, "queries": queries}

@@ -16,13 +16,17 @@ def save_run(workspace_id: int | str, question: str, result: dict, thread_id: st
     """Persist an agent execution run, its SQL queries, answer, checker audit result, and python results via SQLAlchemy."""
     clean_thread = (thread_id or "default").strip()
     check_data = result.get("check") or {}
+    raw_rows = list(result.get("rows") or [])
     checker_payload = {
-        "status": check_data.get("status", "verified" if check_data.get("verified") else "caveat"),
+        "status": check_data.get("status", "refused" if result["kind"] == "refusal" else ("verified" if check_data.get("verified") else "caveat")),
         "verified": check_data.get("verified", False),
         "untraced": check_data.get("untraced", []),
         "matched": check_data.get("matched", []),
+        "provenance": check_data.get("provenance", [])[:100],
+        "queries": result.get("queries", check_data.get("queries", [])),
+        "ms": check_data.get("ms", 0),
         "kind": result["kind"],
-        "rows": result["rows"],
+        "rows": raw_rows[:25],
         "tools_used": result.get("tools_used", []),
         "steps": result.get("steps", []),
         "python_results": result.get("python_results", []),
@@ -174,5 +178,6 @@ def generate_chat_events(
             "answer": result.get("answer") or "",
             "thread_id": clean_thread,
             "steps": result.get("steps", []),
+            "queries": result.get("queries", []),
         },
     )

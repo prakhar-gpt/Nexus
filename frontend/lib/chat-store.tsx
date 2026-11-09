@@ -1076,14 +1076,18 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
 
 function badgeFor(data: Record<string, unknown>): AnswerBadge {
   if (data.verified === false) {
+    const kind = String(data.kind ?? "")
+    if (kind === "refusal") {
+      return "refused"
+    }
     return "caveat"
   }
   const kind = String(data.kind ?? "")
   if (kind === "refusal") {
     return "refused"
   }
-  if (kind === "sql" || data.verified === true) {
+  if (data.verified === true) {
     return "verified"
   }
-  return "unanswered"
+  return "not_checked"
 }

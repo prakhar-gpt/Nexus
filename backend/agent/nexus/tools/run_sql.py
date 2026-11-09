@@ -10,6 +10,7 @@ import sqlglot
 from sqlglot import exp
 
 from agent.db import DATABASE, READER_USER, DatabaseError, psql, reader_password
+from agent.nexus.provenance import QueryResult, get_referenced_table
 
 try:
     from config import settings
@@ -27,43 +28,27 @@ class SqlRejected(ValueError):
     pass
 
 
-# ---------------------------------------------------------------------------
-# Declarative Tool Definition for LangChain / LangGraph
-# ---------------------------------------------------------------------------
-
 @tool("run_sql")
 def run_sql_tool(sql: str) -> str:
-    """Run one read-only SELECT against approved workspace tables for data extraction and basic aggregations (GROUP BY, SUM, COUNT, AVG, MIN, MAX).
-    Pass only the SQL text.
-    STRICTLY FORBIDDEN: Do NOT calculate differences, percentages, growth rates, or ratios in SQL. Use run_python for all math."""
+    """Run one read-only SELECT against approved workspace tables for data extraction."""
+    pass
 
-
-# ---------------------------------------------------------------------------
-# SQL Guard (AST inspection with sqlglot)
-# ---------------------------------------------------------------------------
 
 _FORBIDDEN = re.compile(
-    r"(?is)\b("
-    r"insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|"
+    r"(?is)\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|"
     r"comment|vacuum|call|do|execute|prepare|set|reset|listen|notify|lock|"
     r"checkpoint|reindex|cluster|discard|load|into|merge|refresh|reassign|"
-    r"import|security|table|analyze|explain|show"
-    r")\b"
+    r"import|security|table|analyze|explain|show)\b"
 )
-
 _DANGEROUS_FN = re.compile(
-    r"(?is)\b("
-    r"pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|pg_write_file|"
+    r"(?is)\b(pg_read_file|pg_read_binary_file|pg_ls_dir|pg_stat_file|pg_write_file|"
     r"pg_reload_conf|lo_import|lo_export|lo_get|lo_put|dblink|dblink_exec|"
-    r"pg_sleep|pg_terminate_backend|pg_cancel_backend|set_config"
-    r")\s*\("
+    r"pg_sleep|pg_terminate_backend|pg_cancel_backend|set_config)\s*\("
 )
-
 _SCHEMA = re.compile(r"(?is)\b(public|pg_catalog|information_schema|pg_temp)\b")
 _EXTRACT_FROM = re.compile(r"(?is)\b(?:extract|trim|substring|overlay)\s*\([^)]*\)")
 _CTE_NAME = re.compile(r"(?is)\b([a-z_][a-z0-9_]*)\s+as\s*\(")
 _RELATION = re.compile(r"(?is)\b(?:from|join)\s+(?:only\s+|lateral\s+)?([a-z_][a-z0-9_]*)")
-
 _COMMENT_LINE = re.compile(r"--[^\n]*")
 _COMMENT_BLOCK = re.compile(r"/\*.*?\*/", re.DOTALL)
 _STRING = re.compile(r"'(?:''|[^'])*'")
@@ -78,34 +63,19 @@ def _check_ast(cleaned_sql: str) -> None:
 
     if not parsed or len(parsed) != 1 or parsed[0] is None:
         raise SqlRejected("Only one valid SQL statement is allowed.")
-
     tree = parsed[0]
-
     if not isinstance(tree, (exp.Select, exp.Union)):
         raise SqlRejected("Only a SELECT statement is allowed.")
 
-    # 1. Direct arithmetic between or on aggregate functions
     for node in tree.find_all(exp.Binary):
-        left_aggs = list(node.left.find_all(exp.AggFunc))
-        right_aggs = list(node.right.find_all(exp.AggFunc))
-        if left_aggs or right_aggs:
-            raise SqlRejected(
-                "Arithmetic between aggregate expressions or percent formulas (such as max(x)-min(x), "
-                "differences of sums, or ratios of aggregates) is not allowed in SQL. "
-                "Run a simple SELECT/GROUP BY query and call run_python to calculate differences, ratios, and percentages."
-            )
+        if list(node.left.find_all(exp.AggFunc)) or list(node.right.find_all(exp.AggFunc)):
+            raise SqlRejected("Arithmetic between aggregate expressions is not allowed in SQL. Use run_python.")
 
-    # 2. Arithmetic in an outer query across an aggregate subquery
     for subquery in tree.find_all(exp.Subquery):
         if list(subquery.find_all(exp.AggFunc)):
             parent_select = subquery.find_ancestor(exp.Select)
-            if parent_select:
-                for select_expr in parent_select.expressions:
-                    if list(select_expr.find_all(exp.Binary)):
-                        raise SqlRejected(
-                            "Arithmetic across subquery aggregate rows or percent formulas is not allowed in SQL. "
-                            "Run a simple SELECT/GROUP BY query and call run_python to calculate differences, ratios, and percentages."
-                        )
+            if parent_select and any(list(expr.find_all(exp.Binary)) for expr in parent_select.expressions):
+                raise SqlRejected("Arithmetic across subquery aggregate rows is not allowed in SQL. Use run_python.")
 
 
 def get_allowed_tables(workspace_id: int | str | None = None, allowed_dataset_ids: list[str | int] | None = None) -> set[str]:
@@ -183,16 +153,18 @@ def guard_sql(sql: str, workspace_id: int | str | None = None, allowed_dataset_i
     return cleaned
 
 
-# ---------------------------------------------------------------------------
-# Execution Handlers
-# ---------------------------------------------------------------------------
-
-def execute_sql(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str | int] | None = None) -> list[dict[str, str]]:
+def execute_sql(
+    sql: str,
+    workspace_id: int | str,
+    allowed_dataset_ids: list[str | int] | None = None,
+    return_truncated: bool = False,
+) -> list[dict[str, str]] | tuple[list[dict[str, str]], bool]:
     """Execute raw SQL under reader role with RLS local isolation."""
     if workspace_id is None or str(workspace_id).strip() == "":
         raise SqlRejected("workspace_id cannot be empty.")
     ws_str = str(workspace_id).strip()
     cleaned = guard_sql(sql, workspace_id=ws_str, allowed_dataset_ids=allowed_dataset_ids)
+    fetch_limit = ROW_LIMIT + 1
     script = f"""
     BEGIN;
     SET LOCAL app.workspace_id = '{ws_str}';
@@ -202,7 +174,7 @@ def execute_sql(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str
     SELECT * FROM (
     {cleaned}
     ) AS agent_result
-    LIMIT {ROW_LIMIT};
+    LIMIT {fetch_limit};
     COMMIT;
     """
     try:
@@ -215,24 +187,35 @@ def execute_sql(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str
     except DatabaseError as exc:
         raise SqlRejected(str(exc)) from exc
     if not output.strip():
-        return []
-    return list(csv.DictReader(io.StringIO(output)))
+        return ([], False) if return_truncated else []
+    raw_rows = list(csv.DictReader(io.StringIO(output)))
+    truncated = len(raw_rows) > ROW_LIMIT
+    rows = raw_rows[:ROW_LIMIT]
+    if return_truncated:
+        return rows, truncated
+    return rows
 
 
 run_sql = execute_sql
 
 
-def execute_query(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str | int] | None = None) -> tuple[str, list[dict], str | None]:
+def execute_query(
+    sql: str,
+    workspace_id: int | str,
+    allowed_dataset_ids: list[str | int] | None = None,
+) -> QueryResult:
     """Execute a read-only query and return prompt preview, raw rows, and validated SQL."""
     text = str(sql or "").strip()
     if not text:
-        return "rejected: sql is empty", [], None
+        return QueryResult("rejected: sql is empty", [], None)
+    table_name = get_referenced_table(text)
     try:
-        rows = execute_sql(text, workspace_id, allowed_dataset_ids=allowed_dataset_ids)
+        res = execute_sql(text, workspace_id, allowed_dataset_ids=allowed_dataset_ids, return_truncated=True)
+        rows, truncated = res if isinstance(res, tuple) else (res, False)
     except SqlRejected as exc:
-        return f"rejected: {exc}", [], None
+        return QueryResult(f"rejected: {exc}", [], None)
     if not rows:
-        return "0 rows", [], text
+        return QueryResult("0 rows", [], text, truncated=False, table_name=table_name)
 
     header = list(rows[0].keys())
     lines = [", ".join(header)]
@@ -244,7 +227,7 @@ def execute_query(sql: str, workspace_id: int | str, allowed_dataset_ids: list[s
     if len(rows) > max_preview:
         lines.append(f"... ({len(rows) - max_preview} more rows available to run_python)")
 
-    return "\n".join(lines), rows, text
+    return QueryResult("\n".join(lines), rows, text, truncated=truncated, table_name=table_name)
 
 
 def populated_count(workspace_id: int | str, column: str, table_name: str = "sales_clean") -> int:
