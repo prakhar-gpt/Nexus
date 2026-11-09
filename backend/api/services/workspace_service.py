@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from fastapi import HTTPException
 
 from agent.nexus.tools import SqlRejected, run_sql
-from ingest.store import execute, sql_literal
+from ingest.store import execute, sql_id, sql_literal
 
 HEALTH_SQL = (
     "SELECT count(*) AS rows, min(order_date)::text AS first_order, "
@@ -17,11 +18,11 @@ HEALTH_SQL = (
 )
 
 
-def get_workspace_meta(workspace_id: int) -> dict | None:
+def get_workspace_meta(workspace_id: int | str) -> dict | None:
     """Return basic workspace record or None if absent or archived."""
     rows = execute(
         "SELECT id, name FROM workspaces "
-        f"WHERE id = {int(workspace_id)} AND NOT (name LIKE '[archived]%')"
+        f"WHERE id = {sql_id(workspace_id)} AND NOT (name LIKE '[archived]%')"
     )
     return rows[0] if rows else None
 
@@ -42,19 +43,37 @@ def list_workspaces() -> list[dict]:
     return execute(sql)
 
 
-def create_workspace(name: str) -> dict:
-    """Create a new workspace."""
+def create_workspace(name: str, workspace_id: str | None = None, owner_id: str | None = None) -> dict:
+    """Create a new data room workspace with UUID."""
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="name is required")
-    rows = execute(
-        "INSERT INTO workspaces (name) "
-        f"VALUES ({sql_literal(clean_name)}) RETURNING id"
-    )
-    return {"id": int(rows[0]["id"]), "name": clean_name}
+    target_id = workspace_id or str(uuid.uuid4())
+    try:
+        rows = execute(
+            "INSERT INTO workspaces (id, name) "
+            f"VALUES ({sql_id(target_id)}, {sql_literal(clean_name)}) RETURNING id"
+        )
+    except Exception:
+        # Fallback if DB column is still legacy identity sequence
+        rows = execute(
+            "INSERT INTO workspaces (name) "
+            f"VALUES ({sql_literal(clean_name)}) RETURNING id"
+        )
+    created_id = str(rows[0]["id"])
+    effective_owner = owner_id or "00000000-0000-0000-0000-000000000001"
+    try:
+        execute(
+            f"INSERT INTO workspace_members (workspace_id, user_id, role) "
+            f"VALUES ({sql_id(created_id)}, {sql_id(effective_owner)}, 'owner') "
+            f"ON CONFLICT DO NOTHING"
+        )
+    except Exception:
+        pass
+    return {"id": created_id, "name": clean_name}
 
 
-def delete_workspace(workspace_id: int) -> dict:
+def delete_workspace(workspace_id: int | str) -> dict:
     """Soft-delete / archive a workspace."""
     ws = get_workspace_meta(workspace_id)
     if not ws:
@@ -62,24 +81,24 @@ def delete_workspace(workspace_id: int) -> dict:
     archived_name = f"[archived] {ws['name']}"
     execute(
         f"UPDATE workspaces SET name = {sql_literal(archived_name)} "
-        f"WHERE id = {int(workspace_id)}"
+        f"WHERE id = {sql_id(workspace_id)}"
     )
     return {"ok": True, "id": workspace_id}
 
 
-def _parse_dataset_ids(raw: any) -> list[int]:
-    """Parse postgres bigint[] or list into clean list of ints."""
+def _parse_dataset_ids(raw: any) -> list[str]:
+    """Parse postgres text[], uuid[], bigint[] or list into clean list of string IDs."""
     if isinstance(raw, str):
         clean_s = raw.strip("{}").strip()
         if not clean_s:
             return []
-        return [int(x.strip()) for x in clean_s.split(",") if x.strip()]
+        return [x.strip().strip('"') for x in clean_s.split(",") if x.strip()]
     if isinstance(raw, list):
-        return [int(x) for x in raw]
+        return [str(x) for x in raw]
     return []
 
 
-def list_threads(workspace_id: int) -> list[dict]:
+def list_threads(workspace_id: int | str) -> list[dict]:
     """List active conversation threads for a workspace from the threads table."""
     sql = (
         "SELECT t.id, t.title, t.created_at::text AS created_at, "
@@ -90,7 +109,7 @@ def list_threads(workspace_id: int) -> list[dict]:
         "                AND coalesce(r.checker_result->>'thread_id', 'default') = t.id "
         "                AND (r.checker_result->>'deleted') IS NULL "
         "                AND NOT (r.question = 'Schema Analysis') "
-        f"WHERE t.workspace_id = {int(workspace_id)} "
+        f"WHERE t.workspace_id = {sql_id(workspace_id)} "
         "GROUP BY t.id, t.workspace_id, t.title, t.created_at, t.selected_dataset_ids "
         "ORDER BY t.created_at DESC"
     )
@@ -112,76 +131,76 @@ def list_threads(workspace_id: int) -> list[dict]:
     return threads
 
 
-def get_or_create_thread(workspace_id: int, thread_id: str) -> dict:
+def get_or_create_thread(workspace_id: int | str, thread_id: str) -> dict:
     """Get thread record or create it server-side on first interaction with all current workspace datasets."""
     clean_thread = (thread_id or "default").strip()
     found = execute(
         "SELECT id, workspace_id, title, selected_dataset_ids "
-        f"FROM threads WHERE workspace_id = {int(workspace_id)} AND id = {sql_literal(clean_thread)}"
+        f"FROM threads WHERE workspace_id = {sql_id(workspace_id)} AND id = {sql_literal(clean_thread)}"
     )
     if found:
         row = found[0]
         return {
             "id": row["id"],
-            "workspace_id": int(row["workspace_id"]),
+            "workspace_id": str(row["workspace_id"]),
             "title": row["title"],
             "selected_dataset_ids": _parse_dataset_ids(row.get("selected_dataset_ids")),
         }
 
     # First interaction: initialize with all active datasets for this workspace
-    ds_rows = execute(f"SELECT id FROM datasets WHERE workspace_id = {int(workspace_id)} ORDER BY id")
-    all_ds = [int(r["id"]) for r in ds_rows]
-    arr_literal = f"ARRAY[{','.join(str(i) for i in all_ds)}]::bigint[]" if all_ds else "'{}'::bigint[]"
+    ds_rows = execute(f"SELECT id FROM datasets WHERE workspace_id = {sql_id(workspace_id)} ORDER BY id")
+    all_ds = [str(r["id"]) for r in ds_rows]
+    arr_literal = f"ARRAY[{','.join(sql_literal(i) for i in all_ds)}]::text[]" if all_ds else "'{}'::text[]"
     inserted = execute(
         "INSERT INTO threads (id, workspace_id, title, selected_dataset_ids) "
-        f"VALUES ({sql_literal(clean_thread)}, {int(workspace_id)}, 'New Conversation', {arr_literal}) "
+        f"VALUES ({sql_literal(clean_thread)}, {sql_id(workspace_id)}, 'New Conversation', {arr_literal}) "
         "ON CONFLICT (workspace_id, id) DO NOTHING "
         "RETURNING id, workspace_id, title, selected_dataset_ids"
     )
     if inserted:
         return {
             "id": inserted[0]["id"],
-            "workspace_id": int(inserted[0]["workspace_id"]),
+            "workspace_id": str(inserted[0]["workspace_id"]),
             "title": inserted[0]["title"],
             "selected_dataset_ids": all_ds,
         }
     return get_or_create_thread(workspace_id, clean_thread)
 
 
-def update_thread_datasets(workspace_id: int, thread_id: str, dataset_ids: list[int]) -> dict:
+def update_thread_datasets(workspace_id: int | str, thread_id: str, dataset_ids: list[str | int]) -> dict:
     """Update selected dataset IDs for a specific chat thread, strictly validating workspace ownership."""
     clean_thread = (thread_id or "default").strip()
     # Verify thread belongs to this workspace
     get_or_create_thread(workspace_id, clean_thread)
 
     # Strictly validate dataset IDs belong to this workspace
-    clean_ids: list[int] = []
+    clean_ids: list[str] = []
     if dataset_ids:
-        id_list = ",".join(str(int(i)) for i in dataset_ids)
+        id_list = ",".join(sql_id(i) for i in dataset_ids)
         valid = execute(
-            f"SELECT id FROM datasets WHERE workspace_id = {int(workspace_id)} AND id IN ({id_list})"
+            f"SELECT id FROM datasets WHERE workspace_id = {sql_id(workspace_id)} AND id IN ({id_list})"
         )
-        valid_set = {int(r["id"]) for r in valid}
-        clean_ids = [int(i) for i in dataset_ids if int(i) in valid_set]
+        valid_set = {str(r["id"]) for r in valid}
+        clean_ids = [str(i) for i in dataset_ids if str(i) in valid_set]
 
-    arr_literal = f"ARRAY[{','.join(str(i) for i in clean_ids)}]::bigint[]" if clean_ids else "'{}'::bigint[]"
+    arr_literal = f"ARRAY[{','.join(sql_literal(i) for i in clean_ids)}]::text[]" if clean_ids else "'{}'::text[]"
     execute(
         f"UPDATE threads SET selected_dataset_ids = {arr_literal}, updated_at = now() "
-        f"WHERE workspace_id = {int(workspace_id)} AND id = {sql_literal(clean_thread)}"
+        f"WHERE workspace_id = {sql_id(workspace_id)} AND id = {sql_literal(clean_thread)}"
     )
     return {"ok": True, "thread_id": clean_thread, "selected_dataset_ids": clean_ids}
 
 
-def delete_thread(workspace_id: int, thread_id: str) -> dict:
+def delete_thread(workspace_id: int | str, thread_id: str) -> dict:
     """Delete a conversation thread from threads table and flag runs."""
     clean_thread = (thread_id or "default").strip()
     execute(
-        f"DELETE FROM threads WHERE workspace_id = {int(workspace_id)} AND id = {sql_literal(clean_thread)}"
+        f"DELETE FROM threads WHERE workspace_id = {sql_id(workspace_id)} AND id = {sql_literal(clean_thread)}"
     )
     patch = json.dumps({"deleted": True})
     sql = (
         f"UPDATE runs SET checker_result = checker_result || {sql_literal(patch)}::jsonb "
-        f"WHERE workspace_id = {int(workspace_id)} "
+        f"WHERE workspace_id = {sql_id(workspace_id)} "
         f"AND coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)} "
         "RETURNING id"
     )
@@ -189,12 +208,12 @@ def delete_thread(workspace_id: int, thread_id: str) -> dict:
     return {"ok": True, "deleted_turns": len(updated)}
 
 
-def list_workspace_datasets(workspace_id: int) -> list[dict]:
+def list_workspace_datasets(workspace_id: int | str) -> list[dict]:
     """Retrieve all approved datasets for a workspace with row count, quarantine count, grain, and table label."""
     sql = (
         "SELECT d.id, d.upload_id, d.table_name, d.table_label, d.grain, d.row_count, d.created_at::text, "
         "coalesce((SELECT count(*) FROM quarantine q WHERE q.upload_id = d.upload_id), 0) AS quarantine_count "
-        f"FROM datasets d WHERE d.workspace_id = {int(workspace_id)} ORDER BY d.id"
+        f"FROM datasets d WHERE d.workspace_id = {sql_id(workspace_id)} ORDER BY d.id"
     )
     rows = execute(sql)
     datasets = []
@@ -202,8 +221,8 @@ def list_workspace_datasets(workspace_id: int) -> list[dict]:
         clean_grain = (r.get("grain") or "").strip()
         clean_grain = re.sub(r"^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*", "", clean_grain, flags=re.I).strip()
         datasets.append({
-            "id": int(r["id"]),
-            "upload_id": int(r["upload_id"]) if r.get("upload_id") else None,
+            "id": r["id"],
+            "upload_id": r.get("upload_id") if r.get("upload_id") else None,
             "table_name": r["table_name"],
             "table_label": r["table_label"],
             "grain": clean_grain,
@@ -214,25 +233,25 @@ def list_workspace_datasets(workspace_id: int) -> list[dict]:
     return datasets
 
 
-def rename_dataset(workspace_id: int, dataset_id: int, new_label: str) -> dict:
+def rename_dataset(workspace_id: int | str, dataset_id: int | str, new_label: str) -> dict:
     """Rename a dataset's friendly table label."""
     clean_label = new_label.strip()
     found = execute(
-        f"SELECT id FROM datasets WHERE id = {int(dataset_id)} AND workspace_id = {int(workspace_id)}"
+        f"SELECT id FROM datasets WHERE id = {sql_id(dataset_id)} AND workspace_id = {sql_id(workspace_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="dataset not found in this workspace")
     execute(
         f"UPDATE datasets SET table_label = {sql_literal(clean_label)} "
-        f"WHERE id = {int(dataset_id)} AND workspace_id = {int(workspace_id)}"
+        f"WHERE id = {sql_id(dataset_id)} AND workspace_id = {sql_id(workspace_id)}"
     )
     return {"ok": True, "dataset_id": dataset_id, "table_label": clean_label}
 
 
-def remove_dataset(workspace_id: int, dataset_id: int) -> dict:
+def remove_dataset(workspace_id: int | str, dataset_id: int | str) -> dict:
     """Remove a dataset in one atomic transaction: table, catalog rows, quarantine rows, and threads array_remove."""
     found = execute(
-        f"SELECT id, table_name, upload_id FROM datasets WHERE id = {int(dataset_id)} AND workspace_id = {int(workspace_id)}"
+        f"SELECT id, table_name, upload_id FROM datasets WHERE id = {sql_id(dataset_id)} AND workspace_id = {sql_id(workspace_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="dataset not found in this workspace")
@@ -241,29 +260,29 @@ def remove_dataset(workspace_id: int, dataset_id: int) -> dict:
     upload_id = ds["upload_id"]
 
     if upload_id:
-        up = execute(f"SELECT status FROM uploads WHERE id = {int(upload_id)}")
+        up = execute(f"SELECT status FROM uploads WHERE id = {sql_id(upload_id)}")
         if up and up[0]["status"] in ("received", "processing", "uploading", "profiling"):
             raise HTTPException(status_code=400, detail="Cannot remove dataset while upload is running")
 
     sql = f"""
     DROP TABLE IF EXISTS user_data.{table_name} CASCADE;
-    DELETE FROM dataset_columns WHERE dataset_id = {int(dataset_id)};
-    DELETE FROM datasets WHERE id = {int(dataset_id)};
-    DELETE FROM quarantine WHERE upload_id = {int(upload_id)};
+    DELETE FROM dataset_columns WHERE dataset_id = {sql_id(dataset_id)};
+    DELETE FROM datasets WHERE id = {sql_id(dataset_id)};
+    DELETE FROM quarantine WHERE upload_id = {sql_id(upload_id)};
     UPDATE threads 
-    SET selected_dataset_ids = array_remove(selected_dataset_ids, {int(dataset_id)}),
+    SET selected_dataset_ids = array_remove(selected_dataset_ids, {sql_literal(str(dataset_id))}),
         updated_at = now()
-    WHERE workspace_id = {int(workspace_id)};
+    WHERE workspace_id = {sql_id(workspace_id)};
     """
     execute(sql)
     return {"ok": True, "dataset_id": dataset_id, "table_name": table_name}
 
 
-def get_mappings(upload_id: int) -> list[dict]:
+def get_mappings(upload_id: int | str) -> list[dict]:
     """Retrieve column mapping proposals and statuses for an upload."""
     saved = execute(
         "SELECT source_column, canonical_column, confidence, method, confirmed_by_user "
-        f"FROM column_mapping WHERE upload_id = {int(upload_id)} ORDER BY id"
+        f"FROM column_mapping WHERE upload_id = {sql_id(upload_id)} ORDER BY id"
     )
     mappings = []
     for item in saved:
@@ -284,7 +303,7 @@ def get_mappings(upload_id: int) -> list[dict]:
     return mappings
 
 
-def get_health(workspace_id: int) -> dict:
+def get_health(workspace_id: int | str) -> dict:
     """Compute table health stats and count quarantined rows for a workspace."""
     try:
         rows = run_sql(HEALTH_SQL, workspace_id)
@@ -296,7 +315,7 @@ def get_health(workspace_id: int) -> dict:
     health_rows = health.get("rows") or "0"
     if health_rows == "0":
         try:
-            ds_count = execute(f"SELECT coalesce(sum(row_count), 0) AS total FROM datasets WHERE workspace_id = {int(workspace_id)}")
+            ds_count = execute(f"SELECT coalesce(sum(row_count), 0) AS total FROM datasets WHERE workspace_id = {sql_id(workspace_id)}")
             if ds_count and int(ds_count[0].get("total", 0)) > 0:
                 health_rows = str(ds_count[0]["total"])
         except Exception:
@@ -305,7 +324,7 @@ def get_health(workspace_id: int) -> dict:
     counted = execute(
         "SELECT count(*) AS quarantine FROM quarantine q "
         "JOIN uploads u ON u.id = q.upload_id "
-        f"WHERE u.workspace_id = {int(workspace_id)}"
+        f"WHERE u.workspace_id = {sql_id(workspace_id)}"
     )
     return {
         "rows": health_rows,
@@ -316,10 +335,10 @@ def get_health(workspace_id: int) -> dict:
     }
 
 
-def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
+def get_turns(workspace_id: int | str, thread_id: str | None = None) -> list[dict]:
     """Fetch conversation turns for a workspace, optionally filtered by thread_id, excluding deleted and ghost architect runs."""
     where_clauses = [
-        f"workspace_id = {int(workspace_id)}",
+        f"workspace_id = {sql_id(workspace_id)}",
         "(checker_result->>'deleted') IS NULL",
         "NOT (question = 'Schema Analysis')",
         "NOT (answer LIKE '{\"table_label\"%')",
@@ -347,7 +366,7 @@ def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
             check = {}
         turns.append(
             {
-                "run_id": int(row["id"]),
+                "run_id": row["id"],
                 "question": q,
                 "answer": ans,
                 "sql": row.get("sql_list") or None,
@@ -364,20 +383,20 @@ def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
     return turns
 
 
-def get_workspace_detail(workspace_id: int, thread_id: str | None = None) -> dict:
+def get_workspace_detail(workspace_id: int | str, thread_id: str | None = None) -> dict:
     """Assemble complete data room view: uploads, health, quarantine, mappings, threads, turns, and datasets."""
     room = get_workspace_meta(workspace_id)
     if room is None:
         raise HTTPException(status_code=404, detail="workspace not found")
     uploads = execute(
         "SELECT id, original_name, status FROM uploads "
-        f"WHERE workspace_id = {int(workspace_id)} ORDER BY id DESC"
+        f"WHERE workspace_id = {sql_id(workspace_id)} ORDER BY id DESC"
     )
     latest = uploads[0]["id"] if uploads else None
     capabilities = {}
     if latest:
         cap_rows = execute(
-            f"SELECT capabilities FROM uploads WHERE id = {int(latest)}"
+            f"SELECT capabilities FROM uploads WHERE id = {sql_id(latest)}"
         )
         if cap_rows and cap_rows[0].get("capabilities"):
             raw_cap = cap_rows[0]["capabilities"]
@@ -388,18 +407,18 @@ def get_workspace_detail(workspace_id: int, thread_id: str | None = None) -> dic
     quarantine = execute(
         "SELECT q.row_number, q.reason FROM quarantine q "
         "JOIN uploads u ON u.id = q.upload_id "
-        f"WHERE u.workspace_id = {int(workspace_id)} "
+        f"WHERE u.workspace_id = {sql_id(workspace_id)} "
         "ORDER BY q.id DESC LIMIT 20"
     )
     return {
-        "id": int(room["id"]),
+        "id": room["id"],
         "name": room["name"],
         "uploads": uploads,
         "capabilities": capabilities,
         "datasets": list_workspace_datasets(workspace_id),
         "health": get_health(workspace_id),
         "quarantine": quarantine,
-        "mappings": get_mappings(int(latest)) if latest else [],
+        "mappings": get_mappings(latest) if latest else [],
         "threads": list_threads(workspace_id),
         "turns": get_turns(workspace_id, thread_id),
     }

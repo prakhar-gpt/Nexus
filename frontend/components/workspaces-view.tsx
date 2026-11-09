@@ -13,13 +13,13 @@ import { mutateResource } from "@/lib/use-resource"
 
 interface WorkspacesViewProps {
   workspaces: WorkspaceSummary[]
-  currentRoomId?: number | null
+  currentRoomId?: string | number | null
   loading?: boolean
   error?: string | null
   onRetry?: () => void
-  onSelectWorkspace?: (id: number) => void
+  onSelectWorkspace?: (id: string | number) => void
   onOpenCreateModal?: () => void
-  onDeleteWorkspace?: (id: number) => Promise<void> | void
+  onDeleteWorkspace?: (id: string | number) => Promise<void> | void
   onOpenAuthModal?: () => void
 }
 
@@ -73,7 +73,7 @@ export function WorkspacesView({
     router.push(`/rooms/${data.id}`)
   }
 
-  function handleSelectRoom(id: number) {
+  function handleSelectRoom(id: string | number) {
     setMobileDrawerOpen(false)
     if (onSelectWorkspace) {
       onSelectWorkspace(id)

@@ -7,16 +7,18 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Uplo
 from fastapi.responses import StreamingResponse
 
 from pydantic import BaseModel, Field
+from ingest.store import sql_id
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    id: str | None = None
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     thread_id: str | None = Field(default=None, max_length=100)
 
 class ThreadDatasetsUpdate(BaseModel):
-    dataset_ids: list[int] = Field(default_factory=list)
+    dataset_ids: list[str | int] = Field(default_factory=list)
 
 class DatasetLabelUpdate(BaseModel):
     table_label: str = Field(min_length=1, max_length=100)
@@ -60,23 +62,23 @@ def get_workspaces_endpoint():
 @router.post("/workspaces")
 def create_workspace_endpoint(body: WorkspaceCreate):
     """Create a new workspace."""
-    return create_workspace(body.name)
+    return create_workspace(body.name, workspace_id=body.id)
 
 
 @router.delete("/workspaces/{workspace_id}")
-def delete_workspace_endpoint(workspace_id: int):
+def delete_workspace_endpoint(workspace_id: str):
     """Delete / archive a workspace."""
     return delete_workspace(workspace_id)
 
 
 @router.get("/workspaces/{workspace_id}")
-def get_workspace_endpoint(workspace_id: int, thread_id: str | None = Query(default=None)):
+def get_workspace_endpoint(workspace_id: str, thread_id: str | None = Query(default=None)):
     """Retrieve full data room view for a workspace, optionally filtered to a thread."""
     return get_workspace_detail(workspace_id, thread_id)
 
 
 @router.get("/workspaces/{workspace_id}/threads")
-def get_threads_endpoint(workspace_id: int):
+def get_threads_endpoint(workspace_id: str):
     """List all chat threads in a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -84,7 +86,7 @@ def get_threads_endpoint(workspace_id: int):
 
 
 @router.get("/workspaces/{workspace_id}/threads/{thread_id}/turns")
-def get_thread_turns_endpoint(workspace_id: int, thread_id: str):
+def get_thread_turns_endpoint(workspace_id: str, thread_id: str):
     """Fetch message turns for a specific thread."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -92,7 +94,7 @@ def get_thread_turns_endpoint(workspace_id: int, thread_id: str):
 
 
 @router.delete("/workspaces/{workspace_id}/threads/{thread_id}")
-def delete_thread_endpoint(workspace_id: int, thread_id: str):
+def delete_thread_endpoint(workspace_id: str, thread_id: str):
     """Delete a conversation thread in a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -100,7 +102,7 @@ def delete_thread_endpoint(workspace_id: int, thread_id: str):
 
 
 @router.patch("/workspaces/{workspace_id}/threads/{thread_id}/datasets")
-def update_thread_datasets_endpoint(workspace_id: int, thread_id: str, body: ThreadDatasetsUpdate):
+def update_thread_datasets_endpoint(workspace_id: str, thread_id: str, body: ThreadDatasetsUpdate):
     """Update allowed dataset selection for a specific chat thread."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -108,7 +110,7 @@ def update_thread_datasets_endpoint(workspace_id: int, thread_id: str, body: Thr
 
 
 @router.get("/workspaces/{workspace_id}/datasets")
-def get_datasets_endpoint(workspace_id: int):
+def get_datasets_endpoint(workspace_id: str):
     """List all approved datasets for a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -116,7 +118,7 @@ def get_datasets_endpoint(workspace_id: int):
 
 
 @router.patch("/workspaces/{workspace_id}/datasets/{dataset_id}")
-def rename_dataset_endpoint(workspace_id: int, dataset_id: int, body: DatasetLabelUpdate):
+def rename_dataset_endpoint(workspace_id: str, dataset_id: str, body: DatasetLabelUpdate):
     """Rename an approved dataset's friendly table label."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -124,7 +126,7 @@ def rename_dataset_endpoint(workspace_id: int, dataset_id: int, body: DatasetLab
 
 
 @router.delete("/workspaces/{workspace_id}/datasets/{dataset_id}")
-def delete_dataset_endpoint(workspace_id: int, dataset_id: int):
+def delete_dataset_endpoint(workspace_id: str, dataset_id: str):
     """Delete an approved dataset, its catalog entries, quarantine, and references."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -133,7 +135,7 @@ def delete_dataset_endpoint(workspace_id: int, dataset_id: int):
 
 @router.post("/workspaces/{workspace_id}/uploads")
 async def create_upload_endpoint(
-    workspace_id: int,
+    workspace_id: str,
     background: BackgroundTasks,
     file: UploadFile = File(...),
 ):
@@ -143,7 +145,7 @@ async def create_upload_endpoint(
 
 
 @router.post("/workspaces/{workspace_id}/chat")
-def chat_endpoint(workspace_id: int, body: ChatRequest):
+def chat_endpoint(workspace_id: str, body: ChatRequest):
     """Execute an agent query against a workspace and stream SSE events."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -157,7 +159,7 @@ def chat_endpoint(workspace_id: int, body: ChatRequest):
     allowed_dataset_ids = thread.get("selected_dataset_ids") or []
 
     # Block send if zero datasets are checked (when custom datasets exist in workspace)
-    has_custom = bool(execute(f"SELECT 1 FROM datasets WHERE workspace_id = {int(workspace_id)} LIMIT 1"))
+    has_custom = bool(execute(f"SELECT 1 FROM datasets WHERE workspace_id = {sql_id(workspace_id)} LIMIT 1"))
     if has_custom and len(allowed_dataset_ids) == 0:
         raise HTTPException(status_code=400, detail="Select a dataset to ask about")
 

@@ -14,7 +14,7 @@ from api.services.workspace_service import get_mappings, get_workspace_meta
 from api.services.chat_service import format_sse
 from agent.nexus.tools import SqlRejected, run_sql
 from ingest import confirm_mappings, execute, ingest, make_inert, reserve_upload
-from ingest.store import sql_literal
+from ingest.store import sql_id, sql_literal
 
 PROGRESS: dict[int, list[dict]] = {}
 
@@ -48,7 +48,7 @@ def record_upload_event(
     try:
         execute(
             f"INSERT INTO agent_events (agent_kind, upload_id, seq, stage, event_type, label, payload) "
-            f"VALUES ('nexus', {int(upload_id)}, {int(seq)}, {sql_literal(stage)}, {sql_literal(event_type)}, "
+            f"VALUES ('nexus', {sql_id(upload_id)}, {int(seq)}, {sql_literal(stage)}, {sql_literal(event_type)}, "
             f"{sql_literal(label)}, {sql_literal(json.dumps(event_payload))}::jsonb)"
         )
     except Exception:
@@ -59,13 +59,13 @@ def record_upload_event(
     return event_payload
 
 
-def fetch_upload_events_from_db(upload_id: int, since_seq: int = 0) -> list[dict]:
+def fetch_upload_events_from_db(upload_id: int | str, since_seq: int = 0) -> list[dict]:
     """Retrieve ordered persistent agent events since a given sequence number."""
     from ingest.store import execute
     try:
         rows = execute(
             f"SELECT seq, stage, event_type, label, payload, created_at FROM agent_events "
-            f"WHERE upload_id = {int(upload_id)} AND seq > {int(since_seq)} "
+            f"WHERE upload_id = {sql_id(upload_id)} AND seq > {int(since_seq)} "
             f"ORDER BY seq ASC"
         )
         events = []
@@ -246,7 +246,7 @@ def _emit_handoff(upload_id: int, table_name: str, table_label: str,
 
 
 def handle_file_upload(
-    workspace_id: int,
+    workspace_id: int | str,
     filename: str,
     data: bytes,
     background: BackgroundTasks,
@@ -272,7 +272,7 @@ def handle_file_upload(
     return {"upload_id": upload_id}
 
 
-def run_ingest_job(upload_id: int, path, workspace_id: int) -> None:
+def run_ingest_job(upload_id: int | str, path, workspace_id: int | str) -> None:
     """Background ingestion task emitting canonical stage events."""
     def progress_callback(payload: dict) -> None:
         # Normalize architect_tool events into the shared `step` event shape
@@ -415,11 +415,11 @@ def update_column_mappings(upload_id: int, decisions: dict[str, str]) -> dict:
     }
 
 
-def get_upload_health_summary(upload_id: int, download: str | None = None):
+def get_upload_health_summary(upload_id: int | str, download: str | None = None):
     """Return upload health summary or stream quarantine CSV download."""
     found = execute(
         "SELECT id, workspace_id, original_name, status FROM uploads "
-        f"WHERE id = {int(upload_id)}"
+        f"WHERE id = {sql_id(upload_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="upload not found")
@@ -427,7 +427,7 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
     if download == "quarantine":
         rows = execute(
             "SELECT row_number, reason, raw_json FROM quarantine "
-            f"WHERE upload_id = {int(upload_id)} ORDER BY row_number"
+            f"WHERE upload_id = {sql_id(upload_id)} ORDER BY row_number"
         )
         buffer = io.StringIO()
         writer = csv.writer(buffer)
@@ -449,7 +449,7 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
     upload = found[0]
     summary = []
     # Check custom dataset row counts first
-    ds = execute(f"SELECT table_name, row_count FROM datasets WHERE upload_id = {int(upload_id)}")
+    ds = execute(f"SELECT table_name, row_count FROM datasets WHERE upload_id = {sql_id(upload_id)}")
     if ds:
         summary = [{"rows": str(ds[0].get("row_count", 0)), "first_order": "", "last_order": "", "revenue": ""}]
     else:
@@ -458,14 +458,14 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
                 "SELECT count(*) AS rows, min(order_date)::text AS first_order, "
                 "max(order_date)::text AS last_order, "
                 "coalesce(round(sum(revenue), 2)::text, '') AS revenue "
-                f"FROM sales_clean WHERE upload_id = {int(upload_id)}",
-                int(upload["workspace_id"]),
+                f"FROM sales_clean WHERE upload_id = {sql_id(upload_id)}",
+                upload["workspace_id"],
             )
         except SqlRejected:
             summary = []
 
     return {
-        "upload_id": int(upload_id),
+        "upload_id": upload_id,
         "original_name": upload["original_name"],
         "status": upload["status"],
         "summary": summary[0] if summary else {},
@@ -473,11 +473,11 @@ def get_upload_health_summary(upload_id: int, download: str | None = None):
     }
 
 
-def get_upload_mapping_detail(upload_id: int) -> dict:
+def get_upload_mapping_detail(upload_id: int | str) -> dict:
     """Retrieve column mapping proposals, capabilities, and preview for an upload."""
     found = execute(
         "SELECT workspace_id, stored_name, status, capabilities FROM uploads "
-        f"WHERE id = {int(upload_id)}"
+        f"WHERE id = {sql_id(upload_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="upload not found")
@@ -492,8 +492,8 @@ def get_upload_mapping_detail(upload_id: int) -> dict:
     preview = []
     try:
         rows = run_sql(
-            f"SELECT * FROM sales_clean WHERE upload_id = {int(upload_id)} LIMIT 10",
-            int(upload["workspace_id"]),
+            f"SELECT * FROM sales_clean WHERE upload_id = {sql_id(upload_id)} LIMIT 10",
+            upload["workspace_id"],
         )
         for r in rows:
             attrs = {}
@@ -520,11 +520,11 @@ def get_upload_mapping_detail(upload_id: int) -> dict:
 # Schema Architect Endpoints & Business Logic
 # ---------------------------------------------------------------------------
 
-def _get_upload_df_and_rows(upload_id: int) -> tuple[dict, list[tuple[int, list[str]]], int, list[str], Any]:
+def _get_upload_df_and_rows(upload_id: int | str) -> tuple[dict, list[tuple[int, list[str]]], int, list[str], Any]:
     """Load parsed tabular data and pandas dataframe for an upload."""
     found = execute(
         f"SELECT id, workspace_id, original_name, stored_name, status, schema_proposal, custom_table_name "
-        f"FROM uploads WHERE id = {int(upload_id)}"
+        f"FROM uploads WHERE id = {sql_id(upload_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="upload not found")
@@ -558,7 +558,7 @@ def _get_upload_df_and_rows(upload_id: int) -> tuple[dict, list[tuple[int, list[
     return upload, rows, header_line, headers, df
 
 
-def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_callback=None) -> dict:
+def _init_schema_proposal(upload_id: int | str, path, workspace_id: int | str, progress_callback=None) -> dict:
     """Generate or retrieve cached schema proposal and store on upload record."""
     from ingest.custom_table import compute_headers_hash, get_cached_proposal
     from ingest.reader import find_header, read_rows
@@ -654,7 +654,7 @@ def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_call
         import pandas as pd
         df = pd.DataFrame(data_rows)
 
-        upload_rows = execute(f"SELECT original_name FROM uploads WHERE id = {int(upload_id)}")
+        upload_rows = execute(f"SELECT original_name FROM uploads WHERE id = {sql_id(upload_id)}")
         orig_name = upload_rows[0]["original_name"] if upload_rows and upload_rows[0].get("original_name") else path.name
         raw_stem = Path(orig_name).stem if orig_name else path.stem
         label = raw_stem.replace("_", " ").replace("-", " ").title()
@@ -667,7 +667,7 @@ def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_call
 
     execute(
         f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_dict))}::jsonb, "
-        f"status = 'needs_schema_review' WHERE id = {int(upload_id)}"
+        f"status = 'needs_schema_review' WHERE id = {sql_id(upload_id)}"
     )
     record_upload_event(
         upload_id,
@@ -684,7 +684,7 @@ def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_call
     return proposal_dict
 
 
-def get_upload_schema(upload_id: int) -> dict:
+def get_upload_schema(upload_id: int | str) -> dict:
     """GET /uploads/{id}/schema -> proposal + validation + 10-row preview."""
     upload, raw_rows, header_line, headers, df = _get_upload_df_and_rows(upload_id)
     raw_proposal = upload.get("schema_proposal")
@@ -692,7 +692,7 @@ def get_upload_schema(upload_id: int) -> dict:
         # Generate on the fly if missing
         from ingest.pipeline import UPLOAD_DIR
         path = UPLOAD_DIR / upload["stored_name"]
-        proposal = _init_schema_proposal(upload_id, path, int(upload["workspace_id"]))
+        proposal = _init_schema_proposal(upload_id, path, upload["workspace_id"])
     else:
         proposal = json.loads(raw_proposal) if isinstance(raw_proposal, str) else raw_proposal
 
@@ -709,23 +709,23 @@ def get_upload_schema(upload_id: int) -> dict:
         "upload_id": upload_id,
         "workspace_id": upload["workspace_id"],
         "status": upload["status"],
-        "table_name": upload.get("custom_table_name") or f"ds_{upload_id}",
+        "table_name": upload.get("custom_table_name") or f"ds_{str(upload_id).replace('-', '_')}",
         "proposal": proposal,
         "validation": val_res.model_dump(),
         "preview": preview,
     }
 
 
-def initiate_upload_schema(upload_id: int) -> dict:
+def initiate_upload_schema(upload_id: int | str) -> dict:
     """Trigger Schema Architect manually (e.g. from 'Or load as custom table instead')."""
     upload, raw_rows, header_line, headers, df = _get_upload_df_and_rows(upload_id)
     from ingest.pipeline import UPLOAD_DIR
     path = UPLOAD_DIR / upload["stored_name"]
-    _init_schema_proposal(upload_id, path, int(upload["workspace_id"]))
+    _init_schema_proposal(upload_id, path, upload["workspace_id"])
     return get_upload_schema(upload_id)
 
 
-def update_upload_schema(upload_id: int, proposal_edits: dict) -> dict:
+def update_upload_schema(upload_id: int | str, proposal_edits: dict) -> dict:
     """PUT /uploads/{id}/schema -> save user edits and revalidate."""
     upload, raw_rows, header_line, headers, df = _get_upload_df_and_rows(upload_id)
 
@@ -735,7 +735,7 @@ def update_upload_schema(upload_id: int, proposal_edits: dict) -> dict:
 
     execute(
         f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_edits))}::jsonb "
-        f"WHERE id = {int(upload_id)}"
+        f"WHERE id = {sql_id(upload_id)}"
     )
 
     return {
@@ -817,8 +817,8 @@ def approve_upload_schema(
         friendly_label = friendly_label.rsplit('.', 1)[0]
 
     loaded, quarantined, table_name = create_and_load_custom_table(
-        upload_id=int(upload_id),
-        workspace_id=int(upload["workspace_id"]),
+        upload_id=upload_id,
+        workspace_id=upload["workspace_id"],
         table_label=friendly_label,
         grain=proposal.get("grain", ""),
         grain_key_columns=proposal.get("grain_key_columns", []),
@@ -830,21 +830,21 @@ def approve_upload_schema(
         progress_callback=progress_callback,
     )
 
-    execute(f"UPDATE uploads SET status = 'loaded' WHERE id = {int(upload_id)}")
+    execute(f"UPDATE uploads SET status = 'loaded' WHERE id = {sql_id(upload_id)}")
 
     # Auto-check newly approved dataset in active thread if one exists
-    new_ds_row = execute(f"SELECT id FROM datasets WHERE upload_id = {int(upload_id)}")
+    new_ds_row = execute(f"SELECT id FROM datasets WHERE upload_id = {sql_id(upload_id)}")
     if new_ds_row:
-        new_ds_id = int(new_ds_row[0]["id"])
+        new_ds_id = str(new_ds_row[0]["id"])
         latest_thread = execute(
-            f"SELECT id FROM threads WHERE workspace_id = {int(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
+            f"SELECT id FROM threads WHERE workspace_id = {sql_id(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
         )
         if latest_thread:
             t_id = latest_thread[0]["id"]
             execute(
-                f"UPDATE threads SET selected_dataset_ids = array_append(selected_dataset_ids, {new_ds_id}), updated_at = now() "
-                f"WHERE workspace_id = {int(upload['workspace_id'])} AND id = {sql_literal(t_id)} "
-                f"AND NOT ({new_ds_id} = ANY(selected_dataset_ids))"
+                f"UPDATE threads SET selected_dataset_ids = array_append(selected_dataset_ids, {sql_literal(str(new_ds_id))}), updated_at = now() "
+                f"WHERE workspace_id = {sql_id(upload['workspace_id'])} AND id = {sql_literal(t_id)} "
+                f"AND NOT ({sql_literal(str(new_ds_id))} = ANY(selected_dataset_ids))"
             )
 
     questions = _generate_suggested_questions(proposal)
@@ -853,12 +853,12 @@ def approve_upload_schema(
     clean_thread = (thread_id or "").strip()
     if not clean_thread:
         latest_t = execute(
-            f"SELECT id FROM threads WHERE workspace_id = {int(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
+            f"SELECT id FROM threads WHERE workspace_id = {sql_id(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
         )
         clean_thread = latest_t[0]["id"] if latest_t else "default"
 
     from api.services.workspace_service import get_or_create_thread
-    get_or_create_thread(int(upload["workspace_id"]), clean_thread)
+    get_or_create_thread(upload["workspace_id"], clean_thread)
 
     clean_grain = re.sub(
         r"^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*",
@@ -889,13 +889,13 @@ def approve_upload_schema(
         },
     }
 
-    checker_payload["upload_id"] = int(upload_id)
+    checker_payload["upload_id"] = str(upload_id)
 
     # Clean any stale upload run for this upload_id, then persist the human-readable turn
     execute(
-        f"DELETE FROM runs WHERE workspace_id = {int(upload['workspace_id'])} AND (checker_result->>'upload_id') = {sql_literal(str(upload_id))};\n"
+        f"DELETE FROM runs WHERE workspace_id = {sql_id(upload['workspace_id'])} AND (checker_result->>'upload_id') = {sql_literal(str(upload_id))};\n"
         f"INSERT INTO runs (workspace_id, question, answer, checker_result, latency_ms) "
-        f"VALUES ({int(upload['workspace_id'])}, {sql_literal(question_text)}, {sql_literal(handoff_text)}, "
+        f"VALUES ({sql_id(upload['workspace_id'])}, {sql_literal(question_text)}, {sql_literal(handoff_text)}, "
         f"{sql_literal(json.dumps(checker_payload))}::jsonb, 0);"
     )
 
@@ -938,9 +938,9 @@ def approve_upload_schema(
     }
 
 
-def reject_upload_schema(upload_id: int) -> dict:
+def reject_upload_schema(upload_id: int | str) -> dict:
     """POST /uploads/{id}/schema/reject -> mark rejected, no table created."""
-    execute(f"UPDATE uploads SET status = 'rejected' WHERE id = {int(upload_id)}")
+    execute(f"UPDATE uploads SET status = 'rejected' WHERE id = {sql_id(upload_id)}")
     record_upload_event(
         upload_id,
         "review",
@@ -956,12 +956,12 @@ def reject_upload_schema(upload_id: int) -> dict:
     return {"status": "rejected", "message": "Schema rejected. No table was created."}
 
 
-def regenerate_upload_schema(upload_id: int, user_hint: str | None = None) -> dict:
+def regenerate_upload_schema(upload_id: int | str, user_hint: str | None = None) -> dict:
     """POST /uploads/{id}/schema/regenerate -> re-run architect (capped at 3 runs)."""
     upload, raw_rows, header_line, headers, df = _get_upload_df_and_rows(upload_id)
 
     # Cap check
-    runs_count_res = execute(f"SELECT count(*) AS cnt FROM runs WHERE upload_id = {int(upload_id)}")
+    runs_count_res = execute(f"SELECT count(*) AS cnt FROM runs WHERE upload_id = {sql_id(upload_id)}")
     runs_count = int(runs_count_res[0]["cnt"]) if runs_count_res else 0
     if runs_count >= 3:
         raise HTTPException(status_code=429, detail="Maximum 3 regeneration runs reached for this upload.")
@@ -981,7 +981,7 @@ def regenerate_upload_schema(upload_id: int, user_hint: str | None = None) -> di
     proposal_dict = proposal_obj.model_dump()
 
     execute(
-        f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_dict))}::jsonb WHERE id = {int(upload_id)};"
+        f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_dict))}::jsonb WHERE id = {sql_id(upload_id)};"
     )
 
     PROGRESS.setdefault(upload_id, []).append({
@@ -997,7 +997,7 @@ def regenerate_upload_schema(upload_id: int, user_hint: str | None = None) -> di
     }
 
 
-def get_upload_status_for_rehydration(upload_id: int) -> dict:
+def get_upload_status_for_rehydration(upload_id: int | str) -> dict:
     """GET /uploads/{id}/status — returns upload status, proposal, table metadata and suggested questions.
     Used by the frontend to restore the architect card and handoff message on page reload."""
     rows = execute(
@@ -1007,7 +1007,7 @@ def get_upload_status_for_rehydration(upload_id: int) -> dict:
         f"(SELECT count(*)::int FROM quarantine q WHERE q.upload_id = u.id) AS quarantine_count "
         f"FROM uploads u "
         f"LEFT JOIN datasets d ON d.upload_id = u.id "
-        f"WHERE u.id = {int(upload_id)}"
+        f"WHERE u.id = {sql_id(upload_id)}"
     )
     if not rows:
         raise HTTPException(status_code=404, detail="upload not found")

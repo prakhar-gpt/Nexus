@@ -10,7 +10,7 @@ export type User = {
 }
 
 const DEFAULT_USER: User = {
-  id: "user-1",
+  id: "00000000-0000-0000-0000-000000000001",
   name: "Prakhar Gupta",
   email: "prakhar@nexus.ai",
   role: "Consulting Analyst",
@@ -51,8 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   function login(email: string, name?: string) {
     const formattedName = name?.trim() || email.split("@")[0].replace(".", " ")
+    const uuid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "00000000-0000-0000-0000-000000000001"
     const newUser: User = {
-      id: `user-${Date.now().toString(36)}`,
+      id: uuid,
       name: formattedName.charAt(0).toUpperCase() + formattedName.slice(1),
       email: email.trim().toLowerCase(),
       role: "Diligence Analyst",

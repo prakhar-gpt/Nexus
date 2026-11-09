@@ -29,7 +29,7 @@ from ingest.reader import (
     read_rows,
     stored_name,
 )
-from ingest.store import execute, sql_literal
+from ingest.store import execute, sql_id, sql_literal
 
 ROOT = Path(__file__).resolve().parents[2]
 UPLOAD_DIR = ROOT / "datasets" / "uploads"
@@ -78,14 +78,14 @@ def _mapping_payload(proposal: Proposal) -> dict:
     }
 
 
-def _load_confirmed_mappings(workspace_id: int) -> dict[str, str]:
+def _load_confirmed_mappings(workspace_id: int | str) -> dict[str, str]:
     """Return {normalize(source_column): canonical_column} for confirmed mappings in this workspace."""
     try:
         rows = execute(
             "SELECT cm.source_column, cm.canonical_column "
             "FROM column_mapping cm "
             "JOIN uploads u ON u.id = cm.upload_id "
-            f"WHERE u.workspace_id = {int(workspace_id)} "
+            f"WHERE u.workspace_id = {sql_id(workspace_id)} "
             "AND cm.confirmed_by_user = true "
             "AND cm.canonical_column IS NOT NULL"
         )
@@ -264,7 +264,7 @@ def _ingest(path, workspace_id: int, confirm, existing_id, progress, allow_custo
     )
 
 
-def reserve_upload(original_name: str, workspace_id: int, data: bytes) -> tuple[int, Path]:
+def reserve_upload(original_name: str, workspace_id: int | str, data: bytes) -> tuple[str, Path]:
     suffix = Path(original_name).suffix.lower()
     extension = suffix if suffix in {".csv", ".xlsx"} else ".bin"
     digest = hashlib.sha256(data).hexdigest()
@@ -275,17 +275,17 @@ def reserve_upload(original_name: str, workspace_id: int, data: bytes) -> tuple[
     rows = execute(
         "INSERT INTO uploads "
         "(workspace_id, original_name, stored_name, sha256, size, status) "
-        f"VALUES ({int(workspace_id)}, {sql_literal(Path(original_name).name)}, "
+        f"VALUES ({sql_id(workspace_id)}, {sql_literal(Path(original_name).name)}, "
         f"{sql_literal(name)}, {sql_literal(digest)}, {len(data)}, 'received') "
         "RETURNING id"
     )
-    return int(rows[0]["id"]), path
+    return str(rows[0]["id"]), path
 
 
-def confirm_mappings(upload_id: int, decisions: dict[str, str]) -> IngestResult:
+def confirm_mappings(upload_id: int | str, decisions: dict[str, str]) -> IngestResult:
     found = execute(
         "SELECT workspace_id, stored_name, status FROM uploads "
-        f"WHERE id = {int(upload_id)}"
+        f"WHERE id = {sql_id(upload_id)}"
     )
     if not found:
         return IngestResult("rejected", "upload not found", upload_id)
@@ -295,7 +295,7 @@ def confirm_mappings(upload_id: int, decisions: dict[str, str]) -> IngestResult:
     path = UPLOAD_DIR / current["stored_name"]
     saved_mappings = execute(
         "SELECT source_column, canonical_column, confidence, method, confirmed_by_user "
-        f"FROM column_mapping WHERE upload_id = {int(upload_id)}"
+        f"FROM column_mapping WHERE upload_id = {sql_id(upload_id)}"
     )
     proposals = [
         Proposal(
@@ -315,7 +315,7 @@ def confirm_mappings(upload_id: int, decisions: dict[str, str]) -> IngestResult:
             execute(
                 f"UPDATE column_mapping SET canonical_column = {sql_literal(proposal.canonical)}, "
                 "confirmed_by_user = true "
-                f"WHERE upload_id = {int(upload_id)} AND source_column = {sql_literal(proposal.source)}"
+                f"WHERE upload_id = {sql_id(upload_id)} AND source_column = {sql_literal(proposal.source)}"
             )
     columns = _accepted_columns(proposals, include_pending=False)
     gap = domain_gap(columns)
@@ -325,14 +325,14 @@ def confirm_mappings(upload_id: int, decisions: dict[str, str]) -> IngestResult:
     data = path.read_bytes()
     rows = read_rows(path, path.suffix.lower())
     header_line, _ = find_header(rows)
-    execute(f"UPDATE uploads SET status = 'accepted' WHERE id = {int(upload_id)}")
+    execute(f"UPDATE uploads SET status = 'accepted' WHERE id = {sql_id(upload_id)}")
     loaded, quarantined, attr_schema, caps, preview = _load_rows(
-        int(upload_id), int(current["workspace_id"]), rows, header_line, proposals
+        str(upload_id), str(current["workspace_id"]), rows, header_line, proposals
     )
     return IngestResult(
         "accepted",
         None,
-        int(upload_id),
+        str(upload_id),
         current["stored_name"],
         header_line,
         loaded,
@@ -367,25 +367,25 @@ def _record_upload(path: Path, workspace_id: int, status: str, data: bytes, exis
             "UPDATE uploads SET "
             f"stored_name = {sql_literal(name)}, sha256 = {sql_literal(digest)}, "
             f"size = {len(data)}, status = {sql_literal(status)} "
-            f"WHERE id = {int(existing_id)}"
+            f"WHERE id = {sql_id(existing_id)}"
         )
-        return int(existing_id), name
+        return str(existing_id), name
     rows = execute(
         "INSERT INTO uploads "
         "(workspace_id, original_name, stored_name, sha256, size, status) "
-        f"VALUES ({int(workspace_id)}, {sql_literal(path.name)}, {sql_literal(name)}, "
+        f"VALUES ({sql_id(workspace_id)}, {sql_literal(path.name)}, {sql_literal(name)}, "
         f"{sql_literal(digest)}, {len(data)}, {sql_literal(status)}) "
         "RETURNING id"
     )
-    return int(rows[0]["id"]), name
+    return str(rows[0]["id"]), name
 
 
-def _save_mappings(upload_id: int, proposals: list[Proposal]) -> None:
+def _save_mappings(upload_id: int | str, proposals: list[Proposal]) -> None:
     for proposal in proposals:
         execute(
             "INSERT INTO column_mapping "
             "(upload_id, source_column, canonical_column, confidence, method, confirmed_by_user) "
-            f"VALUES ({upload_id}, {sql_literal(proposal.source)}, "
+            f"VALUES ({sql_id(upload_id)}, {sql_literal(proposal.source)}, "
             f"{sql_literal(proposal.canonical)}, {proposal.confidence}, "
             f"{sql_literal(proposal.method)}, "
             f"{'true' if proposal.confirmed_by_user else 'false'})"
@@ -434,7 +434,7 @@ def _save_attribute_schema(upload_id: int, all_attrs_rows: list[dict], total_row
         execute(
             "INSERT INTO upload_attribute_schema "
             "(upload_id, key, inferred_type, null_rate, sample_values) "
-            f"VALUES ({upload_id}, {sql_literal(key)}, {sql_literal(inferred)}, {null_rate}, {sql_literal(samples_json)}::jsonb) "
+            f"VALUES ({sql_id(upload_id)}, {sql_literal(key)}, {sql_literal(inferred)}, {null_rate}, {sql_literal(samples_json)}::jsonb) "
             "ON CONFLICT (upload_id, key) DO UPDATE SET "
             f"inferred_type = {sql_literal(inferred)}, null_rate = {null_rate}, sample_values = {sql_literal(samples_json)}::jsonb"
         )

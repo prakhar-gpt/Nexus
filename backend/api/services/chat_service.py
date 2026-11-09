@@ -10,10 +10,10 @@ from fastapi import HTTPException, Response
 
 def format_sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
-from ingest import StoreError, execute, make_inert, sql_literal
+from ingest import StoreError, execute, make_inert, sql_id, sql_literal
 
 
-def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "default") -> int:
+def save_run(workspace_id: int | str, question: str, result: dict, thread_id: str = "default") -> str:
     """Persist an agent execution run, its SQL queries, answer, checker audit result, and python results."""
     clean_thread = (thread_id or "default").strip()
     check_data = result.get("check") or {}
@@ -37,7 +37,7 @@ def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "d
             "INSERT INTO runs "
             "(workspace_id, question, plan, sql_list, answer, checker_result, python_results, "
             "latency_ms, tokens, cost, model) "
-            f"VALUES ({int(workspace_id)}, {sql_literal(question)}, "
+            f"VALUES ({sql_id(workspace_id)}, {sql_literal(question)}, "
             f"{sql_literal(result['plan'])}, {sql_literal(result['sql'])}, "
             f"{sql_literal(result['answer'])}, {sql_literal(payload)}::jsonb, "
             f"{sql_literal(py_res_json)}::jsonb, "
@@ -46,26 +46,26 @@ def save_run(workspace_id: int, question: str, result: dict, thread_id: str = "d
         )
     except StoreError as exc:
         raise HTTPException(status_code=500, detail="could not store the run") from exc
-    return int(rows[0]["id"])
+    return str(rows[0]["id"])
 
 
-def record_feedback(run_id: int, rating: str, reason: str | None = None) -> dict:
+def record_feedback(run_id: int | str, rating: str, reason: str | None = None) -> dict:
     """Record user thumbs up / down feedback."""
-    found = execute(f"SELECT id FROM runs WHERE id = {int(run_id)}")
+    found = execute(f"SELECT id FROM runs WHERE id = {sql_id(run_id)}")
     if not found:
         raise HTTPException(status_code=404, detail="run not found")
     execute(
         "INSERT INTO feedback (run_id, rating, reason) "
-        f"VALUES ({int(run_id)}, {sql_literal(rating)}, {sql_literal(reason)})"
+        f"VALUES ({sql_id(run_id)}, {sql_literal(rating)}, {sql_literal(reason)})"
     )
     return {"ok": True}
 
 
-def export_result_csv(run_id: int) -> Response:
+def export_result_csv(run_id: int | str) -> Response:
     """Export the SQL results of a run as a sanitized CSV download."""
     found = execute(
         "SELECT answer, checker_result FROM runs "
-        f"WHERE id = {int(run_id)}"
+        f"WHERE id = {sql_id(run_id)}"
     )
     if not found:
         raise HTTPException(status_code=404, detail="run not found")
@@ -84,7 +84,7 @@ def export_result_csv(run_id: int) -> Response:
     return Response(
         buffer.getvalue(),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=run-{int(run_id)}.csv"},
+        headers={"Content-Disposition": f"attachment; filename=run-{run_id}.csv"},
     )
 
 

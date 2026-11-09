@@ -197,7 +197,7 @@ def test_ast_guard_allows_custom_table_and_rejects_joins():
 
 def test_custom_table_lifecycle_and_rls():
     """Integration test: custom table created, rows loaded, isolated by RLS, and queried."""
-    from ingest.store import execute, sql_literal
+    from ingest.store import execute, sql_id, sql_literal
     from agent.nexus.tools.run_sql import execute_sql
     from ingest.custom_table import build_create_table_ddl
 
@@ -216,26 +216,27 @@ def test_custom_table_lifecycle_and_rls():
 
     # Fetch real workspace and upload ID from db
     ws_rows = execute("SELECT id FROM workspaces ORDER BY id LIMIT 1")
-    ws_id = int(ws_rows[0]["id"]) if ws_rows else 1
+    ws_id = str(ws_rows[0]["id"]) if ws_rows else "00000000-0000-0000-0000-000000000001"
+    other_ws = "00000000-0000-0000-0000-000000000999"
 
     upload_rows = execute(
         f"INSERT INTO uploads (workspace_id, original_name, stored_name, sha256, size, status) "
-        f"VALUES ({ws_id}, 'test.csv', 'test.csv', 'dummy', 100, 'accepted') RETURNING id"
+        f"VALUES ({sql_id(ws_id)}, 'test.csv', 'test.csv', 'dummy', 100, 'accepted') RETURNING id"
     )
-    up_id = int(upload_rows[0]["id"])
+    up_id = str(upload_rows[0]["id"])
 
     # Insert rows for workspace 1 and workspace 2
     execute(f"""
         INSERT INTO user_data.{table_name} (workspace_id, upload_id, store_id, month, revenue)
-        VALUES ({ws_id}, {up_id}, 'STR001', '2024-01-01', 89230.50),
-               ({ws_id}, {up_id}, 'STR002', '2024-01-01', 145000.75),
-               ({ws_id + 999}, {up_id}, 'STR999', '2024-01-01', 50000.00);
+        VALUES ({sql_id(ws_id)}, {sql_id(up_id)}, 'STR001', '2024-01-01', 89230.50),
+               ({sql_id(ws_id)}, {sql_id(up_id)}, 'STR002', '2024-01-01', 145000.75),
+               ({sql_id(other_ws)}, {sql_id(up_id)}, 'STR999', '2024-01-01', 50000.00);
     """)
 
     # Register in datasets catalog so run_sql allows it
     execute(f"""
         INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain)
-        VALUES ({ws_id}, {up_id}, '{table_name}', 'Store Monthly Summary', 'One row per store per month')
+        VALUES ({sql_id(ws_id)}, {sql_id(up_id)}, '{table_name}', 'Store Monthly Summary', 'One row per store per month')
         ON CONFLICT (table_name) DO NOTHING;
     """)
 
@@ -246,11 +247,11 @@ def test_custom_table_lifecycle_and_rls():
     assert store_ids == {"STR001", "STR002"}
     assert "STR999" not in store_ids
 
-    # Query as workspace ws_id + 999 -> table not in datasets catalog -> must be rejected
+    # Query as workspace other_ws -> table not in datasets catalog -> must be rejected
     with pytest.raises(SqlRejected, match="not accessible or does not exist"):
-        execute_sql(f"SELECT store_id, revenue FROM {table_name}", workspace_id=ws_id + 999)
+        execute_sql(f"SELECT store_id, revenue FROM {table_name}", workspace_id=other_ws)
 
     # Clean up
     execute(f"DELETE FROM datasets WHERE table_name = '{table_name}';")
-    execute(f"DELETE FROM uploads WHERE id = {up_id};")
+    execute(f"DELETE FROM uploads WHERE id = {sql_id(up_id)};")
     execute(f"DROP TABLE IF EXISTS user_data.{table_name} CASCADE;")

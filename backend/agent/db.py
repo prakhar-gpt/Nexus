@@ -57,7 +57,8 @@ def psql(sql: str, *, user: str, password: str, database: str) -> str:
         check=False,
     )
     if result.returncode != 0:
-        message = result.stderr.strip() or "psql failed"
+        err = result.stderr.strip() or result.stdout.strip()
+        message = err if err else f"psql failed with exit code {result.returncode}"
         raise DatabaseError(message)
     return result.stdout
 

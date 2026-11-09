@@ -17,12 +17,12 @@ class FeedbackRequest(BaseModel):
 
 
 @router.post("/runs/{run_id}/feedback")
-def add_feedback_endpoint(run_id: int, body: FeedbackRequest):
+def add_feedback_endpoint(run_id: str, body: FeedbackRequest):
     """Save feedback rating and optional comment for a run."""
     return record_feedback(run_id, body.rating, body.reason)
 
 
 @router.get("/results/{run_id}/export")
-def export_result_endpoint(run_id: int):
+def export_result_endpoint(run_id: str):
     """Export query output rows as a sanitized CSV file."""
     return export_result_csv(run_id)

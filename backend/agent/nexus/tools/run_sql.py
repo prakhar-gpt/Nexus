@@ -113,17 +113,17 @@ def _check_ast(cleaned_sql: str) -> None:
                         )
 
 
-def get_allowed_tables(workspace_id: int | None = None, allowed_dataset_ids: list[int] | None = None) -> set[str]:
+def get_allowed_tables(workspace_id: int | str | None = None, allowed_dataset_ids: list[str | int] | None = None) -> set[str]:
     """Fetch allowed query tables: sales_clean + registered workspace tables in datasets catalog."""
     allowed = {"sales_clean"}
     if workspace_id is not None:
         try:
-            from ingest.store import execute as store_execute
-            sql = f"SELECT id, table_name FROM datasets WHERE workspace_id = {int(workspace_id)}"
+            from ingest.store import execute as store_execute, sql_id
+            sql = f"SELECT id, table_name FROM datasets WHERE workspace_id = {sql_id(workspace_id)}"
             if allowed_dataset_ids is not None:
                 if not allowed_dataset_ids:
                     return allowed  # only sales_clean if no custom datasets checked
-                id_str = ",".join(str(int(i)) for i in allowed_dataset_ids)
+                id_str = ",".join(sql_id(i) for i in allowed_dataset_ids)
                 sql += f" AND id IN ({id_str})"
             rows = store_execute(sql)
             for r in rows:
@@ -134,7 +134,7 @@ def get_allowed_tables(workspace_id: int | None = None, allowed_dataset_ids: lis
     return allowed
 
 
-def guard_sql(sql: str, workspace_id: int | None = None, allowed_dataset_ids: list[int] | None = None) -> str:
+def guard_sql(sql: str, workspace_id: int | str | None = None, allowed_dataset_ids: list[str | int] | None = None) -> str:
     """Validate that query is a single, safe SELECT query against allowed tables without aggregate arithmetic or joins."""
     if sql is None or not str(sql).strip():
         raise SqlRejected("SQL is empty.")
@@ -187,16 +187,15 @@ def guard_sql(sql: str, workspace_id: int | None = None, allowed_dataset_ids: li
 # Execution Handlers
 # ---------------------------------------------------------------------------
 
-def execute_sql(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> list[dict[str, str]]:
+def execute_sql(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str | int] | None = None) -> list[dict[str, str]]:
     """Execute raw SQL under reader role with RLS local isolation."""
-    if isinstance(workspace_id, bool) or not isinstance(workspace_id, int):
-        raise SqlRejected("workspace_id must be an integer.")
-    if workspace_id < 1:
-        raise SqlRejected("workspace_id must be positive.")
-    cleaned = guard_sql(sql, workspace_id=workspace_id, allowed_dataset_ids=allowed_dataset_ids)
+    if workspace_id is None or str(workspace_id).strip() == "":
+        raise SqlRejected("workspace_id cannot be empty.")
+    ws_str = str(workspace_id).strip()
+    cleaned = guard_sql(sql, workspace_id=ws_str, allowed_dataset_ids=allowed_dataset_ids)
     script = f"""
     BEGIN;
-    SET LOCAL app.workspace_id = '{workspace_id}';
+    SET LOCAL app.workspace_id = '{ws_str}';
     SET LOCAL search_path = user_data, public;
     SET LOCAL statement_timeout = '{TIMEOUT_MS}';
     SET LOCAL transaction_read_only = on;
@@ -223,7 +222,7 @@ def execute_sql(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | No
 run_sql = execute_sql
 
 
-def execute_query(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> tuple[str, list[dict], str | None]:
+def execute_query(sql: str, workspace_id: int | str, allowed_dataset_ids: list[str | int] | None = None) -> tuple[str, list[dict], str | None]:
     """Execute a read-only query and return prompt preview, raw rows, and validated SQL."""
     text = str(sql or "").strip()
     if not text:
@@ -248,7 +247,7 @@ def execute_query(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | 
     return "\n".join(lines), rows, text
 
 
-def populated_count(workspace_id: int, column: str) -> int:
+def populated_count(workspace_id: int | str, column: str) -> int:
     """Helper returning count of populated measure values."""
     if column not in MEASURE_COLUMNS:
         raise SqlRejected(f"{column} is not a measure column.")

@@ -281,14 +281,14 @@ export function Dashboard() {
         body: JSON.stringify({ name }),
       })
       if (res.ok) {
-        const created = (await res.json()) as { id: number; name: string }
+        const created = (await res.json()) as { id: string | number; name: string }
         await loadWorkspaces(created.id)
         return true
       }
       throw new Error()
     } catch {
       // In offline/mock mode, create locally
-      const newId = Date.now()
+      const newId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `room-${Date.now()}`
       const newWs: WorkspaceSummary = {
         id: newId,
         name,

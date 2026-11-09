@@ -29,7 +29,7 @@ class AgentState(TypedDict, total=False):
     """The shared state passed through the LangGraph loop."""
 
     messages: Annotated[list, add_messages]
-    workspace_id: int
+    workspace_id: str | int
     rows: list
     sqls: list
     steps: list
@@ -40,7 +40,7 @@ class AgentState(TypedDict, total=False):
     python_rows: list  # results from run_python: [{"label": str, "value": float}]
     sql_results: dict  # results by id or alias: {"sql_1": [...], ...}
     tools_used: list  # list of tool names called this turn: ["run_sql", "run_python"]
-    allowed_dataset_ids: list[int] | None  # filtered datasets allowed for this thread
+    allowed_dataset_ids: list[str | int] | None  # filtered datasets allowed for this thread
 
 
 def format_status_line(name: str, status: str) -> str:

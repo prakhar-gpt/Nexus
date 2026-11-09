@@ -34,7 +34,7 @@ from ingest.schema_validation import (
     check_column_parse_success,
     validate_schema_proposal,
 )
-from ingest.store import StoreError, execute, get_writer_connection, sql_literal
+from ingest.store import StoreError, execute, get_writer_connection, sql_id, sql_literal
 
 __all__ = [
     "CANONICAL",
@@ -62,6 +62,7 @@ __all__ = [
     "propose_columns",
     "read_rows",
     "reserve_upload",
+    "sql_id",
     "sql_literal",
     "stored_name",
     "validate_schema_proposal",

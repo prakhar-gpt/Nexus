@@ -29,7 +29,7 @@ def get_schema() -> str:
     """See which canonical sales columns, capabilities, and dynamic attributes have values in this data room."""
 
 
-def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> str:
+def execute_schema(workspace_id: int | str, allowed_dataset_ids: list[str | int] | None = None) -> str:
     """Inspect canonical columns, capabilities, and dynamic attributes for a workspace."""
     from agent.nexus.tools.run_sql import SqlRejected, execute_sql
 
@@ -44,9 +44,9 @@ def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = No
     lines = [f"Canonical columns: {canonical_summary}"]
 
     try:
-        from ingest.store import execute as store_execute
+        from ingest.store import execute as store_execute, sql_id
         upload_rows = store_execute(
-            f"SELECT id, capabilities FROM uploads WHERE workspace_id = {int(workspace_id)} ORDER BY id DESC LIMIT 1"
+            f"SELECT id, capabilities FROM uploads WHERE workspace_id = {sql_id(workspace_id)} ORDER BY id DESC LIMIT 1"
         )
     except Exception:
         upload_rows = []
@@ -59,7 +59,7 @@ def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = No
 
         try:
             attr_rows = store_execute(
-                f"SELECT key, inferred_type, sample_values FROM upload_attribute_schema WHERE upload_id = {int(upload_id)} ORDER BY key"
+                f"SELECT key, inferred_type, sample_values FROM upload_attribute_schema WHERE upload_id = {sql_id(upload_id)} ORDER BY key"
             )
         except Exception:
             attr_rows = []
@@ -80,16 +80,16 @@ def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = No
 
     # List all approved custom datasets allowed for this workspace / thread
     try:
-        from ingest.store import execute as store_execute
+        from ingest.store import execute as store_execute, sql_id
         sql = (
             f"SELECT id, table_name, table_label, grain, grain_key_columns, row_count "
-            f"FROM datasets WHERE workspace_id = {int(workspace_id)}"
+            f"FROM datasets WHERE workspace_id = {sql_id(workspace_id)}"
         )
         if allowed_dataset_ids is not None:
             if not allowed_dataset_ids:
                 dataset_rows = []
             else:
-                id_list = ",".join(str(int(i)) for i in allowed_dataset_ids)
+                id_list = ",".join(sql_id(i) for i in allowed_dataset_ids)
                 dataset_rows = store_execute(sql + f" AND id IN ({id_list}) ORDER BY id")
         else:
             dataset_rows = store_execute(sql + " ORDER BY id")
@@ -110,7 +110,7 @@ def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = No
             try:
                 col_rows = store_execute(
                     f"SELECT column_name, type, role, description, unit, null_rate "
-                    f"FROM dataset_columns WHERE dataset_id = {int(ds_id)} ORDER BY id"
+                    f"FROM dataset_columns WHERE dataset_id = {sql_id(ds_id)} ORDER BY id"
                 )
             except Exception:
                 col_rows = []

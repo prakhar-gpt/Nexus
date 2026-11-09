@@ -19,14 +19,14 @@ FIXTURES = ROOT / "datasets" / "tests"
 FAILURES = []
 
 
-def workspace_id() -> int:
+def workspace_id() -> str:
     found = execute(
         "SELECT id FROM workspaces WHERE name = 'Week 2 tests' ORDER BY id LIMIT 1"
     )
     if found:
-        return int(found[0]["id"])
+        return str(found[0]["id"])
     created = execute("INSERT INTO workspaces (name) VALUES ('Week 2 tests') RETURNING id")
-    return int(created[0]["id"])
+    return str(created[0]["id"])
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:

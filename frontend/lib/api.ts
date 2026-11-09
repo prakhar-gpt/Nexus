@@ -12,8 +12,8 @@ export type Mapping = {
 }
 
 export type Dataset = {
-  id: number
-  upload_id?: number | null
+  id: string | number
+  upload_id?: string | number | null
   table_name: string
   table_label: string
   grain: string
@@ -27,11 +27,11 @@ export type Thread = {
   title: string
   created_at: string
   turn_count: number
-  selected_dataset_ids?: number[]
+  selected_dataset_ids?: (string | number)[]
 }
 
 export type WorkspaceSummary = {
-  id: number
+  id: string | number
   name: string
   created_at: string
   upload_count?: string | number
@@ -39,7 +39,7 @@ export type WorkspaceSummary = {
 }
 
 export type Room = {
-  id: number
+  id: string | number
   name: string
   uploads: { id: string; original_name: string; status: string }[]
   datasets?: Dataset[]
@@ -57,7 +57,7 @@ export type Room = {
 }
 
 export type Turn = {
-  run_id: number
+  run_id: string | number
   question: string
   answer: string
   sql: string | null
@@ -206,8 +206,8 @@ export type ValidationResult = {
 }
 
 export type SchemaReviewData = {
-  upload_id: number
-  workspace_id: number
+  upload_id: string | number
+  workspace_id: string | number
   status: string
   table_name: string
   proposal: SchemaProposal

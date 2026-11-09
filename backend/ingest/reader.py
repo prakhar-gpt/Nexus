@@ -16,7 +16,7 @@ from ingest.mapping import propose_columns
 MAX_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 MAX_COLUMNS = 64
-MAX_ROWS = 200_000
+MAX_ROWS = 600_000
 HEADER_SCAN = 20
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y")
 _FORMULA_PREFIXES = ("=", "+", "-", "@")

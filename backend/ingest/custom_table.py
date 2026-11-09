@@ -22,7 +22,7 @@ from ingest.schema_validation import (
     ValidationResult,
     validate_schema_proposal,
 )
-from ingest.store import execute, get_writer_connection, sql_literal
+from ingest.store import execute, get_writer_connection, sql_id, sql_literal
 
 TYPE_TO_PG = {
     "text": "text",
@@ -41,12 +41,12 @@ def compute_headers_hash(headers: list[str]) -> str:
     return hashlib.sha256(blob).hexdigest()[:16]
 
 
-def get_cached_proposal(workspace_id: int, header_hash: str) -> dict[str, Any] | None:
+def get_cached_proposal(workspace_id: int | str, header_hash: str) -> dict[str, Any] | None:
     """Lookup previously approved schema for identical normalized header set in workspace."""
     try:
         rows = execute(
             f"SELECT proposal_json FROM datasets "
-            f"WHERE workspace_id = {int(workspace_id)} AND header_hash = {sql_literal(header_hash)} "
+            f"WHERE workspace_id = {sql_id(workspace_id)} AND header_hash = {sql_literal(header_hash)} "
             f"ORDER BY approved_at DESC LIMIT 1"
         )
         if rows and rows[0].get("proposal_json"):
@@ -71,13 +71,13 @@ def build_create_table_ddl(
     columns: list[dict[str, Any]],
 ) -> str:
     """Build deterministic CREATE TABLE DDL strictly in user_data schema with safe identifier quoting."""
-    if not re.match(r"^ds_[a-z0-9_]{1,40}$", table_name):
+    if not re.match(r"^ds_[a-z0-9_]{1,63}$", table_name):
         raise ValueError(f"Invalid table name format: '{table_name}'")
 
     col_defs = [
         "row_id bigserial PRIMARY KEY",
-        "workspace_id bigint NOT NULL",
-        "upload_id bigint NOT NULL",
+        "workspace_id uuid NOT NULL",
+        "upload_id uuid NOT NULL",
     ]
 
     for col in columns:
@@ -99,7 +99,7 @@ def build_create_table_ddl(
         f"DROP POLICY IF EXISTS {table_name}_reader_workspace ON user_data.{table_name};\n"
         f"CREATE POLICY {table_name}_reader_workspace ON user_data.{table_name}\n"
         f"    FOR SELECT TO nexus_reader\n"
-        f"    USING (workspace_id = current_setting('app.workspace_id', true)::bigint);\n"
+        f"    USING (workspace_id = (NULLIF(current_setting('app.workspace_id', true), ''))::uuid);\n"
         f"DROP POLICY IF EXISTS {table_name}_writer_all ON user_data.{table_name};\n"
         f"CREATE POLICY {table_name}_writer_all ON user_data.{table_name}\n"
         f"    FOR ALL TO nexus_writer USING (true) WITH CHECK (true);\n"
@@ -114,8 +114,8 @@ def build_create_table_ddl(
 
 
 def create_and_load_custom_table(
-    upload_id: int,
-    workspace_id: int,
+    upload_id: int | str,
+    workspace_id: int | str,
     table_label: str,
     grain: str,
     grain_key_columns: list[str],
@@ -126,9 +126,10 @@ def create_and_load_custom_table(
     approved_by: str = "user",
     proposal_json: dict[str, Any] | None = None,
     progress_callback=None,
-) -> tuple[int, int, str]:
+) -> tuple[str, int, str]:
     """Execute DDL, register dataset, and stream COPY rows into user_data.<table_name>."""
-    table_name = f"ds_{upload_id}"
+    sanitized_up_id = str(upload_id).replace("-", "_")
+    table_name = f"ds_{sanitized_up_id}"
     active_cols = [c for c in columns if not c.get("excluded", False)]
 
     # 1. Generate & execute DDL
@@ -137,25 +138,42 @@ def create_and_load_custom_table(
 
     # 2. Register dataset in datasets and dataset_columns catalogs
     execute(
-        f"DELETE FROM datasets WHERE upload_id = {int(upload_id)};\n"
+        f"DELETE FROM datasets WHERE upload_id = {sql_id(upload_id)};\n"
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain, grain_key_columns, header_hash, approved_by, proposal_json) "
-        f"VALUES ({int(workspace_id)}, {int(upload_id)}, {sql_literal(table_name)}, {sql_literal(table_label)}, "
+        f"VALUES ({sql_id(workspace_id)}, {sql_id(upload_id)}, {sql_literal(table_name)}, {sql_literal(table_label)}, "
         f"{sql_literal(grain)}, {sql_literal(json.dumps(grain_key_columns))}::jsonb, {sql_literal(header_hash)}, "
         f"{sql_literal(approved_by)}, {sql_literal(json.dumps(proposal_json or {}))}::jsonb);\n"
-        f"UPDATE uploads SET custom_table_name = {sql_literal(table_name)} WHERE id = {int(upload_id)};"
+        f"UPDATE uploads SET custom_table_name = {sql_literal(table_name)} WHERE id = {sql_id(upload_id)};"
     )
 
-    dataset_rows = execute(f"SELECT id FROM datasets WHERE upload_id = {int(upload_id)} LIMIT 1")
-    dataset_id = int(dataset_rows[0]["id"])
+    dataset_rows = execute(f"SELECT id FROM datasets WHERE upload_id = {sql_id(upload_id)} LIMIT 1")
+    dataset_id = str(dataset_rows[0]["id"])
 
-    # Register columns
+    # Register columns with safe fallbacks and conflict handling
     for col in active_cols:
+        c_name = str(col.get("column_name") or "").strip().lower()
+        if not c_name:
+            continue
+        s_name = str(col.get("source_name") or c_name).strip()
+        c_type = str(col.get("type") or "text").strip().lower()
+        c_role = str(col.get("role") or "dimension").strip().lower()
+        c_desc = str(col.get("description") or "").strip()
+        c_unit = col.get("unit") if col.get("unit") is not None else None
+        c_nullable = "true" if col.get("nullable", True) else "false"
+        try:
+            c_null_rate = float(col.get("null_rate") or 0.0)
+        except (ValueError, TypeError):
+            c_null_rate = 0.0
+
         execute(
             f"INSERT INTO dataset_columns (dataset_id, column_name, source_name, type, role, description, unit, nullable, null_rate) "
-            f"VALUES ({dataset_id}, {sql_literal(col['column_name'])}, {sql_literal(col['source_name'])}, "
-            f"{sql_literal(col['type'])}, {sql_literal(col['role'])}, {sql_literal(col.get('description', ''))}, "
-            f"{sql_literal(col.get('unit'))}, {'true' if col.get('nullable', True) else 'false'}, "
-            f"{float(col.get('null_rate', 0.0))})"
+            f"VALUES ({sql_id(dataset_id)}, {sql_literal(c_name)}, {sql_literal(s_name)}, "
+            f"{sql_literal(c_type)}, {sql_literal(c_role)}, {sql_literal(c_desc)}, "
+            f"{sql_literal(c_unit)}, {c_nullable}, {c_null_rate}) "
+            f"ON CONFLICT (dataset_id, column_name) DO UPDATE SET "
+            f"source_name = EXCLUDED.source_name, type = EXCLUDED.type, role = EXCLUDED.role, "
+            f"description = EXCLUDED.description, unit = EXCLUDED.unit, nullable = EXCLUDED.nullable, "
+            f"null_rate = EXCLUDED.null_rate"
         )
 
     # 3. Clean and parse rows for COPY
@@ -287,5 +305,5 @@ def create_and_load_custom_table(
                 """)
 
     # Update row count in catalog
-    execute(f"UPDATE datasets SET row_count = {loaded} WHERE id = {dataset_id}")
+    execute(f"UPDATE datasets SET row_count = {loaded} WHERE id = {sql_id(dataset_id)}")
     return loaded, quarantined, table_name

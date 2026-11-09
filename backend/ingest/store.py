@@ -55,3 +55,12 @@ def sql_literal(value) -> str:
     if value is None:
         return "NULL"
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def sql_id(value) -> str:
+    """Format any ID (UUID string, int, or uuid.UUID) safely for SQL queries."""
+    if value is None:
+        return "NULL"
+    val_str = str(value).strip().replace("'", "''")
+    return f"'{val_str}'"
+

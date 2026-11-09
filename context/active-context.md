@@ -15,7 +15,13 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Current Active State & Refactors Completed
 
-#### 1. Performance Optimization & Sidebar Render Stability (Decision 56)
+#### 1. Users Table, Workspace Membership & Universal UUID Implementation (Decision 57)
+- **Users Table & Workspace Ownership**: Implemented `users` (`id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `email`, `name`, `role`, timestamps) and `workspace_members` join table (`workspace_id uuid`, `user_id uuid`, `role`, `joined_at`). Added `/users`, `/users/me`, and `/auth/login` endpoints.
+- **Universal UUID Primary & Foreign Keys (Changeset 008)**: Migrated primary keys and foreign keys to `uuid DEFAULT gen_random_uuid()` across `workspaces`, `uploads`, `datasets`, `dataset_columns`, `threads`, `runs`, `agent_events`, `feedback`, `eval_results`, `quarantine`, `column_mapping`, `upload_attribute_schema`, `sales_clean`, and dynamically generated tables (`user_data.ds_*`).
+- **Data Room Creation**: `create_workspace` generates UUIDs (`uuid.uuid4()`), accepts optional client UUIDs, associates workspace membership with the user, and provides backward-compatible fallback for unmigrated databases.
+- **Backend & Frontend Compatibility**: Introduced `sql_id()` to sanitize and string-quote UUIDs across SQL queries without integer cast crashes; updated all frontend interfaces and views to accept `string | number` IDs seamlessly.
+
+#### 2. Performance Optimization & Sidebar Render Stability (Decision 56)
 - **Eliminated Redundant Query Revalidations**: Removed extraneous `mutateResource('room:' + roomId)` from `event === "done"` in `chat-store.tsx`. Normal chat queries do not change room metadata and no longer trigger background refetches.
 - **Stale-While-Revalidate in `useResource`**: Fixed `mutateResource` with no arguments in `use-resource.ts` to preserve existing cached data instead of evicting it (`resourceCache.delete`), completely eliminating screen/sidebar flickering.
 - **Zero-Lag Optimistic Approval**: In `chat-store.tsx` (`approveSchema`), synchronously and optimistically updates `room.datasets` and `room.uploads` with the data returned directly from the approval endpoint, updating the sidebar in 0ms without waiting for a second network roundtrip.

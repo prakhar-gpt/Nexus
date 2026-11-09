@@ -27,14 +27,14 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     print(f"FAIL {name} {detail}".strip())
 
 
-def room_id() -> int:
+def room_id() -> str:
     found = execute("SELECT id FROM workspaces WHERE name = 'API tests' ORDER BY id LIMIT 1")
     if found:
-        return int(found[0]["id"])
+        return str(found[0]["id"])
     created = execute(
         f"INSERT INTO workspaces (name) VALUES ({sql_literal('API tests')}) RETURNING id"
     )
-    return int(created[0]["id"])
+    return str(created[0]["id"])
 
 
 def main() -> int:

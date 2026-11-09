@@ -17,7 +17,7 @@ from api.services.workspace_service import (
     remove_dataset,
     update_thread_datasets,
 )
-from ingest.store import execute, sql_literal
+from ingest.store import execute, sql_id, sql_literal
 
 
 @pytest.fixture
@@ -29,19 +29,19 @@ def test_workspaces():
     yield ws1_id, ws2_id
 
     # Cleanup in proper dependency order
-    execute(f"DELETE FROM datasets WHERE workspace_id IN ({ws1_id}, {ws2_id})")
-    execute(f"DELETE FROM uploads WHERE workspace_id IN ({ws1_id}, {ws2_id})")
-    execute(f"DELETE FROM threads WHERE workspace_id IN ({ws1_id}, {ws2_id})")
-    execute(f"DELETE FROM runs WHERE workspace_id IN ({ws1_id}, {ws2_id})")
-    execute(f"DELETE FROM workspaces WHERE id IN ({ws1_id}, {ws2_id})")
+    execute(f"DELETE FROM datasets WHERE workspace_id IN ({sql_id(ws1_id)}, {sql_id(ws2_id)})")
+    execute(f"DELETE FROM uploads WHERE workspace_id IN ({sql_id(ws1_id)}, {sql_id(ws2_id)})")
+    execute(f"DELETE FROM threads WHERE workspace_id IN ({sql_id(ws1_id)}, {sql_id(ws2_id)})")
+    execute(f"DELETE FROM runs WHERE workspace_id IN ({sql_id(ws1_id)}, {sql_id(ws2_id)})")
+    execute(f"DELETE FROM workspaces WHERE id IN ({sql_id(ws1_id)}, {sql_id(ws2_id)})")
 
 
-def make_test_upload(workspace_id: int, name: str = "test.csv") -> int:
+def make_test_upload(workspace_id: int | str, name: str = "test.csv") -> str:
     row = execute(
         f"INSERT INTO uploads (workspace_id, original_name, stored_name, sha256, size, status) "
-        f"VALUES ({workspace_id}, '{name}', '{name}', 'sha_{name}', 100, 'loaded') RETURNING id"
+        f"VALUES ({sql_id(workspace_id)}, '{name}', '{name}', 'sha_{name}', 100, 'loaded') RETURNING id"
     )
-    return int(row[0]["id"])
+    return str(row[0]["id"])
 
 
 def test_thread_creation_and_workspace_isolation(test_workspaces):
@@ -52,9 +52,9 @@ def test_thread_creation_and_workspace_isolation(test_workspaces):
     up_id = make_test_upload(ws1_id, "test_1.csv")
     ds = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up_id}, 'ds_test_1', 'Test Dataset', 'One row per test') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up_id)}, 'ds_test_1', 'Test Dataset', 'One row per test') RETURNING id"
     )
-    ds_id = int(ds[0]["id"])
+    ds_id = str(ds[0]["id"])
 
     # 2. Get or create thread in ws1 -> auto-populates with ds_id
     t1 = get_or_create_thread(ws1_id, "chat-1")
@@ -76,7 +76,7 @@ def test_thread_creation_and_workspace_isolation(test_workspaces):
     assert res.json()["selected_dataset_ids"] == []
 
     # 5. Clean up dataset
-    execute(f"DELETE FROM datasets WHERE id = {ds_id}")
+    execute(f"DELETE FROM datasets WHERE id = {sql_id(ds_id)}")
 
 
 def test_sql_guard_per_chat_dataset_enforcement(test_workspaces):
@@ -87,14 +87,14 @@ def test_sql_guard_per_chat_dataset_enforcement(test_workspaces):
     up2 = make_test_upload(ws1_id, "disabled.csv")
     ds1 = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up1}, 'ds_active', 'Active Data', 'One row per test') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up1)}, 'ds_active', 'Active Data', 'One row per test') RETURNING id"
     )
     ds2 = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up2}, 'ds_disabled', 'Disabled Data', 'One row per test') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up2)}, 'ds_disabled', 'Disabled Data', 'One row per test') RETURNING id"
     )
-    id1 = int(ds1[0]["id"])
-    id2 = int(ds2[0]["id"])
+    id1 = ds1[0]["id"]
+    id2 = ds2[0]["id"]
 
     # When both are allowed
     assert guard_sql("SELECT count(*) FROM ds_active", workspace_id=ws1_id, allowed_dataset_ids=[id1, id2])
@@ -112,7 +112,7 @@ def test_sql_guard_per_chat_dataset_enforcement(test_workspaces):
         guard_sql("SELECT count(*) FROM ds_nonexistent", workspace_id=ws1_id, allowed_dataset_ids=[id1])
 
     # Cleanup
-    execute(f"DELETE FROM datasets WHERE id IN ({id1}, {id2})")
+    execute(f"DELETE FROM datasets WHERE id IN ({sql_id(id1)}, {sql_id(id2)})")
 
 
 def test_get_schema_filters_allowed_datasets(test_workspaces):
@@ -121,14 +121,14 @@ def test_get_schema_filters_allowed_datasets(test_workspaces):
     up2 = make_test_upload(ws1_id, "s2.csv")
     ds1 = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up1}, 'ds_sch_1', 'Schema 1', 'Grain 1') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up1)}, 'ds_sch_1', 'Schema 1', 'Grain 1') RETURNING id"
     )
     ds2 = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up2}, 'ds_sch_2', 'Schema 2', 'Grain 2') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up2)}, 'ds_sch_2', 'Schema 2', 'Grain 2') RETURNING id"
     )
-    id1 = int(ds1[0]["id"])
-    id2 = int(ds2[0]["id"])
+    id1 = ds1[0]["id"]
+    id2 = ds2[0]["id"]
 
     schema_all = execute_schema(ws1_id, allowed_dataset_ids=[id1, id2])
     assert "ds_sch_1" in schema_all
@@ -148,9 +148,9 @@ def test_zero_dataset_selection_blocks_chat(test_workspaces):
     up = make_test_upload(ws1_id, "zero.csv")
     ds = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up}, 'ds_zero', 'Zero Data', 'Grain') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up)}, 'ds_zero', 'Zero Data', 'Grain') RETURNING id"
     )
-    ds_id = int(ds[0]["id"])
+    ds_id = str(ds[0]["id"])
 
     # Create thread and uncheck all datasets
     update_thread_datasets(ws1_id, "empty-thread", [])
@@ -163,23 +163,23 @@ def test_zero_dataset_selection_blocks_chat(test_workspaces):
     assert res.status_code == 400
     assert "Select a dataset to ask about" in res.json()["detail"]
 
-    execute(f"DELETE FROM datasets WHERE id = {ds_id}")
+    execute(f"DELETE FROM datasets WHERE id = {sql_id(ds_id)}")
 
 
 def test_remove_dataset_atomic(test_workspaces):
     ws1_id, _ = test_workspaces
 
     up = make_test_upload(ws1_id, "rem.csv")
-    t_name = f"ds_rem_{ws1_id}"
+    t_name = f"ds_rem_{str(ws1_id).replace('-', '_')}"
     # Create custom table in user_data
     execute(f"CREATE TABLE IF NOT EXISTS user_data.{t_name} (id int);")
     ds = execute(
         f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain) "
-        f"VALUES ({ws1_id}, {up}, '{t_name}', 'Remove Test', 'Grain') RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, {sql_id(up)}, '{t_name}', 'Remove Test', 'Grain') RETURNING id"
     )
-    ds_id = int(ds[0]["id"])
-    execute(f"INSERT INTO dataset_columns (dataset_id, column_name, source_name, type, role, description) VALUES ({ds_id}, 'id', 'ID', 'integer', 'identifier', 'ID')")
-    execute(f"INSERT INTO quarantine (upload_id, row_number, reason, raw_json) VALUES ({up}, 1, 'bad format', '[]')")
+    ds_id = str(ds[0]["id"])
+    execute(f"INSERT INTO dataset_columns (dataset_id, column_name, source_name, type, role, description) VALUES ({sql_id(ds_id)}, 'id', 'ID', 'integer', 'identifier', 'ID')")
+    execute(f"INSERT INTO quarantine (upload_id, row_number, reason, raw_json) VALUES ({sql_id(up)}, 1, 'bad format', '[]')")
 
     # Thread has this dataset selected
     update_thread_datasets(ws1_id, "t-remove", [ds_id])
@@ -194,9 +194,9 @@ def test_remove_dataset_atomic(test_workspaces):
     assert not table_exists
 
     # Check catalog rows are gone
-    assert not execute(f"SELECT 1 FROM datasets WHERE id = {ds_id}")
-    assert not execute(f"SELECT 1 FROM dataset_columns WHERE dataset_id = {ds_id}")
-    assert not execute(f"SELECT 1 FROM quarantine WHERE upload_id = {up}")
+    assert not execute(f"SELECT 1 FROM datasets WHERE id = {sql_id(ds_id)}")
+    assert not execute(f"SELECT 1 FROM dataset_columns WHERE dataset_id = {sql_id(ds_id)}")
+    assert not execute(f"SELECT 1 FROM quarantine WHERE upload_id = {sql_id(up)}")
 
     # Check thread selection has array_remove applied
     updated_t = get_or_create_thread(ws1_id, "t-remove")
@@ -209,11 +209,11 @@ def test_history_loader_filters_ghost_runs(test_workspaces):
     # Insert a genuine Q&A run and a ghost run
     r1 = execute(
         f"INSERT INTO runs (workspace_id, question, answer, checker_result) "
-        f"VALUES ({ws1_id}, 'Real question?', 'Real answer.', '{{\"thread_id\": \"clean-thread\"}}'::jsonb) RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, 'Real question?', 'Real answer.', '{{\"thread_id\": \"clean-thread\"}}'::jsonb) RETURNING id"
     )
     r2 = execute(
         f"INSERT INTO runs (workspace_id, question, answer, checker_result) "
-        f"VALUES ({ws1_id}, 'Schema Analysis', '{{\"table_label\": \"Ghost\"}}', '{{\"thread_id\": \"clean-thread\"}}'::jsonb) RETURNING id"
+        f"VALUES ({sql_id(ws1_id)}, 'Schema Analysis', '{{\"table_label\": \"Ghost\"}}', '{{\"thread_id\": \"clean-thread\"}}'::jsonb) RETURNING id"
     )
 
     turns = get_turns(ws1_id, "clean-thread")
@@ -221,4 +221,4 @@ def test_history_loader_filters_ghost_runs(test_workspaces):
     assert turns[0]["question"] == "Real question?"
     assert turns[0]["answer"] == "Real answer."
 
-    execute(f"DELETE FROM runs WHERE id IN ({int(r1[0]['id'])}, {int(r2[0]['id'])})")
+    execute(f"DELETE FROM runs WHERE id IN ({sql_id(r1[0]['id'])}, {sql_id(r2[0]['id'])})")

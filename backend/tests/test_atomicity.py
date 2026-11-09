@@ -6,20 +6,20 @@ import threading
 import time
 import pytest
 
-from ingest.store import get_writer_connection, execute
+from ingest.store import get_writer_connection, execute, sql_id
 from agent.nexus.tools import run_sql
 
 
 def test_ingest_atomicity_concurrent_reader():
     # 1. Create a clean test workspace
     ws = execute("INSERT INTO workspaces (name) VALUES ('Atomicity Test') RETURNING id")
-    ws_id = int(ws[0]["id"])
+    ws_id = str(ws[0]["id"])
 
     up = execute(
         f"INSERT INTO uploads (workspace_id, original_name, stored_name, sha256, size, status) "
-        f"VALUES ({ws_id}, 'test.csv', 'test.csv', 'dummy', 100, 'processing') RETURNING id"
+        f"VALUES ({sql_id(ws_id)}, 'test.csv', 'test.csv', 'dummy', 100, 'processing') RETURNING id"
     )
-    up_id = int(up[0]["id"])
+    up_id = str(up[0]["id"])
 
     # Prepare 5,000 synthetic rows in a TSV buffer
     buf = io.StringIO()
