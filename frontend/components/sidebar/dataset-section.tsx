@@ -54,7 +54,7 @@ function DatasetSectionComponent({
   onRenameDataset,
 }: DatasetSectionProps) {
   const [datasetToDelete, setDatasetToDelete] = useState<Dataset | null>(null)
-  const [renamingId, setRenamingId] = useState<number | null>(null)
+  const [renamingId, setRenamingId] = useState<string | number | null>(null)
   const [renameValue, setRenameValue] = useState("")
 
   const handleStartRename = (ds: Dataset) => {
@@ -62,7 +62,7 @@ function DatasetSectionComponent({
     setRenameValue(ds.table_label)
   }
 
-  const handleSaveRename = async (dsId: number) => {
+  const handleSaveRename = async (dsId: string | number) => {
     const clean = renameValue.trim()
     if (clean && onRenameDataset) {
       await onRenameDataset(dsId, clean)

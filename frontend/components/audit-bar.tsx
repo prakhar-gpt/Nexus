@@ -27,10 +27,10 @@ interface AuditBarProps {
   untraced?: string[]
   missingMeasure?: string
   sources?: { document: string; page?: number | string }[]
-  runId?: number | null
+  runId?: string | number | null
   feedback?: "up" | "down"
   answerText: string
-  onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
+  onFeedback: (runId: string | number, rating: "up" | "down", reason?: string) => Promise<boolean>
   onToast: (message: string) => void
 }
 

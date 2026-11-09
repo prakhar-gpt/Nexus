@@ -38,7 +38,7 @@ export type ChatMessage = {
   badge?: AnswerBadge
   sql?: string | null
   rowCount?: number | null
-  runId?: number | null
+  runId?: string | number | null
   rows?: Record<string, string | number>[]
   activity?: TraceStep[]
   steps?: TraceStep[]
@@ -70,7 +70,7 @@ interface ChatPaneProps {
   onAsk: (question: string) => void
   onAbort?: () => void
   onRetry?: (messageId: string) => void
-  onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
+  onFeedback: (runId: string | number, rating: "up" | "down", reason?: string) => Promise<boolean>
   onToast: (message: string) => void
   onUploadFile?: (file: File) => void
   onApproveSchema?: (uploadId: string) => Promise<void>
@@ -282,7 +282,7 @@ interface MessageItemProps {
   isFirstInRun?: boolean
   isStreaming: boolean
   onRetry?: (messageId: string) => void
-  onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
+  onFeedback: (runId: string | number, rating: "up" | "down", reason?: string) => Promise<boolean>
   onToast: (message: string) => void
   onApproveSchema?: (uploadId: string) => Promise<void>
   onRejectSchema?: (uploadId: string) => Promise<void>

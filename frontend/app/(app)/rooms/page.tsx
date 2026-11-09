@@ -20,7 +20,7 @@ export default function RoomsHubPage() {
   const { data, error, isLoading, mutate } = useResource("workspaces", fetchWorkspaces)
 
   const handleDelete = useCallback(
-    async (id: number) => {
+    async (id: string | number) => {
       try {
         await apiFetch(`${API_URL}/workspaces/${id}`, { method: "DELETE" })
       } catch {

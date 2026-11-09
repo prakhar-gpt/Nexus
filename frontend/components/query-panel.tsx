@@ -24,7 +24,7 @@ interface QueryPanelProps {
   rows?: Record<string, string | number>[]
   steps?: TraceStep[]
   sources?: { document: string; page?: number | string }[]
-  runId?: number | null
+  runId?: string | number | null
   onToast?: (message: string) => void
 }
 

@@ -126,7 +126,7 @@ interface ChatStoreContextType {
   ) => Promise<void>
   abortStream: (roomId: string | number, threadId: string) => void
   recordFeedback: (
-    runId: number,
+    runId: string | number,
     rating: "up" | "down",
     reason?: string
   ) => Promise<boolean>
@@ -975,7 +975,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
   )
 
   const recordFeedback = useCallback(
-    async (runId: number, rating: "up" | "down", reason?: string): Promise<boolean> => {
+    async (runId: string | number, rating: "up" | "down", reason?: string): Promise<boolean> => {
       try {
         const res = await apiFetch(`${API_URL}/runs/${runId}/feedback`, {
           method: "POST",

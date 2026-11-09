@@ -187,7 +187,7 @@ export function Dashboard() {
   const [liveStages, setLiveStages] = useState<{ stage: string; status: string; reason?: string }[]>([])
   const [liveUploadId, setLiveUploadId] = useState<string | null>(null)
 
-  async function loadWorkspaces(preferredId?: number) {
+  async function loadWorkspaces(preferredId?: string | number) {
     setWorkspacesLoading(true)
     try {
       const res = await apiFetch(`${API_URL}/workspaces`)
@@ -211,7 +211,7 @@ export function Dashboard() {
     }
   }
 
-  async function selectRoom(roomId: number, preferredThreadId?: string) {
+  async function selectRoom(roomId: string | number, preferredThreadId?: string) {
     try {
       const res = await apiFetch(`${API_URL}/workspaces/${roomId}`)
       if (!res.ok) throw new Error("The data room could not be loaded.")
@@ -243,7 +243,7 @@ export function Dashboard() {
     }
   }
 
-  async function loadThreadTurns(roomId: number, threadId: string, preloadedTurns?: Turn[]) {
+  async function loadThreadTurns(roomId: string | number, threadId: string, preloadedTurns?: Turn[]) {
     try {
       let turnsToUse = preloadedTurns
       if (!turnsToUse) {
@@ -312,7 +312,7 @@ export function Dashboard() {
     }
   }
 
-  async function handleDeleteWorkspace(workspaceId: number) {
+  async function handleDeleteWorkspace(workspaceId: string | number) {
     try {
       const res = await apiFetch(`${API_URL}/workspaces/${workspaceId}`, {
         method: "DELETE",
@@ -576,7 +576,7 @@ export function Dashboard() {
   }
 
   async function feedback(
-    runId: number,
+    runId: string | number,
     rating: "up" | "down",
     reason?: string
   ): Promise<boolean> {
