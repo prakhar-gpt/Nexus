@@ -19,18 +19,40 @@ if raw_db_url:
     try:
         parsed = urlparse(raw_db_url)
         if parsed.hostname:
-            os.environ.setdefault("PGHOST", parsed.hostname)
+            os.environ["PGHOST"] = parsed.hostname
         if parsed.port:
-            os.environ.setdefault("PGPORT", str(parsed.port))
+            os.environ["PGPORT"] = str(parsed.port)
         if parsed.username:
-            os.environ.setdefault("PGUSER", parsed.username)
-            os.environ.setdefault("PG_READER_USER", parsed.username)
+            os.environ["PGUSER"] = parsed.username
+            os.environ["PG_READER_USER"] = parsed.username
         if parsed.password:
-            os.environ.setdefault("PGPASSWORD", parsed.password)
-            os.environ.setdefault("NEXUS_WRITER_PASSWORD", parsed.password)
-            os.environ.setdefault("NEXUS_READER_PASSWORD", parsed.password)
+            os.environ["PGPASSWORD"] = parsed.password
+            os.environ["NEXUS_WRITER_PASSWORD"] = parsed.password
+            os.environ["NEXUS_READER_PASSWORD"] = parsed.password
         if parsed.path and len(parsed.path) > 1:
-            os.environ.setdefault("PGDATABASE", parsed.path.lstrip("/"))
+            os.environ["PGDATABASE"] = parsed.path.lstrip("/")
+
+        # Self-healing check: if password was inadvertently altered, restore it from DATABASE_URL
+        if parsed.password:
+            import psycopg2
+            try:
+                test_c = psycopg2.connect(raw_db_url, connect_timeout=3)
+                test_c.close()
+            except psycopg2.OperationalError as op_err:
+                if "password authentication failed" in str(op_err):
+                    heal_c = psycopg2.connect(
+                        dbname=parsed.path.lstrip("/"),
+                        user=parsed.username or "nexus_writer",
+                        password="nexus_writer_pass",
+                        host=parsed.hostname,
+                        port=parsed.port or 5432,
+                        connect_timeout=3,
+                    )
+                    heal_c.autocommit = True
+                    with heal_c.cursor() as cur:
+                        escaped = parsed.password.replace("'", "''")
+                        cur.execute(f"ALTER ROLE {parsed.username or 'nexus_writer'} WITH PASSWORD '{escaped}';")
+                    heal_c.close()
     except Exception:
         pass
 
