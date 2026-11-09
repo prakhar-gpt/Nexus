@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from fastapi import HTTPException
-from sqlalchemy import distinct, func, select, text
+from sqlalchemy import distinct, func, or_, select, text
 
 from db.models import Dataset, Quarantine, Run, Thread, Upload, Workspace, WorkspaceMember
 from db.session import session_scope
@@ -31,8 +32,8 @@ def get_workspace_meta(workspace_id: int | str) -> dict | None:
         return {"id": str(ws.id), "name": ws.name}
 
 
-def list_workspaces() -> list[dict]:
-    """List all active (non-archived) workspaces with file and run counts."""
+def list_workspaces(user_id: uuid.UUID | str | None = None) -> list[dict]:
+    """List all active (non-archived) workspaces with file and run counts, filtered by user if specified."""
     with session_scope() as session:
         stmt = (
             select(
@@ -45,9 +46,16 @@ def list_workspaces() -> list[dict]:
             .outerjoin(Upload, Upload.workspace_id == Workspace.id)
             .outerjoin(Run, Run.workspace_id == Workspace.id)
             .where(~Workspace.name.startswith("[archived]"))
-            .group_by(Workspace.id, Workspace.name, Workspace.created_at)
-            .order_by(Workspace.id)
         )
+        if user_id:
+            u_uuid = to_uuid(user_id)
+            stmt = stmt.outerjoin(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id).where(
+                or_(
+                    Workspace.owner_id == u_uuid,
+                    WorkspaceMember.user_id == u_uuid,
+                )
+            )
+        stmt = stmt.group_by(Workspace.id, Workspace.name, Workspace.created_at).order_by(Workspace.id)
         rows = session.execute(stmt).all()
         return [
             {
@@ -240,20 +248,35 @@ def list_workspace_datasets(workspace_id: int | str) -> list[dict]:
                 Dataset.grain,
                 Dataset.row_count,
                 Dataset.created_at,
+                Upload.original_name,
                 func.coalesce(q_count_subq, 0).label("quarantine_count"),
             )
+            .outerjoin(Upload, Upload.id == Dataset.upload_id)
             .where(Dataset.workspace_id == ws_uuid)
             .order_by(Dataset.created_at.asc())
         )
         rows = session.execute(stmt).all()
         datasets = []
         for r in rows:
+            lbl = (r.table_label or "").strip()
+            orig = (r.original_name or "").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").strip()
+            clean_orig = orig.title() if orig else ""
+            is_hash = bool(
+                not lbl
+                or re.match(r"^[0-9a-fA-F_-]{8,}$", lbl)
+                or lbl.lower().startswith("ds_")
+                or lbl.lower() in ("custom dataset", "dataset")
+            )
+            display_label = clean_orig if is_hash and clean_orig else (lbl or clean_orig or "Superstore")
+            if display_label.lower().endswith((".csv", ".xlsx", ".xls", ".tsv")):
+                display_label = display_label.rsplit(".", 1)[0]
+
             datasets.append(
                 {
                     "id": str(r.id),
                     "upload_id": str(r.upload_id) if r.upload_id else None,
                     "table_name": r.table_name,
-                    "table_label": r.table_label,
+                    "table_label": display_label,
                     "grain": clean_grain(r.grain),
                     "row_count": int(r.row_count or 0),
                     "quarantine_count": int(r.quarantine_count or 0),

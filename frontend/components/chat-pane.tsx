@@ -9,7 +9,7 @@ import React, {
   memo,
 } from "react"
 import dynamic from "next/dynamic"
-import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw, Sparkles, X } from "lucide-react"
+import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkBreaks from "remark-breaks"
 import remarkGfm from "remark-gfm"
@@ -96,7 +96,6 @@ export function ChatPane({
 }: ChatPaneProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<ComposerHandle>(null)
-  const dropzoneInputRef = useRef<HTMLInputElement>(null)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -147,9 +146,6 @@ export function ChatPane({
     }
     if (onUploadFile) onUploadFile(file)
   }
-
-  // Hide empty-state suggestions once any file has been uploaded
-  const hasUploads = messages.some((m) => Boolean(m.uploadData))
 
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -202,76 +198,24 @@ export function ChatPane({
         {messages.length === 0 ? (
           /* Empty state */
           <div className="mx-auto flex h-full w-full max-w-[720px] flex-col justify-center py-12">
-            <h1 className="text-[32px] font-medium tracking-tight text-foreground">
+            <h1 className="text-[32px] font-medium tracking-tight text-foreground select-none">
               What should we look at?
             </h1>
 
-            {/* Minimal inline dropzone */}
-            {onUploadFile && (
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setIsDragging(false)
-                  const f = e.dataTransfer.files?.[0]
-                  if (f) handleFileDrop(f)
-                }}
-                onClick={() => dropzoneInputRef.current?.click()}
-                className={`mt-6 mb-4 border border-dashed p-4 transition-colors cursor-pointer flex items-center justify-between gap-3 ${
-                  isDragging
-                    ? "border-foreground bg-accent/40"
-                    : "border-border hover:border-foreground/60 bg-card/60"
-                }`}
-              >
-                <input
-                  ref={dropzoneInputRef}
-                  type="file"
-                  accept=".csv,.xlsx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) {
-                      handleFileDrop(f)
-                      e.target.value = ""
-                    }
-                  }}
-                />
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center border border-border bg-background text-foreground">
-                    <Sparkles className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <span className="block font-medium text-xs text-foreground">
-                      Upload a new tabular dataset (.csv, .xlsx)
-                    </span>
-                    <span className="block text-[11px] text-muted-foreground">
-                      Nexus will profile columns and propose a table schema for your approval
-                    </span>
-                  </div>
-                </div>
-                <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground border border-border px-2 py-1 bg-background hover:bg-muted/40 shrink-0">
-                  Select file
-                </span>
-              </div>
-            )}
-
-            {/* Suggestion prompts — hidden once any file uploaded */}
-            {!hasUploads && (
-              <div className="mt-4 flex flex-col border-y border-border divide-y divide-border">
-                {suggestions.map((question) => (
-                  <button
-                    key={question}
-                    type="button"
-                    onClick={() => onAsk(question)}
-                    className="group flex w-full items-center justify-between py-3.5 text-left text-[15px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:bg-accent/40"
-                  >
-                    <span className="font-normal">{question}</span>
-                    <ArrowUpRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0 ml-2" />
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Suggestion prompts */}
+            <div className="mt-8 flex flex-col border-y border-border divide-y divide-border">
+              {suggestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => onAsk(question)}
+                  className="group flex w-full items-center justify-between py-3.5 text-left text-[15px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:bg-accent/40"
+                >
+                  <span className="font-normal">{question}</span>
+                  <ArrowUpRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0 ml-2" />
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           /* Message List */

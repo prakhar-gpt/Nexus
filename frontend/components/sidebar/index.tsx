@@ -50,7 +50,6 @@ export interface SidebarProps {
   onSelectWorkspace?: (id: number) => void
   onNewWorkspace?: () => void
   onDeleteWorkspace?: (id: number) => Promise<void> | void
-  onOpenAuthModal?: () => void
 }
 
 function SidebarComponent({
@@ -86,7 +85,6 @@ function SidebarComponent({
   onSelectWorkspace,
   onNewWorkspace,
   onDeleteWorkspace,
-  onOpenAuthModal,
 }: SidebarProps) {
   const router = useRouter()
 
@@ -304,7 +302,7 @@ function SidebarComponent({
       </div>
 
       {/* 5. Pinned bottom: User Profile Footer */}
-      <UserProfileFooter onOpenAuthModal={onOpenAuthModal} />
+      <UserProfileFooter />
     </div>
   )
 }

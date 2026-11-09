@@ -1,83 +1,95 @@
 "use client"
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
-import type { Session, AuthAdapter } from "./types"
-import { defaultAuthAdapter } from "./mock-adapter"
+import { authClient } from "./client"
+import type { AuthStatus, User } from "./types"
 
 interface AuthContextType {
-  session: Session | null
+  user: User | null
+  session: User | null
+  status: AuthStatus
   isLoading: boolean
-  signIn: (email: string, password: string) => Promise<Session>
-  signUp: (name: string, email: string, password: string) => Promise<Session>
+  signIn: (email: string, password: string) => Promise<User>
+  signUp: (email: string, password: string, name: string) => Promise<User>
   signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({
-  children,
-  adapter = defaultAuthAdapter,
-}: {
-  children: React.ReactNode
-  adapter?: AuthAdapter
-}) {
-  const [session, setSession] = useState<Session | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [status, setStatus] = useState<AuthStatus>("loading")
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const u = await authClient.me()
+      setUser(u)
+      setStatus("authenticated")
+    } catch {
+      setUser(null)
+      setStatus("unauthenticated")
+    }
+  }, [])
 
   useEffect(() => {
-    let mounted = true
-    adapter
-      .getSession()
-      .then((s) => {
-        if (mounted) {
-          setSession(s)
-          setIsLoading(false)
-        }
-      })
-      .catch(() => {
-        if (mounted) setIsLoading(false)
-      })
-
-    return () => {
-      mounted = false
-    }
-  }, [adapter])
+    refreshUser()
+  }, [refreshUser])
 
   const signIn = useCallback(
     async (email: string, password: string) => {
-      const s = await adapter.signIn(email, password)
-      setSession(s)
-      return s
+      const u = await authClient.login(email, password)
+      setUser(u)
+      setStatus("authenticated")
+      return u
     },
-    [adapter]
+    []
   )
 
   const signUp = useCallback(
-    async (name: string, email: string, password: string) => {
-      const s = await adapter.signUp(name, email, password)
-      setSession(s)
-      return s
+    async (email: string, password: string, name: string) => {
+      const u = await authClient.signup(email, password, name)
+      setUser(u)
+      setStatus("authenticated")
+      return u
     },
-    [adapter]
+    []
   )
 
   const signOut = useCallback(async () => {
-    await adapter.signOut()
-    setSession(null)
-  }, [adapter])
+    try {
+      await authClient.logout()
+    } finally {
+      setUser(null)
+      setStatus("unauthenticated")
+    }
+  }, [])
 
   return (
-    <AuthContext.Provider value={{ session, isLoading, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        session: user,
+        status,
+        isLoading: status === "loading",
+        signIn,
+        signUp,
+        signOut,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
 }
 
-export function useSession() {
+export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) {
-    throw new Error("useSession must be used within an AuthProvider")
+    throw new Error("useAuth must be used within an AuthProvider")
   }
   return ctx
 }
 
+// Backwards-compatible alias for existing components
+export const useSession = useAuth

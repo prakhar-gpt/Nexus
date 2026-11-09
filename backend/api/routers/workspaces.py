@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import sys
-from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from db.models import Dataset
+from api.dependencies import get_current_user, require_workspace_access
+from db.models import Dataset, User, Workspace
 from db.session import session_scope
 from utils import to_uuid
 
@@ -58,31 +59,44 @@ def _get_stream_callable():
 
 
 @router.get("/workspaces")
-def get_workspaces_endpoint():
-    """List all active workspaces."""
-    return list_workspaces()
+def get_workspaces_endpoint(current_user: User = Depends(get_current_user)):
+    """List all active workspaces owned by or accessible to current user."""
+    return list_workspaces(user_id=current_user.id)
 
 
 @router.post("/workspaces")
-def create_workspace_endpoint(body: WorkspaceCreate):
-    """Create a new workspace."""
-    return create_workspace(body.name, workspace_id=body.id)
+def create_workspace_endpoint(
+    body: WorkspaceCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new workspace owned by the current user."""
+    return create_workspace(body.name, workspace_id=body.id, owner_id=str(current_user.id))
 
 
 @router.delete("/workspaces/{workspace_id}")
-def delete_workspace_endpoint(workspace_id: str):
+def delete_workspace_endpoint(
+    workspace_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Delete / archive a workspace."""
     return delete_workspace(workspace_id)
 
 
 @router.get("/workspaces/{workspace_id}")
-def get_workspace_endpoint(workspace_id: str, thread_id: str | None = Query(default=None)):
+def get_workspace_endpoint(
+    workspace_id: str,
+    thread_id: str | None = Query(default=None),
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Retrieve full data room view for a workspace, optionally filtered to a thread."""
     return get_workspace_detail(workspace_id, thread_id)
 
 
 @router.get("/workspaces/{workspace_id}/threads")
-def get_threads_endpoint(workspace_id: str):
+def get_threads_endpoint(
+    workspace_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """List all chat threads in a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -90,7 +104,11 @@ def get_threads_endpoint(workspace_id: str):
 
 
 @router.get("/workspaces/{workspace_id}/threads/{thread_id}/turns")
-def get_thread_turns_endpoint(workspace_id: str, thread_id: str):
+def get_thread_turns_endpoint(
+    workspace_id: str,
+    thread_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Fetch message turns for a specific thread."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -98,7 +116,11 @@ def get_thread_turns_endpoint(workspace_id: str, thread_id: str):
 
 
 @router.delete("/workspaces/{workspace_id}/threads/{thread_id}")
-def delete_thread_endpoint(workspace_id: str, thread_id: str):
+def delete_thread_endpoint(
+    workspace_id: str,
+    thread_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Delete a conversation thread in a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -106,7 +128,12 @@ def delete_thread_endpoint(workspace_id: str, thread_id: str):
 
 
 @router.patch("/workspaces/{workspace_id}/threads/{thread_id}/datasets")
-def update_thread_datasets_endpoint(workspace_id: str, thread_id: str, body: ThreadDatasetsUpdate):
+def update_thread_datasets_endpoint(
+    workspace_id: str,
+    thread_id: str,
+    body: ThreadDatasetsUpdate,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Update allowed dataset selection for a specific chat thread."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -114,7 +141,10 @@ def update_thread_datasets_endpoint(workspace_id: str, thread_id: str, body: Thr
 
 
 @router.get("/workspaces/{workspace_id}/datasets")
-def get_datasets_endpoint(workspace_id: str):
+def get_datasets_endpoint(
+    workspace_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """List all approved datasets for a workspace."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -122,7 +152,12 @@ def get_datasets_endpoint(workspace_id: str):
 
 
 @router.patch("/workspaces/{workspace_id}/datasets/{dataset_id}")
-def rename_dataset_endpoint(workspace_id: str, dataset_id: str, body: DatasetLabelUpdate):
+def rename_dataset_endpoint(
+    workspace_id: str,
+    dataset_id: str,
+    body: DatasetLabelUpdate,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Rename an approved dataset's friendly table label."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -130,7 +165,11 @@ def rename_dataset_endpoint(workspace_id: str, dataset_id: str, body: DatasetLab
 
 
 @router.delete("/workspaces/{workspace_id}/datasets/{dataset_id}")
-def delete_dataset_endpoint(workspace_id: str, dataset_id: str):
+def delete_dataset_endpoint(
+    workspace_id: str,
+    dataset_id: str,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Delete an approved dataset, its catalog entries, quarantine, and references."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
@@ -142,6 +181,7 @@ async def create_upload_endpoint(
     workspace_id: str,
     background: BackgroundTasks,
     file: UploadFile = File(...),
+    _ws: Workspace = Depends(require_workspace_access),
 ):
     """Upload a spreadsheet to a workspace and start ingestion."""
     data = await file.read()
@@ -149,7 +189,11 @@ async def create_upload_endpoint(
 
 
 @router.post("/workspaces/{workspace_id}/chat")
-def chat_endpoint(workspace_id: str, body: ChatRequest):
+def chat_endpoint(
+    workspace_id: str,
+    body: ChatRequest,
+    _ws: Workspace = Depends(require_workspace_access),
+):
     """Execute an agent query against a workspace and stream SSE events."""
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")

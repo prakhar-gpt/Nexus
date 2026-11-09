@@ -1,12 +1,13 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react"
+import { Loader2 } from "lucide-react"
+import { AuthField } from "@/components/auth/auth-field"
 import { Button } from "@/components/ui/button"
-import { useSession } from "@/lib/auth/provider"
-import { DEMO_USER } from "@/lib/auth/mock-adapter"
+import { AuthError } from "@/lib/auth/client"
+import { useAuth } from "@/lib/auth/provider"
 
 interface AuthFormProps {
   mode: "login" | "signup"
@@ -14,7 +15,7 @@ interface AuthFormProps {
 
 function isValidNext(path: string | null): boolean {
   if (!path) return false
-  return path.startsWith("/") && !path.startsWith("//")
+  return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
 }
 
 export function AuthForm({ mode }: AuthFormProps) {
@@ -23,265 +24,221 @@ export function AuthForm({ mode }: AuthFormProps) {
   const nextParam = searchParams.get("next")
   const targetRedirect = isValidNext(nextParam) ? nextParam! : "/rooms"
 
-  const { signIn, signUp } = useSession()
+  const { signIn, signUp } = useAuth()
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
 
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | null>(null)
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === "true"
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const emailInputRef = useRef<HTMLInputElement>(null)
+  const passwordInputRef = useRef<HTMLInputElement>(null)
 
-  function validateEmail(val: string): string | null {
-    if (!val.trim()) return "Email is required."
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim())) {
-      return "Please enter a valid work email."
-    }
-    return null
-  }
-
-  function validatePassword(val: string): string | null {
-    if (!val) return "Password is required."
-    if (mode === "signup" && val.length < 8) {
-      return "Password must be at least 8 characters."
-    }
-    return null
-  }
-
-  function validateName(val: string): string | null {
-    if (mode === "signup" && !val.trim()) {
-      return "Full name is required."
-    }
-    return null
-  }
-
-  function handleBlur(field: "name" | "email" | "password") {
-    let err: string | null = null
-    if (field === "name") err = validateName(name)
-    if (field === "email") err = validateEmail(email)
-    if (field === "password") err = validatePassword(password)
-
-    setFieldErrors((prev) => ({
-      ...prev,
-      [field]: err || "",
-    }))
-  }
+  // Countdown timer for 429 rate limit
+  useEffect(() => {
+    if (retryCountdown === null || retryCountdown <= 0) return
+    const timer = setInterval(() => {
+      setRetryCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer)
+          return null
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [retryCountdown])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
+    setFieldErrors({})
 
-    const nameErr = validateName(name)
-    const emailErr = validateEmail(email)
-    const passwordErr = validatePassword(password)
+    const cleanEmail = email.trim()
+    const cleanName = name.trim()
+    const errors: { [key: string]: string } = {}
 
-    if (nameErr || emailErr || passwordErr) {
-      setFieldErrors({
-        name: nameErr || "",
-        email: emailErr || "",
-        password: passwordErr || "",
-      })
+    if (!cleanEmail) {
+      errors.email = "Email is required."
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      errors.email = "Please enter a valid work email."
+    }
+
+    if (!password) {
+      errors.password = "Password is required."
+    } else if (mode === "signup" && password.length < 10) {
+      errors.password = "Password must be at least 10 characters."
+    }
+
+    if (mode === "signup" && !cleanName) {
+      errors.name = "Full name is required."
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      if (errors.name) nameInputRef.current?.focus()
+      else if (errors.email) emailInputRef.current?.focus()
+      else if (errors.password) passwordInputRef.current?.focus()
       return
     }
 
     setIsSubmitting(true)
     try {
       if (mode === "login") {
-        await signIn(email, password)
+        await signIn(cleanEmail, password)
       } else {
-        await signUp(name, email, password)
+        await signUp(cleanEmail, password, cleanName)
       }
-      router.replace(targetRedirect)
-    } catch (err: any) {
-      setFormError(err.message || "An unexpected error occurred. Please try again.")
+      router.push(targetRedirect)
+    } catch (err: unknown) {
+      if (err instanceof AuthError) {
+        if (err.status === 429 && err.retryAfter) {
+          setRetryCountdown(err.retryAfter)
+          setFormError(`Too many attempts. Try again in ${err.retryAfter} seconds.`)
+        } else {
+          setFormError(err.message)
+        }
+      } else {
+        setFormError("Could not reach the server. Try again.")
+      }
+    } finally {
       setIsSubmitting(false)
     }
   }
-
-  async function handleDemoSignIn() {
-    setIsSubmitting(true)
-    setFormError(null)
-    try {
-      await signIn(DEMO_USER.email, "demo-password")
-      router.replace(targetRedirect)
-    } catch {
-      setFormError("Could not log into demo account.")
-      setIsSubmitting(false)
-    }
-  }
-
-  const signupLink = nextParam ? `/signup?next=${encodeURIComponent(nextParam)}` : "/signup"
-  const loginLink = nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"
 
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-[360px] flex flex-col">
-        {/* Top Header: Nexus big header + quiet non-header action subtitle */}
-        <div className="flex flex-col mb-6 text-left">
-          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
-            Nexus
+    <div className="flex min-h-screen flex-col justify-center py-12 px-6 sm:px-12 bg-background">
+      <div className="w-full max-w-[400px] mx-auto flex flex-col gap-6 text-left">
+        {/* Wordmark link to / */}
+        <div className="flex flex-col gap-1">
+          <Link
+            href="/"
+            className="text-3xl font-bold tracking-tight text-foreground hover:text-primary transition-colors font-mono w-fit"
+          >
+            <h1>
+              Nexus
+            </h1>
+          </Link>
+          <span className="text-[11px] text-muted-foreground font-mono">
+            Retail Data Room Copilot
+          </span>
+        </div>
+
+        {/* Page Title & Subtitle */}
+        <div className="flex flex-col gap-1 border-b border-border pb-4">
+          <h1 className="text-sm font-semibold tracking-tight text-foreground font-mono">
+            {mode === "login" ? "Sign in to your account" : "Create your analyst account"}
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Commercial due diligence & retail analytics
-          </p>
-          <p className="text-xs font-medium text-foreground mt-3">
-            {mode === "login" ? "Sign in to your account" : "Create your account"}
+          <p className="text-xs text-muted-foreground font-mono">
+            {mode === "login"
+              ? "Access your deal rooms and analytical threads."
+              : "Set up your workspace for commercial due diligence."}
           </p>
         </div>
 
-        {/* Form-level error alert (rendered only when present) */}
+        {/* Form Error Alert */}
         {formError && (
           <div
             role="alert"
-            aria-live="assertive"
-            className="flex items-center gap-2 p-2.5 mb-4 text-xs text-destructive bg-destructive/10 border border-destructive/20"
+            className="p-3 border border-destructive/40 bg-destructive/10 text-xs text-destructive font-mono leading-relaxed"
           >
-            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-            <span>{formError}</span>
+            {retryCountdown && retryCountdown > 0
+              ? `Too many attempts. Try again in ${retryCountdown} seconds.`
+              : formError}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-          {/* Full Name for Signup */}
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {mode === "signup" && (
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="auth-name" className="text-xs font-medium text-foreground">
-                Full name
-              </label>
-              <input
-                id="auth-name"
-                type="text"
-                value={name}
-                autoFocus
-                autoComplete="name"
-                disabled={isSubmitting}
-                onChange={(e) => {
-                  setName(e.target.value)
-                  if (fieldErrors.name) setFieldErrors((p) => ({ ...p, name: "" }))
-                }}
-                onBlur={() => handleBlur("name")}
-                placeholder="Alex Mercer"
-                className={`h-9 w-full border bg-background px-3 text-base sm:text-xs text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary ${
-                  fieldErrors.name ? "border-destructive" : "border-input"
-                }`}
-              />
-              {fieldErrors.name && (
-                <span className="text-[11px] text-destructive">{fieldErrors.name}</span>
-              )}
-            </div>
+            <AuthField
+              id="name"
+              label="Full name"
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: "" }))
+              }}
+              error={fieldErrors.name}
+              autoComplete="name"
+              placeholder="e.g. Jane Doe"
+              disabled={isSubmitting || Boolean(retryCountdown && retryCountdown > 0)}
+              autoFocus
+            />
           )}
 
-          {/* Email */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="auth-email" className="text-xs font-medium text-foreground">
-              {mode === "signup" ? "Work email" : "Email"}
-            </label>
-            <input
-              id="auth-email"
-              type="email"
-              value={email}
-              autoFocus={mode === "login"}
-              autoComplete="email"
-              disabled={isSubmitting}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: "" }))
-              }}
-              onBlur={() => handleBlur("email")}
-              placeholder="analyst@firm.com"
-              className={`h-9 w-full border bg-background px-3 text-base sm:text-xs text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary ${
-                fieldErrors.email ? "border-destructive" : "border-input"
-              }`}
-            />
-            {fieldErrors.email && (
-              <span className="text-[11px] text-destructive">{fieldErrors.email}</span>
-            )}
-          </div>
+          <AuthField
+            id="email"
+            label="Work email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: "" }))
+            }}
+            error={fieldErrors.email}
+            autoComplete="email"
+            placeholder="analyst@firm.com"
+            disabled={isSubmitting || Boolean(retryCountdown && retryCountdown > 0)}
+            autoFocus={mode === "login"}
+          />
 
-          {/* Password */}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="auth-password" className="text-xs font-medium text-foreground">
-              Password
-            </label>
-            <div className="relative flex items-center">
-              <input
-                id="auth-password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                disabled={isSubmitting}
-                onChange={(e) => {
-                  setPassword(e.target.value)
-                  if (fieldErrors.password) setFieldErrors((p) => ({ ...p, password: "" }))
-                }}
-                onBlur={() => handleBlur("password")}
-                placeholder="••••••••"
-                className={`h-9 w-full border bg-background px-3 pr-9 text-base sm:text-xs text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary ${
-                  fieldErrors.password ? "border-destructive" : "border-input"
-                }`}
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                onClick={() => setShowPassword((p) => !p)}
-                className="absolute right-2.5 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {fieldErrors.password ? (
-              <span className="text-[11px] text-destructive">{fieldErrors.password}</span>
-            ) : mode === "signup" ? (
-              <span className="text-[11px] text-muted-foreground">At least 8 characters</span>
-            ) : null}
-          </div>
+          <AuthField
+            id="password"
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: "" }))
+            }}
+            error={fieldErrors.password}
+            hint={mode === "signup" ? "At least 10 characters" : null}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            disabled={isSubmitting || Boolean(retryCountdown && retryCountdown > 0)}
+          />
 
-          {/* Primary Action Button */}
           <Button
             type="submit"
-            disabled={isSubmitting}
-            className="h-9 w-full text-xs font-medium mt-1.5 cursor-pointer"
+            disabled={isSubmitting || Boolean(retryCountdown && retryCountdown > 0)}
+            className="w-full h-9 text-xs font-mono rounded-[var(--radius)] mt-2"
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                <span>{mode === "login" ? "Signing in…" : "Creating account…"}</span>
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                {mode === "login" ? "Signing in…" : "Creating account…"}
               </>
+            ) : mode === "login" ? (
+              "Sign in"
             ) : (
-              <span>{mode === "login" ? "Sign in" : "Create account"}</span>
+              "Create account"
             )}
           </Button>
         </form>
 
-        {/* Footer Navigation */}
-        <div className="mt-6 flex flex-col items-center gap-3 text-xs text-muted-foreground">
-          {mode === "login" ? (
-            <Link href={signupLink} className="hover:text-foreground underline underline-offset-4">
-              No account? Create one
-            </Link>
-          ) : (
-            <Link href={loginLink} className="hover:text-foreground underline underline-offset-4">
-              Already have an account? Sign in
-            </Link>
-          )}
-
-          {mode === "login" && isDemoMode && (
-            <button
-              type="button"
-              onClick={handleDemoSignIn}
-              disabled={isSubmitting}
-              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-            >
-              Use demo account
-            </button>
-          )}
+        {/* Secondary Quiet Link */}
+        <div className="pt-2 border-t border-border flex items-center justify-between text-xs font-mono">
+          <span className="text-muted-foreground">
+            {mode === "login" ? "Don't have an account?" : "Already have an account?"}
+          </span>
+          <Link
+            href={
+              mode === "login"
+                ? `/signup${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`
+                : `/login${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`
+            }
+            className="text-foreground hover:text-primary transition-colors underline underline-offset-4"
+          >
+            {mode === "login" ? "Create account" : "Sign in"}
+          </Link>
         </div>
       </div>
     </div>
   )
 }
-

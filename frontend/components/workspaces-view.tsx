@@ -7,7 +7,6 @@ import type { WorkspaceSummary } from "@/lib/api"
 import { useSession } from "@/lib/auth/provider"
 import { Sidebar } from "@/components/sidebar"
 import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
-import { AuthModal } from "@/components/auth-modal"
 import { API_URL, apiFetch } from "@/lib/api"
 import { mutateResource } from "@/lib/use-resource"
 
@@ -20,7 +19,6 @@ interface WorkspacesViewProps {
   onSelectWorkspace?: (id: string | number) => void
   onOpenCreateModal?: () => void
   onDeleteWorkspace?: (id: string | number) => Promise<void> | void
-  onOpenAuthModal?: () => void
 }
 
 export function WorkspacesView({
@@ -32,15 +30,13 @@ export function WorkspacesView({
   onSelectWorkspace,
   onOpenCreateModal,
   onDeleteWorkspace,
-  onOpenAuthModal,
 }: WorkspacesViewProps) {
   const router = useRouter()
-  const { session } = useSession()
+  const { user } = useSession()
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
 
-  const firstName = session?.name ? session.name.trim().split(" ")[0] : ""
+  const firstName = user?.name ? user.name.trim().split(" ")[0] : ""
   const welcomeHeading = firstName ? `Welcome, ${firstName}` : "Welcome"
   const hasRooms = workspaces.length > 0
 
@@ -96,10 +92,6 @@ export function WorkspacesView({
           onSelectWorkspace={handleSelectRoom}
           onNewWorkspace={handleNewRoomClick}
           onDeleteWorkspace={onDeleteWorkspace}
-          onOpenAuthModal={() => {
-            if (onOpenAuthModal) onOpenAuthModal()
-            else setAuthModalOpen(true)
-          }}
         />
       </aside>
 
@@ -136,11 +128,6 @@ export function WorkspacesView({
                 handleNewRoomClick()
               }}
               onDeleteWorkspace={onDeleteWorkspace}
-              onOpenAuthModal={() => {
-                setMobileDrawerOpen(false)
-                if (onOpenAuthModal) onOpenAuthModal()
-                else setAuthModalOpen(true)
-              }}
             />
           </div>
           <button
@@ -192,12 +179,6 @@ export function WorkspacesView({
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreate={handleCreateRoom}
-      />
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
       />
     </div>
   )

@@ -1,14 +1,22 @@
-export type Session = {
-  userId: string
-  name: string
+export interface User {
+  id: string
   email: string
-  role: "Diligence Analyst"
+  name: string
+  role: string
+  createdAt?: string
 }
 
-export interface AuthAdapter {
-  signIn(email: string, password: string): Promise<Session>
-  signUp(name: string, email: string, password: string): Promise<Session>
-  signOut(): Promise<void>
-  getSession(): Promise<Session | null>
+export type Session = User
+
+export interface SessionInfo {
+  id: string
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  userAgent: string
+  ip: string
+  isCurrent: boolean
 }
+
+export type AuthStatus = "loading" | "authenticated" | "unauthenticated"
 

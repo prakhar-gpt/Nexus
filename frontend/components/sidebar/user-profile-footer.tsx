@@ -1,9 +1,10 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LogIn, LogOut, Sun } from "lucide-react"
+import { KeyRound, LogIn, LogOut, Sun } from "lucide-react"
+import { AccountDialog } from "@/components/account-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,18 +13,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useSession } from "@/lib/auth/provider"
+import { useAuth } from "@/lib/auth/provider"
 import { useChatStore } from "@/lib/chat-store"
 import { clearResourceCache } from "@/lib/use-resource"
 
-export function UserProfileFooter({
-  onOpenAuthModal,
-}: {
-  onOpenAuthModal?: () => void
-} = {}) {
+export function UserProfileFooter() {
   const router = useRouter()
-  const { session, signOut } = useSession()
+  const { user, signOut } = useAuth()
   const { clearAll } = useChatStore()
+  const [accountDialogOpen, setAccountDialogOpen] = useState(false)
 
   function toggleTheme() {
     const isDark = document.documentElement.classList.contains("dark")
@@ -43,8 +41,8 @@ export function UserProfileFooter({
     router.replace("/login")
   }
 
-  const initials = session?.name
-    ? session.name
+  const initials = user?.name
+    ? user.name
         .split(" ")
         .map((n) => n[0])
         .join("")
@@ -53,77 +51,83 @@ export function UserProfileFooter({
     : "DA"
 
   return (
-    <div className="pt-2 border-t border-sidebar-border">
-      {session ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-2.5 p-2 text-left hover:bg-sidebar-accent transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-accent text-accent-foreground text-xs font-medium border border-border">
-              {initials}
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-xs font-medium text-sidebar-foreground truncate">
-                {session.name}
-              </span>
-              <span className="text-[11px] text-muted-foreground truncate">
-                {session.email}
-              </span>
-            </div>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent
-            align="start"
-            side="top"
-            className="w-56 mb-1 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-none"
-          >
-            <DropdownMenuLabel className="font-normal px-2 py-1.5">
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-medium text-foreground">{session.name}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{session.email}</p>
-                <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                  {session.role}
+    <>
+      <div className="pt-2 border-t border-sidebar-border">
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex w-full items-center gap-2.5 p-2 text-left hover:bg-sidebar-accent transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-accent text-accent-foreground text-xs font-medium border border-border">
+                {initials}
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-xs font-medium text-sidebar-foreground truncate">
+                  {user.name}
+                </span>
+                <span className="text-[11px] text-muted-foreground truncate">
+                  {user.email}
                 </span>
               </div>
-            </DropdownMenuLabel>
+            </DropdownMenuTrigger>
 
-            <DropdownMenuSeparator className="bg-border my-1" />
-
-            <DropdownMenuItem
-              onClick={toggleTheme}
-              className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
+            <DropdownMenuContent
+              align="start"
+              side="top"
+              className="w-56 mb-1 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-none"
             >
-              <Sun className="h-3.5 w-3.5 text-muted-foreground" />
-              <span>Toggle theme</span>
-            </DropdownMenuItem>
+              <DropdownMenuLabel className="font-normal px-2 py-1.5">
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-foreground">{user.name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                  <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                    {user.role}
+                  </span>
+                </div>
+              </DropdownMenuLabel>
 
-            <DropdownMenuSeparator className="bg-border my-1" />
+              <DropdownMenuSeparator className="bg-border my-1" />
 
-            <DropdownMenuItem
-              onClick={handleLogOut}
-              className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>Log out</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : onOpenAuthModal ? (
-        <button
-          type="button"
-          onClick={onOpenAuthModal}
-          className="flex w-full items-center gap-2 p-2 text-xs font-medium text-foreground hover:bg-sidebar-accent transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        >
-          <LogIn className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>Sign in</span>
-        </button>
-      ) : (
-        <Link
-          href="/login"
-          className="flex w-full items-center gap-2 p-2 text-xs font-medium text-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <LogIn className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>Sign in</span>
-        </Link>
-      )}
-    </div>
+              <DropdownMenuItem
+                onClick={() => setAccountDialogOpen(true)}
+                className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
+              >
+                <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Account & Security</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={toggleTheme}
+                className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
+              >
+                <Sun className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Toggle theme</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator className="bg-border my-1" />
+
+              <DropdownMenuItem
+                onClick={handleLogOut}
+                className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Link
+            href="/login"
+            className="flex w-full items-center gap-2 p-2 text-xs font-medium text-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <LogIn className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>Sign in</span>
+          </Link>
+        )}
+      </div>
+
+      <AccountDialog
+        isOpen={accountDialogOpen}
+        onClose={() => setAccountDialogOpen(false)}
+      />
+    </>
   )
 }

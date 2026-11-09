@@ -7,7 +7,6 @@ import { ChatPane, type ChatMessage } from "@/components/chat-pane"
 import { Sidebar } from "@/components/sidebar"
 import { WorkspacesView } from "@/components/workspaces-view"
 import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
-import { AuthModal } from "@/components/auth-modal"
 import {
   API_URL,
   apiFetch,
@@ -165,7 +164,6 @@ export function Dashboard() {
   // Modals
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
   const [dataRoomModalOpen, setDataRoomModalOpen] = useState(false)
-  const [authModalOpen, setAuthModalOpen] = useState(false)
 
   // Toasts
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -745,7 +743,7 @@ export function Dashboard() {
   }
 
   function listenToUpload(uploadId: number, messageId?: string) {
-    const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`)
+    const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`, { withCredentials: true })
     source.onmessage = async (event) => {
       const payload = readEvent<{
         // legacy stage events
@@ -1026,18 +1024,12 @@ export function Dashboard() {
           onSelectWorkspace={(id) => selectRoom(id)}
           onOpenCreateModal={() => setCreateWorkspaceOpen(true)}
           onDeleteWorkspace={handleDeleteWorkspace}
-          onOpenAuthModal={() => setAuthModalOpen(true)}
         />
 
         <CreateWorkspaceModal
           isOpen={createWorkspaceOpen}
           onClose={() => setCreateWorkspaceOpen(false)}
           onCreate={handleCreateWorkspace}
-        />
-
-        <AuthModal
-          isOpen={authModalOpen}
-          onClose={() => setAuthModalOpen(false)}
         />
 
         {/* Global Toast */}
@@ -1067,7 +1059,6 @@ export function Dashboard() {
           onNewThread={handleNewThread}
           onDeleteThread={handleDeleteThread}
           onOpenDataModal={() => setDataRoomModalOpen(true)}
-          onOpenAuthModal={() => setAuthModalOpen(true)}
           attentionWarning={attentionWarning}
           healthSummary={{ rows, dates }}
         />
@@ -1091,10 +1082,6 @@ export function Dashboard() {
               onOpenDataModal={() => {
                 setMobileDrawerOpen(false)
                 setDataRoomModalOpen(true)
-              }}
-              onOpenAuthModal={() => {
-                setMobileDrawerOpen(false)
-                setAuthModalOpen(true)
               }}
               attentionWarning={attentionWarning}
               healthSummary={{ rows, dates }}
@@ -1151,12 +1138,6 @@ export function Dashboard() {
           onRejectSchema={handleRejectSchema}
         />
       </div>
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-      />
 
       {/* Bottom Center Toast */}
       {toastMessage ? (

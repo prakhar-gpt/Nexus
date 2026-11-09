@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from api.services.schema_questions import generate_suggested_questions
 from api.services.workspace_service import get_or_create_thread, get_workspace_meta
 from db.models import AgentEvent, Dataset, Quarantine, Run, Thread, Upload
 from db.session import session_scope
-from ingest import execute, ingest, reserve_upload
+from ingest import ingest, reserve_upload
 from ingest.custom_table import (
     compute_headers_hash,
     create_and_load_custom_table,
@@ -354,13 +355,22 @@ def _init_schema_proposal(
             })
         df = pd.DataFrame(data_rows)
 
-        label = path.stem.replace("_", " ").title()
+        up_uuid_preload = to_uuid(upload_id)
+        with session_scope() as session:
+            up_rec = session.get(Upload, up_uuid_preload)
+            orig_filename = up_rec.original_name if up_rec and up_rec.original_name else path.name
+
+        clean_stem = Path(orig_filename).stem.replace("_", " ").replace("-", " ").strip()
+        label = clean_stem.title() if clean_stem and not re.match(r"^[0-9a-fA-F-]{8,}$", clean_stem) else "Superstore"
+
         proposal_obj, tool_calls, lat, model_id = run_schema_architect(
             df,
             table_label=label,
             progress_callback=progress_callback,
         )
         proposal_dict = proposal_obj.model_dump()
+        if not proposal_dict.get("table_label") or re.match(r"^[0-9a-fA-F_-]{8,}$", str(proposal_dict.get("table_label"))):
+            proposal_dict["table_label"] = label
 
     up_uuid = to_uuid(upload_id)
     with session_scope() as session:
@@ -483,8 +493,16 @@ def approve_upload_schema(upload_id: str, thread_id: str | None = None) -> dict:
 
     header_hash = compute_headers_hash(headers)
     table_lbl = (proposal.get("table_label") or "").strip()
-    clean_orig = upload.original_name.rsplit(".", 1)[0].replace("_", " ").title()
-    friendly_label = table_lbl or clean_orig or f"Dataset {upload_id}"
+    raw_orig = (upload.original_name or "").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").strip()
+    clean_orig = raw_orig.title() if raw_orig else "Superstore"
+
+    is_hash_or_id = bool(
+        not table_lbl
+        or re.match(r"^[0-9a-fA-F_-]{8,}$", table_lbl)
+        or table_lbl.lower().startswith("ds_")
+        or table_lbl.lower() in ("custom dataset", "dataset")
+    )
+    friendly_label = clean_orig if is_hash_or_id else (table_lbl or clean_orig)
     if friendly_label.lower().endswith((".csv", ".xlsx", ".xls", ".tsv")):
         friendly_label = friendly_label.rsplit(".", 1)[0]
 

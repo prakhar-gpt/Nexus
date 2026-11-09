@@ -98,14 +98,25 @@ export function registerUnauthorizedCleanup(fn: () => void): () => void {
 /**
  * Universal fetch wrapper that handles 401 Unauthorized by clearing session,
  * caches, and chat store, showing a toast, and redirecting to /login?next=...
+ * Automatically ensures credentials: "include" and custom state-changing headers.
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const response = await fetch(input, init)
+  const mergedInit: RequestInit = {
+    ...init,
+    credentials: init?.credentials || "include",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      ...(init?.headers || {}),
+    },
+  }
+
+  const response = await fetch(input, mergedInit)
 
   if (response.status === 401) {
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("nexus_session")
+        localStorage.removeItem("nexus_user")
         document.cookie = "nexus_session=; path=/; max-age=0; SameSite=Lax"
       } catch {}
 
@@ -116,11 +127,13 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
         } catch {}
       })
 
-      showToast("Session expired. Sign in again.")
-
-      const currentPath = window.location.pathname + window.location.search
-      const nextParam = encodeURIComponent(currentPath)
-      window.location.href = `/login?next=${nextParam}`
+      // Only redirect if not already on public auth pages
+      if (!window.location.pathname.startsWith("/login") && !window.location.pathname.startsWith("/signup") && window.location.pathname !== "/") {
+        showToast("Session expired. Sign in again.")
+        const currentPath = window.location.pathname + window.location.search
+        const nextParam = encodeURIComponent(currentPath)
+        window.location.href = `/login?next=${nextParam}`
+      }
     }
   }
 

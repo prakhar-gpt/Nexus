@@ -33,6 +33,17 @@ function makeKey(roomId: string | number, threadId: string) {
   return `${roomId}:${threadId}`
 }
 
+function isHashOrInternalId(val?: string | null): boolean {
+  if (!val) return true
+  const s = val.trim()
+  return (
+    /^[0-9a-fA-F_-]{8,}$/.test(s) ||
+    /^ds_[0-9a-fA-F_-]+$/i.test(s) ||
+    s.toLowerCase() === "custom dataset" ||
+    s.toLowerCase() === "dataset"
+  )
+}
+
 function notifyKey(key: string) {
   const subs = keyListeners.get(key)
   if (subs) {
@@ -510,8 +521,8 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           status: body.status === "needs_schema_review" ? "needs_schema_review" : "profiling",
         }))
 
-        // Listen to live SSE upload events
-        const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`)
+        // Listen to live SSE upload events with credentials for authenticated session cookies
+        const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`, { withCredentials: true })
 
         const handleSseMessage = async (evt: MessageEvent) => {
           if (!evt.data) return
@@ -555,12 +566,12 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               : ""
 
             let tblLabel = payload.table_label || ""
-            if (cleanFileLabel && (!tblLabel || /^[0-9a-fA-F]{12,}$/.test(tblLabel) || /^ds_\d+$/i.test(tblLabel) || tblLabel.toLowerCase() === "custom dataset")) {
-              tblLabel = cleanFileLabel
+            if (isHashOrInternalId(tblLabel)) {
+              tblLabel = cleanFileLabel || "Superstore"
             }
 
             const handoffData = {
-              tableLabel: tblLabel || cleanFileLabel || "Dataset",
+              tableLabel: tblLabel || cleanFileLabel || "Superstore",
               tableName: payload.table_name || "",
               grain: payload.grain || "",
               rowCount: payload.row_count || 0,
@@ -666,11 +677,21 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       // Instantly update room datasets and upload status optimistically with zero network delay
       mutateResource(`room:${roomId}`, (curr: any) => {
         if (!curr) return curr
+        const uploadObj = (curr.uploads || []).find((u: any) => String(u.id) === String(uploadId))
+        const rawFileName = uploadObj?.original_name?.replace(/\.[^/.]+$/, "") || ""
+        const cleanFileLabel = rawFileName
+          ? rawFileName.replace(/[_-]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : ""
+        let dsLabel = data.table_label || cleanFileLabel || "Superstore"
+        if (isHashOrInternalId(dsLabel)) {
+          dsLabel = cleanFileLabel || "Superstore"
+        }
+
         const newDataset = {
           id: data.dataset_id || Number(uploadId),
           upload_id: Number(uploadId),
           table_name: data.table_name,
-          table_label: data.table_label,
+          table_label: dsLabel,
           grain: data.grain,
           row_count: data.loaded_rows,
           quarantine_count: data.quarantined_rows || 0,
@@ -728,10 +749,10 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           data.table_label ||
           uploadMsg?.uploadData?.proposal?.table_label ||
           cleanFileLabel ||
-          "Dataset"
+          "Superstore"
 
-        if (cleanFileLabel && (/^[0-9a-fA-F]{12,}$/.test(friendlyLabel) || /^ds_\d+$/i.test(friendlyLabel) || friendlyLabel.toLowerCase() === "custom dataset")) {
-          friendlyLabel = cleanFileLabel
+        if (isHashOrInternalId(friendlyLabel)) {
+          friendlyLabel = cleanFileLabel || "Superstore"
         }
 
         const rawGrain = data.grain || uploadMsg?.uploadData?.proposal?.grain || "transaction record"
@@ -902,7 +923,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       notifyKey(key)
 
       if (upload.status !== "needs_schema_review" && upload.status !== "loaded" && upload.status !== "rejected") {
-        const source = new EventSource(`${API_URL}/uploads/${upload.id}/events`)
+        const source = new EventSource(`${API_URL}/uploads/${upload.id}/events`, { withCredentials: true })
         source.onmessage = async (evt: MessageEvent) => {
           if (!evt.data) return
           let payload: any = {}

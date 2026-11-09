@@ -1,14 +1,15 @@
-"""Users, workspace membership, and authentication endpoints using SQLAlchemy ORM."""
+"""Users and workspace membership management endpoints with authentication."""
 
 from __future__ import annotations
 
 import uuid
 from typing import Literal
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from db.models import User, WorkspaceMember
+from api.dependencies import get_current_user, require_workspace_access
+from db.models import User, Workspace, WorkspaceMember
 from db.session import session_scope
 
 router = APIRouter()
@@ -17,12 +18,7 @@ router = APIRouter()
 class UserCreate(BaseModel):
     email: str = Field(min_length=3, max_length=255)
     name: str = Field(min_length=1, max_length=255)
-    role: str = Field(default="Consulting Analyst", max_length=100)
-
-
-class LoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=255)
-    name: str | None = Field(default=None, max_length=255)
+    role: str = Field(default="analyst", max_length=100)
 
 
 class WorkspaceMemberAdd(BaseModel):
@@ -31,45 +27,20 @@ class WorkspaceMemberAdd(BaseModel):
 
 
 @router.get("/users/me")
-def get_current_user_endpoint(email: str | None = Query(default=None)):
-    """Return current authenticated user profile, defaulting to seeded analyst."""
-    target_email = (email or "prakhar@nexus.ai").strip().lower()
-    with session_scope() as session:
-        user = session.execute(
-            select(User).where(User.email.ilike(target_email))
-        ).scalar_one_or_none()
-        if user:
-            return {
-                "id": str(user.id),
-                "email": user.email,
-                "name": user.name,
-                "role": user.role,
-                "created_at": user.created_at.isoformat() if user.created_at else "",
-            }
-        # Fallback to first user in system if available
-        first_user = session.execute(
-            select(User).order_by(User.created_at.asc())
-        ).scalars().first()
-        if first_user:
-            return {
-                "id": str(first_user.id),
-                "email": first_user.email,
-                "name": first_user.name,
-                "role": first_user.role,
-                "created_at": first_user.created_at.isoformat() if first_user.created_at else "",
-            }
+def get_current_user_endpoint(user: User = Depends(get_current_user)):
+    """Return authenticated user profile."""
     return {
-        "id": "00000000-0000-0000-0000-000000000001",
-        "email": target_email,
-        "name": "Prakhar Gupta",
-        "role": "Consulting Analyst",
-        "created_at": "",
+        "id": str(user.id),
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "created_at": user.created_at.isoformat() if user.created_at else "",
     }
 
 
 @router.get("/users")
-def list_users_endpoint():
-    """List all registered users."""
+def list_users_endpoint(current_user: User = Depends(get_current_user)):
+    """List all registered users (authenticated)."""
     with session_scope() as session:
         users = session.execute(select(User).order_by(User.created_at.asc())).scalars().all()
         return [
@@ -85,8 +56,8 @@ def list_users_endpoint():
 
 
 @router.post("/users")
-def create_user_endpoint(body: UserCreate):
-    """Create a new user or update role/name if exists."""
+def create_user_endpoint(body: UserCreate, current_user: User = Depends(get_current_user)):
+    """Create or update a user (authenticated)."""
     clean_email = body.email.strip().lower()
     clean_name = body.name.strip()
     clean_role = body.role.strip()
@@ -112,30 +83,11 @@ def create_user_endpoint(body: UserCreate):
         }
 
 
-@router.post("/auth/login")
-def login_endpoint(body: LoginRequest):
-    """Login or auto-provision user by email."""
-    clean_email = body.email.strip().lower()
-    clean_name = (body.name or clean_email.split("@")[0].replace(".", " ").title()).strip()
-    with session_scope() as session:
-        user = session.execute(
-            select(User).where(User.email.ilike(clean_email))
-        ).scalar_one_or_none()
-        if not user:
-            user = User(email=clean_email, name=clean_name, role="Consulting Analyst")
-            session.add(user)
-            session.flush()
-        return {
-            "id": str(user.id),
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "created_at": user.created_at.isoformat() if user.created_at else "",
-        }
-
-
 @router.get("/workspaces/{workspace_id}/members")
-def list_workspace_members_endpoint(workspace_id: str):
+def list_workspace_members_endpoint(
+    workspace_id: str,
+    ws: Workspace = Depends(require_workspace_access),
+):
     """List all members of a workspace."""
     try:
         ws_uuid = uuid.UUID(workspace_id)
@@ -163,13 +115,17 @@ def list_workspace_members_endpoint(workspace_id: str):
 
 
 @router.post("/workspaces/{workspace_id}/members")
-def add_workspace_member_endpoint(workspace_id: str, body: WorkspaceMemberAdd):
+def add_workspace_member_endpoint(
+    workspace_id: str,
+    body: WorkspaceMemberAdd,
+    ws: Workspace = Depends(require_workspace_access),
+):
     """Add or update member role in a workspace."""
     try:
         ws_uuid = uuid.UUID(workspace_id)
         user_uuid = uuid.UUID(body.user_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid UUID")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid UUID")
     with session_scope() as session:
         member = session.get(WorkspaceMember, (ws_uuid, user_uuid))
         if member:

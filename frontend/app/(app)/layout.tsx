@@ -11,21 +11,22 @@ function isValidNext(path: string | null): boolean {
 }
 
 function AuthGuardInner({ children }: { children: React.ReactNode }) {
-  const { session, isLoading } = useSession()
+  const { user, session, isLoading } = useSession()
+  const currentUser = user || session
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    if (!isLoading && !session) {
+    if (!isLoading && !currentUser) {
       const fullPath = pathname + (searchParams.toString() ? `?${searchParams.toString()}` : "")
       const nextTarget = isValidNext(fullPath) ? fullPath : "/rooms"
       router.replace(`/login?next=${encodeURIComponent(nextTarget)}`)
     }
-  }, [session, isLoading, router, pathname, searchParams])
+  }, [currentUser, isLoading, router, pathname, searchParams])
 
   // Layer 2 guard: render full-height skeleton while checking session to avoid any flash of protected content
-  if (isLoading || !session) {
+  if (isLoading || !currentUser) {
     return (
       <div className="flex h-svh w-full flex-col bg-background text-foreground md:flex-row overflow-hidden animate-pulse">
         <aside className="hidden md:block h-full w-[260px] border-r border-sidebar-border bg-sidebar p-3 shrink-0">

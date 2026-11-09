@@ -1,6 +1,6 @@
 """Nexus FastAPI application entry point.
 
-Assembles routers, middleware, and application lifecycle.
+Assembles routers, security middleware, and application lifecycle.
 Run with: uvicorn main:app --reload
 """
 
@@ -16,7 +16,8 @@ _BACKEND_ROOT = Path(__file__).resolve().parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
-from api.routers import runs_router, uploads_router, users_router, workspaces_router
+from api.middleware import CSRFMiddleware, RateLimitMiddleware
+from api.routers import auth_router, runs_router, uploads_router, users_router, workspaces_router
 from api.services.chat_service import format_sse as _sse, save_run as _save_run
 from api.services.upload_service import PROGRESS
 from api.services.workspace_service import (
@@ -27,6 +28,7 @@ from api.services.workspace_service import (
     get_workspace_meta as _workspace,
 )
 from agent import stream
+from config import settings
 
 app = FastAPI(
     title="Nexus",
@@ -34,13 +36,23 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# 1. CORS with credentials enabled for session cookies
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# 2. Rate limiting & request size bounds
+app.add_middleware(RateLimitMiddleware)
+
+# 3. CSRF state-changing header & origin protection
+app.add_middleware(CSRFMiddleware)
+
+# Routers
+app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(uploads_router)
 app.include_router(runs_router)
