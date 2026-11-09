@@ -27,13 +27,28 @@ from api.services.workspace_service import (
     get_turns as _turns,
     get_workspace_meta as _workspace,
 )
+from contextlib import asynccontextmanager
 from agent import stream
 from config import settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run database migrations on startup to guarantee schema alignment."""
+    try:
+        from db.migrate import run_migrations
+        run_migrations()
+    except Exception as exc:
+        import logging
+        logging.getLogger("nexus.main").error(f"Startup migration check: {exc}")
+    yield
+
 
 app = FastAPI(
     title="Nexus",
     description="Retail Data Room Copilot with guarded SQL and deterministic number checking.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # 1. CORS with credentials enabled for session cookies
