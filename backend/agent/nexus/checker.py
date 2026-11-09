@@ -61,7 +61,7 @@ def check_answer(
     started = time.perf_counter()
     clean_answer = strip_fenced_code_blocks(normalize_text(answer or ""))
 
-    no_tools_ran = (not rows) and (not python_results)
+    no_tools_ran = (not rows) and (not python_results) and (not evidence_records)
     is_refusal = (kind == "refusal") or ("cannot answer" in clean_answer.lower()) or ("refus" in clean_answer.lower())
     is_clarif = (kind == "clarification") or is_clarification(clean_answer)
     is_greet = is_greeting(clean_answer)
@@ -114,12 +114,14 @@ def check_answer(
                     status="matched",
                     source="python" if best_rec.kind == "python" else "data",
                     query_id=best_rec.query_id,
+                    dataset=best_rec.table_label or best_rec.dataset_id,
                     dataset_id=best_rec.dataset_id,
                     table_label=best_rec.table_label,
                     column=best_rec.column,
                     kind=best_rec.kind,
                     row_index=best_rec.row_index,
                     also_in=also_in,
+                    derived_from=list(best_rec.derived_from) if best_rec.derived_from else [],
                 ).to_dict()
             )
             continue
@@ -134,19 +136,27 @@ def check_answer(
 
         # Match against prompt-stated numbers
         matched_in_prompt = False
-        prompt_is_year_or_top = False
+        prompt_is_exempt = False
         for q_val, q_raw, q_start, q_end in prompt_numbers:
             if abs(value - q_val) <= Decimal("0.5"):
                 matched_in_prompt = True
-                if is_contextual_year(q_raw, question_clean, q_start, q_end) or re.search(r"\btop\s+$", question_clean[max(0, q_start - 10) : q_start], re.IGNORECASE):
-                    prompt_is_year_or_top = True
+                is_target_context = bool(
+                    re.search(r"\b(?:target|threshold|goal|budget|benchmark|baseline|limit|quota)\b", question_clean[max(0, q_start - 30) : min(len(question_clean), q_end + 30)], re.IGNORECASE)
+                    or re.search(r"\b(?:target|threshold|goal|budget|benchmark|baseline|limit|quota)\b", clean_answer[max(0, start - 30) : min(len(clean_answer), end + 30)], re.IGNORECASE)
+                )
+                if (
+                    is_contextual_year(q_raw, question_clean, q_start, q_end)
+                    or re.search(r"\btop\s+$", question_clean[max(0, q_start - 10) : q_start], re.IGNORECASE)
+                    or is_target_context
+                ):
+                    prompt_is_exempt = True
                 break
 
         if matched_in_prompt:
-            if prompt_is_year_or_top:
+            if prompt_is_exempt:
                 matched.append(raw)
                 provenance.append(
-                    ClaimProvenance(claim=raw, status="matched", source="prompt", exemption_reason="prompt_year_or_top_echo").to_dict()
+                    ClaimProvenance(claim=raw, status="matched", source="prompt", exemption_reason="prompt_echo").to_dict()
                 )
             else:
                 untraced_msg = f"{raw} (stated in your message, not found in the data)"

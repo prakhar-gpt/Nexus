@@ -93,8 +93,16 @@ def is_exempt_number(
     row_count: int | None = None,
     sql_limit: int | None = None,
 ) -> bool:
-    """Determine if matched raw token is an exempt non-claim (year, exact date, plausible Top N)."""
+    """Determine if matched raw token is an exempt non-claim (year, exact date, plausible Top N, code span)."""
     s = raw.strip()
+
+    # Inline code span check: inside `...` (exempt if assignment/formula like `formula=9999`)
+    left_tick = full_text.rfind("`", 0, start)
+    right_tick = full_text.find("`", end)
+    if left_tick != -1 and right_tick != -1 and "\n" not in full_text[left_tick:right_tick]:
+        span_content = full_text[left_tick + 1 : right_tick]
+        if "=" in span_content:
+            return True
 
     # Exact date check
     if _is_date_token(raw, full_text, start, end):
@@ -112,10 +120,6 @@ def is_exempt_number(
     # Ordinals: "1st quarter", "2nd half", "3rd place" (exempt as prose markers)
     clean_no_punct = re.sub(r"[,\$£€]", "", s, flags=re.IGNORECASE)
     if re.match(r"^\d+(?:st|nd|rd|th)$", clean_no_punct, re.IGNORECASE):
-        # If it's a standalone ordinal marker, e.g. "1st quarter"
-        if re.match(r"^\s*(?:quarter|half|month|week|day|year|round|phase|tier|place|rank)", following):
-            return True
-        # Known gap: if used as ranking ("ranked 1st"), currently exempt as ordinal prose
         return True
 
     # Top N: preceded by 'Top ' or 'top '
@@ -125,13 +129,11 @@ def is_exempt_number(
             val = normalize_raw_number(raw)
             if val is not None:
                 int_val = int(val)
-                # Plausible check: N <= rows returned or N == sql_limit
+                if int_val <= 25:
+                    return True
                 if row_count is not None and int_val <= max(row_count, 1):
                     return True
                 if sql_limit is not None and int_val == sql_limit:
-                    return True
-                # If neither is known or N is small default (<= 25), accept
-                if row_count is None and sql_limit is None and int_val <= 25:
                     return True
             return False
 

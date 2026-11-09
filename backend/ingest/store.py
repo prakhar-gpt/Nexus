@@ -30,16 +30,33 @@ def writer_password() -> str:
 
 
 def get_writer_connection():
-    """Return a psycopg2 connection authenticated as nexus_writer."""
-    db_url = os.environ.get("DATABASE_URL")
+    """Return a psycopg2 connection authenticated as writer."""
+    try:
+        from config import settings
+        db_url = os.environ.get("DATABASE_URL") or settings.DATABASE_URL
+    except Exception:
+        db_url = os.environ.get("DATABASE_URL")
     if db_url:
         return psycopg2.connect(db_url)
+    try:
+        from config import settings
+        user = os.environ.get("PGUSER") or settings.PG_USER
+        password = os.environ.get("NEXUS_WRITER_PASSWORD") or settings.NEXUS_WRITER_PASSWORD or writer_password()
+        database = os.environ.get("PGDATABASE") or settings.PG_DATABASE or DATABASE
+        host = os.environ.get("PGHOST") or settings.PG_HOST or "localhost"
+        port = int(os.environ.get("PGPORT") or settings.PG_PORT or "5432")
+    except Exception:
+        user = os.environ.get("PGUSER", WRITER_USER)
+        password = writer_password()
+        database = os.environ.get("PGDATABASE", DATABASE)
+        host = os.environ.get("PGHOST", "localhost")
+        port = int(os.environ.get("PGPORT", "5432"))
     return psycopg2.connect(
-        dbname=os.environ.get("PGDATABASE", DATABASE),
-        user=os.environ.get("PGUSER", WRITER_USER),
-        password=writer_password(),
-        host=os.environ.get("PGHOST", "localhost"),
-        port=int(os.environ.get("PGPORT", "5432")),
+        dbname=database,
+        user=user,
+        password=password,
+        host=host,
+        port=port,
     )
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 
 from agent.model import chat_model
@@ -74,7 +75,13 @@ class Agent:
         workflow.add_edge("tools", "agent")
         workflow.add_edge("checker", END)
 
-        self.graph = workflow.compile(checkpointer=MemorySaver())
+        serde = JsonPlusSerializer(
+            allowed_msgpack_modules=[
+                ("agent.nexus.provenance", "EvidenceRecord"),
+                ("agent.nexus.provenance", "ClaimProvenance"),
+            ]
+        )
+        self.graph = workflow.compile(checkpointer=MemorySaver(serde=serde))
 
     def _prepare(self, question: str, workspace_id: int | str, thread_id: str | None, history, allowed_dataset_ids: list[str | int] | None = None):
         effective_thread = thread_id.strip() if thread_id else "default"

@@ -120,8 +120,13 @@ class Settings:
     DEEPSEEK_DEFAULT_MODEL: str = field(default_factory=lambda: _get_str("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"))
 
     # Database Passwords & Credentials
-    NEXUS_WRITER_PASSWORD: str = field(default_factory=lambda: _get_str("NEXUS_WRITER_PASSWORD", "postgres"))
-    NEXUS_READER_PASSWORD: str = field(default_factory=lambda: _get_str("NEXUS_READER_PASSWORD", ""))
+    DATABASE_URL: str = field(default_factory=lambda: _get_str("DATABASE_URL", ""))
+    NEXUS_WRITER_PASSWORD: str = field(default_factory=lambda: (
+        _DB_URL_PARTS.get("password") or _get_str("NEXUS_WRITER_PASSWORD", "postgres")
+    ))
+    NEXUS_READER_PASSWORD: str = field(default_factory=lambda: (
+        _DB_URL_PARTS.get("password") or _get_str("NEXUS_READER_PASSWORD", "")
+    ))
 
     # Security & Hashing
     BCRYPT_ROUNDS: int = field(default_factory=lambda: _get_int("BCRYPT_ROUNDS", 12))
@@ -147,6 +152,7 @@ class Settings:
     RATE_LIMIT_CHANGE_PASSWORD_PER_HOUR_USER: int = field(default_factory=lambda: _get_int("RATE_LIMIT_CHANGE_PASSWORD_PER_HOUR_USER", 5))
     RATE_LIMIT_CHAT_PER_MIN_USER: int = field(default_factory=lambda: _get_int("RATE_LIMIT_CHAT_PER_MIN_USER", 30))
     RATE_LIMIT_UPLOAD_PER_HOUR_USER: int = field(default_factory=lambda: _get_int("RATE_LIMIT_UPLOAD_PER_HOUR_USER", 10))
+    RATE_LIMIT_SOURCE_PER_MIN_USER: int = field(default_factory=lambda: _get_int("RATE_LIMIT_SOURCE_PER_MIN_USER", 60))
     RATE_LIMIT_API_PER_MIN_USER: int = field(default_factory=lambda: _get_int("RATE_LIMIT_API_PER_MIN_USER", 120))
     MAX_CONCURRENT_SSE_PER_USER: int = field(default_factory=lambda: _get_int("MAX_CONCURRENT_SSE_PER_USER", 5))
 
@@ -254,7 +260,7 @@ class Settings:
     PSQL_PATH: str = field(default_factory=lambda: os.environ.get("PSQL_PATH") or (import_shutil := __import__("shutil")).which("psql") or r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
     PG_HOST: str = field(default_factory=lambda: _get_str("PGHOST", _DB_URL_PARTS.get("host", "localhost")))
     PG_PORT: str = field(default_factory=lambda: _get_str("PGPORT", _DB_URL_PARTS.get("port", "5432")))
-    PG_READER_USER: str = field(default_factory=lambda: os.environ.get("PG_READER_USER", "nexus_reader"))
+    PG_READER_USER: str = field(default_factory=lambda: _get_str("PG_READER_USER", _DB_URL_PARTS.get("user") or "nexus_reader"))
     PG_USER: str = field(default_factory=lambda: _get_str("PGUSER", _DB_URL_PARTS.get("user", "postgres")))
     PG_PASSWORD: str = field(default_factory=lambda: _get_str("PGPASSWORD", _DB_URL_PARTS.get("password", "")))
     PG_DATABASE: str = field(default_factory=lambda: _get_str("PGDATABASE", _DB_URL_PARTS.get("database", "nexus_db")))

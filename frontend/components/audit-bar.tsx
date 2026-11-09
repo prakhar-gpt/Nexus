@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import dynamic from "next/dynamic"
 import {
   ChevronDown,
@@ -11,7 +11,7 @@ import {
   ThumbsUp,
 } from "lucide-react"
 import { StatusBadge, type AnswerBadge } from "./status-badge"
-import type { TraceStep } from "@/lib/api"
+import type { ClaimProvenanceItem, TraceStep } from "@/lib/api"
 
 const QueryPanel = dynamic(
   () => import("./query-panel").then((mod) => mod.QueryPanel),
@@ -25,6 +25,7 @@ interface AuditBarProps {
   rows?: Record<string, string | number>[]
   steps?: TraceStep[]
   untraced?: string[]
+  provenance?: ClaimProvenanceItem[]
   missingMeasure?: string
   sources?: { document: string; page?: number | string }[]
   runId?: string | number | null
@@ -41,6 +42,7 @@ export function AuditBar({
   rows = [],
   steps,
   untraced,
+  provenance,
   missingMeasure,
   sources,
   runId,
@@ -58,6 +60,19 @@ export function AuditBar({
   const activeSteps = (steps || []).filter((s) => s.tool !== "checker")
   const hasDetail = activeSteps.length > 0 || Boolean(sql) || rows.length > 0
   const finalRowCount = rowCount ?? (rows.length > 0 ? rows.length : null)
+
+  const provenanceSummary = useMemo(() => {
+    if (!provenance || provenance.length === 0) return null
+    const relevant = provenance.filter((p) => p.status === "matched" || p.status === "untraced")
+    if (relevant.length === 0) return null
+    const total = relevant.length
+    const dataCount = relevant.filter((p) => p.source === "data").length
+    const pyCount = relevant.filter((p) => p.source === "python").length
+    const parts = [`${total} ${total === 1 ? "number" : "numbers"}`]
+    if (dataCount > 0) parts.push(`${dataCount} from data`)
+    if (pyCount > 0) parts.push(`${pyCount} calculated`)
+    return parts.join(" · ")
+  }, [provenance])
 
   async function handleCopyAnswer() {
     try {
@@ -125,6 +140,12 @@ export function AuditBar({
             untraced={untraced}
             missingMeasure={missingMeasure}
           />
+
+          {provenanceSummary ? (
+            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+              {provenanceSummary}
+            </span>
+          ) : null}
         </div>
 
         {/* Right side: Thumbs Up, Thumbs Down, Copy */}
@@ -149,13 +170,12 @@ export function AuditBar({
             onClick={() => handleVote("up")}
             aria-label="Thumbs up rating"
             aria-pressed={feedback === "up"}
-            className={`p-1 transition-colors rounded ${
-              runId == null
+            className={`p-1 transition-colors rounded ${runId == null
                 ? "opacity-30 cursor-not-allowed"
                 : feedback === "up"
-                ? "text-foreground font-semibold"
-                : "hover:text-foreground"
-            }`}
+                  ? "text-foreground font-semibold"
+                  : "hover:text-foreground"
+              }`}
             title={runId == null ? "Feedback unavailable" : "Accurate and helpful"}
           >
             <ThumbsUp
@@ -169,13 +189,12 @@ export function AuditBar({
             onClick={() => handleVote("down")}
             aria-label="Thumbs down rating"
             aria-pressed={feedback === "down"}
-            className={`p-1 transition-colors rounded ${
-              runId == null
+            className={`p-1 transition-colors rounded ${runId == null
                 ? "opacity-30 cursor-not-allowed"
                 : feedback === "down"
-                ? "text-foreground font-semibold"
-                : "hover:text-foreground"
-            }`}
+                  ? "text-foreground font-semibold"
+                  : "hover:text-foreground"
+              }`}
             title={runId == null ? "Feedback unavailable" : "Inaccurate or issues with query"}
           >
             <ThumbsDown
@@ -230,4 +249,3 @@ export function AuditBar({
     </div>
   )
 }
-

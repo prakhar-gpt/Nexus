@@ -100,6 +100,7 @@ SIGNUP_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_SIGNUP_PER_HOUR_IP,
 CHANGE_PASSWORD_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_CHANGE_PASSWORD_PER_HOUR_USER, window_seconds=3600)
 CHAT_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_CHAT_PER_MIN_USER, window_seconds=60)
 UPLOAD_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_UPLOAD_PER_HOUR_USER, window_seconds=3600)
+SOURCE_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_SOURCE_PER_MIN_USER, window_seconds=60)
 GENERAL_API_RULE = RateLimitRule(max_requests=settings.RATE_LIMIT_API_PER_MIN_USER, window_seconds=60)
 
 
@@ -159,6 +160,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             decisions.append(self.limiter.check(f"chat:{key}", CHAT_RULE))
         elif "/uploads" in path and request.method == "POST":
             decisions.append(self.limiter.check(f"upload:{key}", UPLOAD_RULE))
+        elif "/source" in path and request.method == "GET":
+            decisions.append(self.limiter.check(f"src:{key}", SOURCE_RULE))
         else:
             decisions.append(self.limiter.check(f"gen:{key}", GENERAL_API_RULE))
 

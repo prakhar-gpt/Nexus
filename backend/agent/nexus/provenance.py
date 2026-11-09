@@ -53,6 +53,7 @@ class EvidenceRecord:
     row_index: int
     value: Decimal
     raw_string: str
+    derived_from: list[int | str] = field(default_factory=list)
 
 
 @dataclass
@@ -61,6 +62,7 @@ class ClaimProvenance:
     status: str  # "matched" | "untraced" | "exempt"
     source: str  # "data" | "python" | "prompt" | "exemption" | "none"
     query_id: int | str | None = None
+    dataset: str | None = None
     dataset_id: str | None = None
     table_label: str | None = None
     column: str | None = None
@@ -69,9 +71,12 @@ class ClaimProvenance:
     exemption_reason: str | None = None
     reason: str | None = None
     also_in: list[int | str] = field(default_factory=list)
+    derived_from: list[int | str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["dataset"] = self.dataset or self.table_label or self.dataset_id
+        return d
 
 
 _CURRENCY_OR_PERCENT_RE = re.compile(
@@ -125,6 +130,14 @@ def detect_named_dataset(text: str, available_labels: list[str]) -> str | None:
     for label in available_labels:
         if label and len(label) >= 3 and label.lower() in clean_text:
             return label
+
+    # Detect explicit dataset references like "In the Superstore dataset" or "According to Superstore data"
+    m = re.search(r"\b(?:in\s+the|from\s+the|according\s+to)\s+([A-Za-z0-9_-]+)\s+(?:data|dataset|table)\b", text, re.IGNORECASE)
+    if m:
+        candidate = m.group(1).strip()
+        if candidate.lower() not in ("this", "our", "the", "your", "that", "data", "a"):
+            return candidate
+
     return None
 
 
@@ -237,12 +250,13 @@ def synthesize_evidence_from_rows(
                         EvidenceRecord(
                             query_id="python",
                             dataset_id=None,
-                            table_label="Python Calculation",
+                            table_label="Calculated by Python",
                             column=str(label),
                             kind="python",
                             row_index=0,
                             value=val_norm,
                             raw_string=str(val),
+                            derived_from=[1] if rows else [],
                         )
                     )
 

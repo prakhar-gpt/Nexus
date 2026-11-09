@@ -7,6 +7,7 @@ Run with: uvicorn main:app --reload
 from __future__ import annotations
 
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,7 @@ if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
 from api.middleware import CSRFMiddleware, RateLimitMiddleware
-from api.routers import auth_router, runs_router, uploads_router, users_router, workspaces_router
+from api.routers import auth_router, provenance_router, runs_router, uploads_router, users_router, workspaces_router
 from api.services.chat_service import format_sse as _sse, save_run as _save_run
 from api.services.upload_service import PROGRESS
 from api.services.workspace_service import (
@@ -27,7 +28,6 @@ from api.services.workspace_service import (
     get_turns as _turns,
     get_workspace_meta as _workspace,
 )
-from contextlib import asynccontextmanager
 from agent import stream
 from config import settings
 
@@ -72,6 +72,7 @@ app.include_router(auth_router)
 app.include_router(workspaces_router)
 app.include_router(uploads_router)
 app.include_router(runs_router)
+app.include_router(provenance_router)
 app.include_router(users_router)
 
 

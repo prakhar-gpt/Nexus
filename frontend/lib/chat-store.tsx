@@ -358,15 +358,18 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               badge: badgeFor(data),
               untraced: (data.untraced as string[]) || undefined,
               missingMeasure: (data.missing_measure as string) || undefined,
+              provenance: (data.provenance as any[]) || undefined,
+              queries: (data.queries as any[]) || undefined,
             })
           } else if (event === "done") {
             flushTokens()
             finished = true
             updateAssistant({
               text: (data.answer as string) || streamText,
-              runId: data.run_id != null ? Number(data.run_id) : null,
+              runId: data.run_id != null ? String(data.run_id) : null,
               rows: (data.rows as Record<string, string>[]) ?? [],
               steps: (data.steps as TraceStep[]) ?? [],
+              queries: (data.queries as any[]) || undefined,
               activity: [],
             })
             if (!notifiedFirstToken) {
@@ -1065,11 +1068,13 @@ function turnsToMessages(turns: Turn[]): ChatMessage[] {
         badge: badgeFor({ kind: turn.kind, verified: turn.verified }),
         sql: turn.sql,
         rowCount: turn.rows?.length ?? 0,
-        runId: turn.run_id ? Number(turn.run_id) : null,
+        runId: turn.run_id ? String(turn.run_id) : null,
         rows: turn.rows ?? [],
         steps: turn.steps ?? [],
         missingMeasure: (turn.checker_result?.missing_measure as string) || undefined,
         untraced: (turn.checker_result?.untraced as string[]) || undefined,
+        provenance: (turn.checker_result?.provenance as any[]) || undefined,
+        queries: (turn.checker_result?.queries as any[]) || undefined,
       },
     ]
   })

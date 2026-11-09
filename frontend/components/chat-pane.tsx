@@ -23,8 +23,12 @@ const SchemaArchitectCard = dynamic(
   () => import("@/components/schema-architect-card").then((m) => m.SchemaArchitectCard),
   { ssr: false }
 )
+const SourcePanel = dynamic(
+  () => import("@/components/source-panel").then((m) => m.SourcePanel),
+  { ssr: false }
+)
 import type { AnswerBadge } from "@/components/status-badge"
-import type { HandoffData, TraceStep, UploadMessageData } from "@/lib/api"
+import type { ClaimProvenanceItem, HandoffData, TraceStep, UploadMessageData } from "@/lib/api"
 
 export type { AnswerBadge }
 
@@ -43,6 +47,8 @@ export type ChatMessage = {
   activity?: TraceStep[]
   steps?: TraceStep[]
   untraced?: string[]
+  provenance?: ClaimProvenanceItem[]
+  queries?: any[]
   missingMeasure?: string
   sources?: { document: string; page?: number | string }[]
   feedback?: "up" | "down"
@@ -100,6 +106,26 @@ export function ChatPane({
   const [isDragging, setIsDragging] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const isNearBottomRef = useRef(true)
+
+  // Source panel inspection state
+  const [selectedClaim, setSelectedClaim] = useState<ClaimProvenanceItem | null>(null)
+  const [selectedClaimIndex, setSelectedClaimIndex] = useState<number | null>(null)
+  const [selectedRunId, setSelectedRunId] = useState<string | number | null>(null)
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
+  const lastTriggerRef = useRef<HTMLElement | null>(null)
+
+  const handleSelectClaim = useCallback(
+    (claim: ClaimProvenanceItem, runId: string | number | null, e?: React.MouseEvent<HTMLElement>, claimIndex?: number) => {
+      if (e?.currentTarget) {
+        lastTriggerRef.current = e.currentTarget
+      }
+      setSelectedClaim(claim)
+      setSelectedClaimIndex(claimIndex ?? null)
+      setSelectedRunId(runId)
+      setSourcePanelOpen(true)
+    },
+    []
+  )
 
   const lastUserQuestion = useMemo(
     () => [...messages].reverse().find((m) => m.role === "user")?.text,
@@ -237,6 +263,7 @@ export function ChatPane({
                     onApproveSchema={onApproveSchema}
                     onRejectSchema={onRejectSchema}
                     onAsk={onAsk}
+                    onSelectClaim={handleSelectClaim}
                     chatBusy={busy}
                     uploadPending={uploadPending}
                   />
@@ -260,6 +287,16 @@ export function ChatPane({
           </button>
         </div>
       )}
+
+      {/* Source Provenance Panel */}
+      <SourcePanel
+        open={sourcePanelOpen}
+        onClose={() => setSourcePanelOpen(false)}
+        runId={selectedRunId}
+        claim={selectedClaim}
+        claimIndex={selectedClaimIndex}
+        triggerRef={lastTriggerRef}
+      />
 
       {/* Pinned Composer */}
       <Composer
@@ -287,6 +324,7 @@ interface MessageItemProps {
   onApproveSchema?: (uploadId: string) => Promise<void>
   onRejectSchema?: (uploadId: string) => Promise<void>
   onAsk?: (question: string) => void
+  onSelectClaim?: (claim: ClaimProvenanceItem, runId: string | number | null, e?: React.MouseEvent<HTMLElement>, claimIndex?: number) => void
   chatBusy?: boolean
   uploadPending?: boolean
 }
@@ -301,6 +339,7 @@ const MessageItem = memo(function MessageItem({
   onApproveSchema,
   onRejectSchema,
   onAsk,
+  onSelectClaim,
   chatBusy,
 }: MessageItemProps) {
   // Architect message
@@ -359,7 +398,13 @@ const MessageItem = memo(function MessageItem({
 
       {hasTokens ? (
         <div className="prose-nexus text-[16px] leading-[1.65] text-foreground">
-          <RenderedMarkdown text={message.text} untraced={message.untraced} />
+          <RenderedMarkdown
+            text={message.text}
+            untraced={message.untraced}
+            provenance={message.provenance}
+            runId={message.runId}
+            onSelectClaim={onSelectClaim}
+          />
           {isStreaming ? (
             <span
               className="inline-block w-[2px] h-[1em] bg-foreground align-middle animate-pulse ml-0.5"
@@ -414,6 +459,7 @@ const MessageItem = memo(function MessageItem({
           rows={message.rows}
           steps={message.steps}
           untraced={message.untraced}
+          provenance={message.provenance}
           missingMeasure={message.missingMeasure}
           sources={message.sources}
           runId={message.runId}
@@ -427,49 +473,114 @@ const MessageItem = memo(function MessageItem({
   )
 })
 
-function highlightUntracedText(node: React.ReactNode, untracedList?: string[]): React.ReactNode {
-  if (!untracedList || untracedList.length === 0 || typeof node !== "string") {
+function highlightProvenanceText(
+  node: React.ReactNode,
+  untracedList?: string[],
+  provenance?: ClaimProvenanceItem[],
+  runId?: string | number | null,
+  onSelectClaim?: (claim: ClaimProvenanceItem, runId: string | number | null, e?: React.MouseEvent<HTMLElement>, claimIndex?: number) => void
+): React.ReactNode {
+  if (typeof node !== "string") {
     return node
   }
 
-  // Filter out general warning sentences like "Not checked against your data"
-  const tokens = untracedList
-    .map((item) => item.replace(/\s*\(stated in your message.*?\)$/i, "").trim())
-    .filter((item) => item.length > 0 && !item.toLowerCase().startsWith("not checked") && !item.toLowerCase().startsWith("method claim"))
+  // 1. Matched claims from provenance
+  const matchedClaims = (provenance || []).filter((p) => p.status === "matched")
+  const matchedMap = new Map<string, ClaimProvenanceItem>()
+  for (const p of matchedClaims) {
+    if (p.claim && p.claim.trim()) {
+      matchedMap.set(p.claim.trim(), p)
+    }
+  }
 
-  if (tokens.length === 0) {
+  // 2. Untraced tokens
+  const untracedTokens = (untracedList || [])
+    .map((item) =>
+      item
+        .replace(/\s*\(stated in your message.*?\)$/i, "")
+        .replace(/\s*\(found in a different dataset.*?\)$/i, "")
+        .trim()
+    )
+    .filter(
+      (item) =>
+        item.length > 0 &&
+        !item.toLowerCase().startsWith("not checked") &&
+        !item.toLowerCase().startsWith("method claim") &&
+        !item.toLowerCase().startsWith("based on a partial")
+    )
+
+  if (matchedMap.size === 0 && untracedTokens.length === 0) {
     return node
   }
 
-  // Escape regex specials and build alternation matching exact tokens
-  const escaped = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")
+  // Build combined tokens array, sorted by length descending so longer phrases match first
+  const allTokens = [
+    ...Array.from(matchedMap.keys()),
+    ...untracedTokens,
+  ].sort((a, b) => b.length - a.length)
+
+  const escaped = Array.from(new Set(allTokens))
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")
   if (!escaped) return node
-  const regex = new RegExp(`(${escaped})`, "g")
 
+  const regex = new RegExp(`(${escaped})`, "g")
   const parts = node.split(regex)
   if (parts.length <= 1) return node
 
   return parts.map((part, idx) => {
-    if (tokens.includes(part)) {
+    const trimmed = part.trim()
+    const matchedClaim = matchedMap.get(trimmed) || matchedMap.get(part)
+    if (matchedClaim) {
+      const claimIndex = (provenance || []).findIndex((item) =>
+        item.claim === matchedClaim.claim &&
+        item.column === matchedClaim.column &&
+        item.query_id === matchedClaim.query_id &&
+        item.row_index === matchedClaim.row_index &&
+        item.status === matchedClaim.status
+      )
+      return (
+        <button
+          key={idx}
+          type="button"
+          aria-label={`Source of ${part}`}
+          onClick={(e) => onSelectClaim?.(matchedClaim, runId ?? null, e, claimIndex >= 0 ? claimIndex : undefined)}
+          className="underline decoration-dotted decoration-muted-foreground/70 underline-offset-4 hover:decoration-foreground hover:text-foreground cursor-pointer transition-colors bg-transparent border-0 p-0 font-inherit inline text-inherit focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring tabular-nums"
+        >
+          {part}
+        </button>
+      )
+    }
+
+    if (untracedTokens.includes(trimmed) || untracedTokens.includes(part)) {
       return (
         <span
           key={idx}
-          className="underline decoration-warn/60 decoration-[1.5px] underline-offset-4 bg-warn/10 rounded-none px-0.5"
+          className="underline decoration-warn/60 decoration-[1.5px] underline-offset-4 bg-warn/10 rounded-none px-0.5 tabular-nums"
           title="Untraced figure: not found in verified tool output"
         >
           {part}
         </span>
       )
     }
+
     return part
   })
 }
 
-function wrapChildrenWithHighlight(children: React.ReactNode, untracedList?: string[]): React.ReactNode {
-  if (!untracedList || untracedList.length === 0) return children
+function wrapChildrenWithHighlight(
+  children: React.ReactNode,
+  untracedList?: string[],
+  provenance?: ClaimProvenanceItem[],
+  runId?: string | number | null,
+  onSelectClaim?: (claim: ClaimProvenanceItem, runId: string | number | null, e?: React.MouseEvent<HTMLElement>, claimIndex?: number) => void
+): React.ReactNode {
+  if ((!untracedList || untracedList.length === 0) && (!provenance || provenance.length === 0)) {
+    return children
+  }
   return React.Children.map(children, (child) => {
     if (typeof child === "string") {
-      return highlightUntracedText(child, untracedList)
+      return highlightProvenanceText(child, untracedList, provenance, runId, onSelectClaim)
     }
     return child
   })
@@ -478,38 +589,47 @@ function wrapChildrenWithHighlight(children: React.ReactNode, untracedList?: str
 const RenderedMarkdown = memo(function RenderedMarkdown({
   text,
   untraced,
+  provenance,
+  runId,
+  onSelectClaim,
 }: {
   text: string
   untraced?: string[]
+  provenance?: ClaimProvenanceItem[]
+  runId?: string | number | null
+  onSelectClaim?: (claim: ClaimProvenanceItem, runId: string | number | null, e?: React.MouseEvent<HTMLElement>, claimIndex?: number) => void
 }) {
+  const wrap = (children: React.ReactNode) =>
+    wrapChildrenWithHighlight(children, untraced, provenance, runId, onSelectClaim)
+
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
-        p: ({ children }) => <p className="mb-3.5 last:mb-0">{wrapChildrenWithHighlight(children, untraced)}</p>,
+        p: ({ children }) => <p className="mb-3.5 last:mb-0">{wrap(children)}</p>,
         ul: ({ children }) => (
           <ul className="mb-3.5 list-disc pl-5 space-y-1 last:mb-0">{children}</ul>
         ),
         ol: ({ children }) => (
           <ol className="mb-3.5 list-decimal pl-5 space-y-1 last:mb-0">{children}</ol>
         ),
-        li: ({ children }) => <li className="my-0.5">{wrapChildrenWithHighlight(children, untraced)}</li>,
+        li: ({ children }) => <li className="my-0.5">{wrap(children)}</li>,
         strong: ({ children }) => (
-          <strong className="font-medium text-foreground">{wrapChildrenWithHighlight(children, untraced)}</strong>
+          <strong className="font-medium text-foreground">{wrap(children)}</strong>
         ),
-        em: ({ children }) => <em className="italic">{wrapChildrenWithHighlight(children, untraced)}</em>,
+        em: ({ children }) => <em className="italic">{wrap(children)}</em>,
         h1: ({ children }) => (
           <h2 className="mb-2 text-lg font-medium text-foreground tracking-tight">
-            {wrapChildrenWithHighlight(children, untraced)}
+            {wrap(children)}
           </h2>
         ),
         h2: ({ children }) => (
           <h3 className="mb-2 text-base font-medium text-foreground tracking-tight">
-            {wrapChildrenWithHighlight(children, untraced)}
+            {wrap(children)}
           </h3>
         ),
         h3: ({ children }) => (
-          <h4 className="mb-1.5 text-sm font-medium text-foreground">{wrapChildrenWithHighlight(children, untraced)}</h4>
+          <h4 className="mb-1.5 text-sm font-medium text-foreground">{wrap(children)}</h4>
         ),
         pre: ({ children }) => (
           <pre className="my-3 overflow-x-auto border border-border bg-muted/30 p-3 font-mono text-[13px] leading-relaxed last:mb-0">
@@ -521,7 +641,7 @@ const RenderedMarkdown = memo(function RenderedMarkdown({
           if (isInline) {
             return (
               <code className="font-mono text-[14px] bg-muted/60 px-1 py-0.5 border border-border/40">
-                {wrapChildrenWithHighlight(children, untraced)}
+                {wrap(children)}
               </code>
             )
           }
@@ -544,11 +664,10 @@ const RenderedMarkdown = memo(function RenderedMarkdown({
           const isNumeric = /^\s*[$€£]?\s*[\d,]+(\.\d+)?%?\s*$/.test(content)
           return (
             <td
-              className={`border-b border-border/60 px-3 py-1.5 align-top ${
-                isNumeric ? "text-right font-mono" : "text-left"
-              }`}
+              className={`border-b border-border/60 px-3 py-1.5 align-top ${isNumeric ? "text-right font-mono" : "text-left"
+                }`}
             >
-              {children}
+              {wrap(children)}
             </td>
           )
         },

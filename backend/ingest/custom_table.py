@@ -79,6 +79,7 @@ def build_create_table_ddl(
         "row_id bigserial PRIMARY KEY",
         "workspace_id uuid NOT NULL",
         "upload_id uuid NOT NULL",
+        "source_row bigint",
     ]
 
     for col in columns:
@@ -199,6 +200,20 @@ def create_and_load_custom_table(
             )
             session.add(col_obj)
 
+        # Register source_row column metadata
+        session.add(
+            DatasetColumn(
+                dataset_id=dataset_id,
+                column_name="source_row",
+                source_name="source_row",
+                type="integer",
+                role="identifier",
+                description="Physical row number in the uploaded file",
+                nullable=True,
+                null_rate=0.0,
+            )
+        )
+
     # 3. Clean and parse rows for COPY
     hdr_idx = next((i for i, r in enumerate(raw_rows) if r[0] == header_line), 0)
     headers = [h.strip() for h in raw_rows[hdr_idx][1]]
@@ -285,7 +300,7 @@ def create_and_load_custom_table(
             continue
 
         loaded += 1
-        line_tsv = f"{workspace_id}\t{upload_id}\t" + "\t".join(row_vals) + "\n"
+        line_tsv = f"{workspace_id}\t{upload_id}\t{line_number}\t" + "\t".join(row_vals) + "\n"
         data_buf.write(line_tsv)
 
         if loaded % 5000 == 0 and progress_callback:
@@ -300,7 +315,7 @@ def create_and_load_custom_table(
         with conn.cursor() as cur:
             if loaded > 0:
                 quoted_cols = [sanitize_column_name(c[0]) for c in col_mapping]
-                cols_sql = ", ".join(["workspace_id", "upload_id"] + quoted_cols)
+                cols_sql = ", ".join(["workspace_id", "upload_id", "source_row"] + quoted_cols)
                 cur.execute(f"CREATE TEMP TABLE staging_custom_table AS SELECT {cols_sql} FROM user_data.{table_name} WITH NO DATA;")
                 copy_sql = f"COPY staging_custom_table ({cols_sql}) FROM STDIN WITH (FORMAT text, NULL '\\N')"
                 cur.copy_expert(copy_sql, data_buf)

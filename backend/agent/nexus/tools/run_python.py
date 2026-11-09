@@ -260,8 +260,19 @@ if _bad:
     print("NEXUS_RESULT:" + json.dumps({{"ok": False, "error": f"non-numeric values in result: {{_bad}}"}}))
     sys.exit(1)
 
+_vars = {{}}
+for _k, _v in _ns.items():
+    if _k.startswith("_") or _k in ("pd", "pandas", "math", "statistics", "data", "result", "json", "sys", "io"):
+        continue
+    if hasattr(_v, "item"):
+        _v = _v.item()
+    if isinstance(_v, (int, float)):
+        _vars[str(_k)] = round(float(_v), 4) if isinstance(_v, float) else int(_v)
+    elif isinstance(_v, (str, bool)):
+        _vars[str(_k)] = str(_v)[:100]
+
 print(_captured, end="")
-print("NEXUS_RESULT:" + json.dumps({{"ok": True, "result": _cleaned_result}}))
+print("NEXUS_RESULT:" + json.dumps({{"ok": True, "result": _cleaned_result, "variables": _vars}}))
 """
     return wrapper
 
@@ -374,9 +385,21 @@ def execute_sandboxed(code: str, dataframes: dict[str, list[dict]]) -> dict:
     return {
         "ok": True,
         "results": cleaned_dict,
+        "variables": payload.get("variables", {}),
         "stdout_truncated": captured_stdout,
         "error": None,
     }
+
+
+class PythonExecutionResult(tuple):
+    """2-tuple (summary, results) with .variables metadata for backward compatibility."""
+
+    def __new__(cls, summary: str, results: dict, variables: dict | None = None):
+        obj = super().__new__(cls, (summary, results))
+        obj.summary = summary
+        obj.results = results
+        obj.variables = variables or {}
+        return obj
 
 
 def execute_python(
@@ -384,7 +407,7 @@ def execute_python(
     inputs: list[str] | None = None,
     rows: list[dict] | None = None,
     sql_results: dict[str, list[dict]] | None = None,
-) -> tuple[str, dict]:
+) -> PythonExecutionResult:
     """Execute sandboxed Python with multiple DataFrame support and token safety."""
     dataframes: dict[str, list[dict]] = {}
     inputs = list(inputs or [])
@@ -410,17 +433,18 @@ def execute_python(
 
     total_rows = sum(len(v) for v in dataframes.values())
     if total_rows == 0:
-        return (
+        return PythonExecutionResult(
             "rejected: No SQL query data is available in this turn yet. "
             "You must first run run_sql to retrieve the required data before calling run_python.",
+            {},
             {},
         )
 
     result = execute_sandboxed(code, dataframes)
 
     if not result["ok"]:
-        return f"rejected: {result['error']}", {}
+        return PythonExecutionResult(f"rejected: {result['error']}", {}, {})
 
     parts = ", ".join(f"{k}={v}" for k, v in result["results"].items())
     summary = f"result: {parts}" if parts else "result: (empty)"
-    return summary, result["results"]
+    return PythonExecutionResult(summary, result["results"], result.get("variables", {}))

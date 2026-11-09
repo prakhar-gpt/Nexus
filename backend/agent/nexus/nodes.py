@@ -125,10 +125,20 @@ def tools_node(state: AgentState) -> dict:
             tools_used.append("run_python")
             code = str(args.get("code") or "")
             inputs = list(args.get("inputs") or [])
-            text, py_results = execute_python(code, inputs, rows, sql_results)
+            py_res = execute_python(code, inputs, rows, sql_results)
+            text, py_results = py_res[0], py_res[1]
+            py_vars = getattr(py_res, "variables", {})
             for label, value in py_results.items():
                 python_rows.append({"label": label, "value": value})
-            py_info, ev_recs = collect_python_evidence(len(queries) + 1, code, inputs, py_results)
+            py_info, ev_recs = collect_python_evidence(
+                len(queries) + 1,
+                code,
+                inputs,
+                py_results,
+                prior_evidence=evidence_records,
+                sql_results=sql_results,
+                variables=py_vars,
+            )
             queries.append(py_info)
             evidence_records.extend(ev_recs)
         else:

@@ -12,7 +12,11 @@ CHANGESETS_DIR = Path(__file__).resolve().parent / "changesets"
 
 
 def run_migrations() -> None:
-    db_url = os.environ.get("DATABASE_URL")
+    try:
+        from config import settings
+        db_url = os.environ.get("DATABASE_URL") or settings.DATABASE_URL
+    except Exception:
+        db_url = os.environ.get("DATABASE_URL")
     conn = None
     if db_url:
         print("Connecting to PostgreSQL via DATABASE_URL...")

@@ -103,6 +103,11 @@ export function registerUnauthorizedCleanup(fn: () => void): () => void {
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
 
+  let finalUrl = input
+  if (typeof input === "string" && !input.startsWith("http://") && !input.startsWith("https://")) {
+    finalUrl = `${API_URL}${input.startsWith("/") ? "" : "/"}${input}`
+  }
+
   const mergedHeaders: Record<string, string> = {
     "X-Requested-With": "XMLHttpRequest",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -115,7 +120,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
     headers: mergedHeaders,
   }
 
-  const response = await fetch(input, mergedInit)
+  const response = await fetch(finalUrl, mergedInit)
 
   if (response.status === 401) {
     if (typeof window !== "undefined") {
@@ -301,4 +306,132 @@ export type UploadMessageData = {
   loadProgressPct?: number
   error?: string | null
   handoff?: HandoffData
+}
+
+export type ClaimProvenanceItem = {
+  claim: string
+  status: "matched" | "untraced" | "exempt"
+  source: "data" | "python" | "prompt" | "exemption" | "none"
+  query_id?: number | string | null
+  dataset?: string | null
+  dataset_id?: string | null
+  table_label?: string | null
+  column?: string | null
+  kind?: string | null
+  row_index?: number | null
+  exemption_reason?: string | null
+  reason?: string | null
+  also_in?: (number | string)[]
+  derived_from?: (number | string)[]
+}
+
+export type PythonInputLineage = {
+  name: string
+  value: number | string
+  raw: string
+  query_id: number | string | null
+  row_index?: number | null
+  dataset: string | null
+  column: string | null
+  entity?: string | null
+  also_in: (number | string)[]
+  literal_in_code: boolean
+}
+
+export type UpstreamQuery = {
+  query_id: string
+  tool: string
+  sql: string
+  dataset_id?: string | null
+  dataset_label: string
+  columns: string[]
+  rows: Record<string, any>[]
+  row_count: number
+  truncated: boolean
+}
+
+export type SourceRecord = {
+  run_id: string
+  query_id: string
+  origin_type: "data" | "python" | "prompt" | "none"
+  origin_label: string
+  sql?: string
+  dataset_id?: string | null
+  dataset_label?: string
+  dataset_status?: "active" | "removed"
+  dataset_removed?: boolean
+  columns?: string[]
+  rows?: Record<string, any>[]
+  matched_row?: Record<string, any> | null
+  row_count?: number
+  truncated?: boolean
+  code?: string
+  inputs?: PythonInputLineage[]
+  result?: Record<string, any>
+  derived_from?: (number | string)[]
+  upstream_queries?: UpstreamQuery[]
+  claim?: ClaimProvenanceItem | null
+}
+
+export type SourceRowsResult = {
+  rewritable: boolean
+  reason?: string
+  message?: string
+  rows?: Record<string, any>[]
+  total_rows?: number
+  entity_filter?: string
+}
+
+export async function getSourceRecord(
+  runId: string | number,
+  queryId: string | number,
+  claimIndex?: number
+): Promise<SourceRecord> {
+  const params = new URLSearchParams()
+  if (claimIndex !== undefined && claimIndex !== null) {
+    params.set("claim_index", String(claimIndex))
+  }
+  const qs = params.toString() ? `?${params.toString()}` : ""
+  const res = await apiFetch(`${API_URL}/runs/${runId}/source/${queryId}${qs}`)
+  if (!res.ok) {
+    throw new Error(`Failed to load source record: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export async function getSourceRows(
+  runId: string | number,
+  queryId: string | number,
+  limit: number = 50,
+  claimIndex?: number,
+  rowIndex?: number
+): Promise<SourceRowsResult> {
+  const params = new URLSearchParams()
+  params.set("limit", String(limit))
+  if (rowIndex !== undefined && rowIndex !== null) {
+    params.set("row_index", String(rowIndex))
+  } else if (claimIndex !== undefined && claimIndex !== null) {
+    params.set("claim_index", String(claimIndex))
+  }
+  const res = await apiFetch(`${API_URL}/runs/${runId}/source/${queryId}/rows?${params.toString()}`)
+  if (!res.ok) {
+    throw new Error(`Failed to load source rows: ${res.statusText}`)
+  }
+  return res.json()
+}
+
+export function getSourceRowsExportUrl(
+  runId: string | number,
+  queryId: string | number,
+  claimIndex?: number,
+  rowIndex?: number
+): string {
+  const params = new URLSearchParams()
+  if (rowIndex !== undefined && rowIndex !== null) {
+    params.set("row_index", String(rowIndex))
+  } else if (claimIndex !== undefined && claimIndex !== null) {
+    params.set("claim_index", String(claimIndex))
+  }
+  const qs = params.toString() ? `?${params.toString()}` : ""
+  return `${API_URL}/runs/${runId}/source/${queryId}/rows/export${qs}`
 }
