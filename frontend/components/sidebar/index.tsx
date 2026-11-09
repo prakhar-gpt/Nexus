@@ -51,7 +51,7 @@ export interface SidebarProps {
   onOpenAuthModal?: () => void
 }
 
-export function Sidebar({
+function SidebarComponent({
   mode = "room",
   roomId = "1",
   roomName = "Data Room",
@@ -296,3 +296,5 @@ export function Sidebar({
     </div>
   )
 }
+
+export const Sidebar = React.memo(SidebarComponent)

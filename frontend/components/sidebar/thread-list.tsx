@@ -26,7 +26,7 @@ function categorizeThread(dateStr?: string): "Today" | "Yesterday" | "Earlier" {
   return "Earlier"
 }
 
-export function ThreadList({
+function ThreadListComponent({
   roomId = "1",
   threads,
   activeThreadId,
@@ -174,3 +174,5 @@ export function ThreadList({
     </div>
   )
 }
+
+export const ThreadList = React.memo(ThreadListComponent)

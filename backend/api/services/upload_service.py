@@ -928,6 +928,7 @@ def approve_upload_schema(
 
     return {
         "status": "loaded",
+        "dataset_id": new_ds_id if new_ds_row else None,
         "table_name": table_name,
         "table_label": friendly_label,
         "grain": proposal.get("grain", ""),

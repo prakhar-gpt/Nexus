@@ -1,5 +1,5 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T06:41:00+05:30
+Updated At: 2026-11-09T06:46:00+05:30
 
 ### Standing Operational Rule: Autonomous Test & Build Execution Prohibited
 - **Zero Autonomous Test/Build/Server Execution**: Do NOT run `pytest`, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, or manual checklist walkthroughs unless explicitly instructed by the user. Do not start dev servers, take screenshots, or open browsers.
@@ -15,33 +15,19 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Current Active State & Refactors Completed
 
-#### 1. Upload Lifecycle Preservation, Review Rehydration, and Sidebar Dataset Wiring (Decision 55)
-- **Sidebar Dataset Wiring**:
-  - Connected `datasets`, `selectedDatasetIds`, `activeThreadId`, `pendingUploads`, and action handlers (`onToggleDataset`, `onRemoveDataset`, `onRenameDataset`, `onAddDatasetClick`) into `frontend/app/(app)/rooms/[roomId]/layout.tsx`.
-  - The left sidebar permanently renders every loaded dataset (`Datasets (N)`) with grain line, row count, quarantine download link, and per-chat checkboxes.
-- **Instant Chat History Rendering**:
-  - In `ExistingThreadPage` (`frontend/app/(app)/rooms/[roomId]/c/[threadId]/page.tsx`), hydrated `initThreadTurns` immediately from in-memory `room.turns` on mount. Chats switch and render with 0ms delay without a full-screen pulse skeleton.
-- **Upload Handoff Persistence Across Reload**:
-  - In `backend/api/services/upload_service.py` (`approve_upload_schema`), persisting a clean, human-readable turn into `runs` under the active `thread_id`: `question: "Uploaded dataset: <name>"`, `answer: "I've loaded <TableLabel>..."`, and `checker_result` with `handoff_data`.
-  - In `frontend/lib/chat-store.tsx` (`turnsToMessages`), mapped upload handoff turns to user upload message and assistant message with interactive question chips, preserving the entire upload conversation across page reloads without raw JSON or split threads.
-- **Upload / Review Stage Rehydration on Reload**:
-  - Implemented `rehydrateUpload` in `frontend/lib/chat-store.tsx`. If an upload is pending review (`needs_schema_review`) or in progress (`profiling`), refreshing the page on `/rooms/[roomId]` or `/rooms/[roomId]/c/[threadId]` retrieves the schema proposal from `/uploads/{id}/schema` and mounts the `SchemaArchitectCard` in review mode.
-- **Flow Protection During Upload & Review**:
-  - Disabled the "New chat" button and blocked `⌘K` while an upload is active or in schema review (`isUploadRunning || isReviewPending`) to prevent breaking the profiling or review flow.
-- **Tool Author Label Cleanup**:
-  - Removed file name from the author badge (`Nexus · {fileName}` -> `Nexus`) in `frontend/components/schema-architect-card.tsx`.
-- **Database Schema Alignment**:
-  - Aligned `INSERT INTO runs` in `upload_service.py` with PostgreSQL schema `(workspace_id, question, answer, checker_result, latency_ms)`. Added `Query` import in `backend/api/routers/uploads.py`.
+#### 1. Performance Optimization & Sidebar Render Stability (Decision 56)
+- **Eliminated Redundant Query Revalidations**: Removed extraneous `mutateResource('room:' + roomId)` from `event === "done"` in `chat-store.tsx`. Normal chat queries do not change room metadata and no longer trigger background refetches.
+- **Stale-While-Revalidate in `useResource`**: Fixed `mutateResource` with no arguments in `use-resource.ts` to preserve existing cached data instead of evicting it (`resourceCache.delete`), completely eliminating screen/sidebar flickering.
+- **Zero-Lag Optimistic Approval**: In `chat-store.tsx` (`approveSchema`), synchronously and optimistically updates `room.datasets` and `room.uploads` with the data returned directly from the approval endpoint, updating the sidebar in 0ms without waiting for a second network roundtrip.
+- **Comprehensive Memoization**:
+  - `RoomShellLayout`: Wrapped `handleDeleteThread`, `handleToggleDataset`, `handleRemoveDataset`, `handleRenameDataset`, and `handleFileSelected` in `useCallback`; memoized `datasets`, `allDatasetIds`, `selectedDatasetIds`, `pendingUploads`, and `healthSummary`.
+  - Sidebar Components: Memoized `Sidebar`, `DatasetSection`, and `ThreadList` using `React.memo`. When queries run or tokens stream, the entire sidebar tree remains completely static and does not re-render.
 
-#### 2. Data Rooms Hub Shell Unification (Decision 54)
-- **Unified App Shell**: Redesigned the Data Rooms Hub (`WorkspacesView`) to use the exact same shell as the room view: a 260px left sidebar and a main pane in the shared 720px column.
-- **Shared Sidebar Component (`Sidebar`)**: Unified `"hub"` and `"room"` content modes in one component with `RoomList`, dataset counts, activity dates, hover-reveal delete, and `UserProfileFooter`.
-- **Main Pane Welcome & Empty State**: Left-aligned in the 720px column.
-
-#### 3. Datasets Belong to Data Room, Not a Chat (Decisions 52 & 53)
-- Dedicated `threads` table with RLS and `selected_dataset_ids bigint[]`.
-- Server-side per-chat dataset selection strictly enforced in API, `get_schema`, and AST guard in `run_sql`.
-- Atomic dataset cascade on removal.
+#### 2. Prior Refactors Active & Preserved
+- **Upload Lifecycle Preservation (Decision 55)**: Upload handoff turns persisted in `runs` under active `thread_id`; rehydration restored on reload.
+- **Flow Protection (Decision 55)**: "New chat" button and ⌘K disabled while upload/review is active.
+- **Data Rooms Hub Shell Unification (Decision 54)**: 260px shared sidebar and 720px column layout across hub and room modes.
+- **Datasets Belong to Data Room (Decisions 52 & 53)**: First-class `threads` table with RLS and per-chat dataset selection enforcement.
 
 ### Verification Suite Baseline
 - **Pytest Suite (`pytest backend/tests`)**: 36/36 passed (100%).

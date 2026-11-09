@@ -315,7 +315,6 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
             if (!notifiedFirstToken) {
               onFirstToken?.(threadId)
             }
-            mutateResource(`room:${roomId}`)
           } else if (event === "error") {
             const serverMsg =
               (data?.error as string) ||
@@ -616,8 +615,39 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       }
       const data = await res.json()
 
-      // Revalidate room immediately so the sidebar datasets section updates with the new dataset
-      mutateResource(`room:${roomId}`)
+      // Instantly update room datasets and upload status optimistically with zero network delay
+      mutateResource(`room:${roomId}`, (curr: any) => {
+        if (!curr) return curr
+        const newDataset = {
+          id: data.dataset_id || Number(uploadId),
+          upload_id: Number(uploadId),
+          table_name: data.table_name,
+          table_label: data.table_label,
+          grain: data.grain,
+          row_count: data.loaded_rows,
+          quarantine_count: data.quarantined_rows || 0,
+          created_at: new Date().toISOString(),
+        }
+        const prevDatasets = (curr.datasets || []).filter((d: any) => d.table_name !== data.table_name)
+        const updatedUploads = (curr.uploads || []).map((u: any) =>
+          String(u.id) === String(uploadId) ? { ...u, status: "loaded" } : u
+        )
+        return {
+          ...curr,
+          uploads: updatedUploads,
+          datasets: [...prevDatasets, newDataset],
+          threads: (curr.threads || []).map((t: any) =>
+            t.id === threadId
+              ? {
+                  ...t,
+                  selected_dataset_ids: Array.from(
+                    new Set([...(t.selected_dataset_ids || []), newDataset.id])
+                  ),
+                }
+              : t
+          ),
+        }
+      })
 
       // Immediately transition in-chat message to loaded state
       const curr = threadStates.get(key)

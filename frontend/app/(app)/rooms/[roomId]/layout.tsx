@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, useRef, use } from "react"
+import React, { useEffect, useState, useRef, use, useMemo, useCallback } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
@@ -100,146 +100,182 @@ export default function RoomShellLayout({
     ? pathname.split("/c/")[1]?.split("/")[0]
     : undefined
 
-  const activeThread = room?.threads?.find((t) => t.id === activeThreadId)
-  const datasets = room?.datasets || []
-  const allDatasetIds = datasets.map((d) => d.id)
+  const activeThread = useMemo(
+    () => room?.threads?.find((t) => t.id === activeThreadId),
+    [room?.threads, activeThreadId]
+  )
+  const datasets = useMemo(() => room?.datasets || [], [room?.datasets])
+  const allDatasetIds = useMemo(() => datasets.map((d) => d.id), [datasets])
 
   const [ephemeralSelectedIds, setEphemeralSelectedIds] = useState<number[] | null>(null)
 
   // When on an existing thread, read its selection; otherwise read ephemeral or all
-  const selectedDatasetIds = activeThread?.selected_dataset_ids
-    ?? (ephemeralSelectedIds ?? allDatasetIds)
+  const selectedDatasetIds = useMemo(() => {
+    return activeThread?.selected_dataset_ids ?? (ephemeralSelectedIds ?? allDatasetIds)
+  }, [activeThread?.selected_dataset_ids, ephemeralSelectedIds, allDatasetIds])
 
   // Close mobile drawer on route change
   useEffect(() => {
     setMobileDrawerOpen(false)
   }, [pathname])
 
-  const handleDeleteThread = async (threadId: string) => {
-    try {
-      await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${threadId}`, {
-        method: "DELETE",
-      })
-    } catch {
-      // Ignored
-    }
-    mutateRoom((current: Room | undefined) => {
-      if (!current) return current!
-      return {
-        ...current,
-        threads: (current.threads || []).filter((t) => t.id !== threadId),
+  const handleDeleteThread = useCallback(
+    async (threadId: string) => {
+      try {
+        await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${threadId}`, {
+          method: "DELETE",
+        })
+      } catch {
+        // Ignored
       }
-    })
-  }
+      mutateRoom((current: Room | undefined) => {
+        if (!current) return current!
+        return {
+          ...current,
+          threads: (current.threads || []).filter((t) => t.id !== threadId),
+        }
+      })
+    },
+    [roomId, mutateRoom]
+  )
 
-  const handleToggleDataset = async (datasetId: number, checked: boolean) => {
-    const current = selectedDatasetIds
-    const next = checked
-      ? Array.from(new Set([...current, datasetId]))
-      : current.filter((id) => id !== datasetId)
+  const handleToggleDataset = useCallback(
+    async (datasetId: number, checked: boolean) => {
+      const current = selectedDatasetIds
+      const next = checked
+        ? Array.from(new Set([...current, datasetId]))
+        : current.filter((id) => id !== datasetId)
 
-    if (activeThreadId) {
+      if (activeThreadId) {
+        mutateRoom((curr: Room | undefined) => {
+          if (!curr) return curr!
+          return {
+            ...curr,
+            threads: (curr.threads || []).map((t) =>
+              t.id === activeThreadId ? { ...t, selected_dataset_ids: next } : t
+            ),
+          }
+        })
+        try {
+          await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${activeThreadId}/datasets`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ dataset_ids: next }),
+          })
+        } catch {
+          mutateRoom()
+        }
+      } else {
+        setEphemeralSelectedIds(next)
+      }
+    },
+    [selectedDatasetIds, activeThreadId, roomId, mutateRoom]
+  )
+
+  const handleRemoveDataset = useCallback(
+    async (datasetId: number) => {
       mutateRoom((curr: Room | undefined) => {
         if (!curr) return curr!
         return {
           ...curr,
-          threads: (curr.threads || []).map((t) =>
-            t.id === activeThreadId ? { ...t, selected_dataset_ids: next } : t
-          ),
+          datasets: (curr.datasets || []).filter((d) => d.id !== datasetId),
+          threads: (curr.threads || []).map((t) => ({
+            ...t,
+            selected_dataset_ids: (t.selected_dataset_ids || []).filter((id) => id !== datasetId),
+          })),
         }
       })
       try {
-        await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${activeThreadId}/datasets`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataset_ids: next }),
+        await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
+          method: "DELETE",
         })
       } catch {
         mutateRoom()
       }
-    } else {
-      setEphemeralSelectedIds(next)
-    }
-  }
+    },
+    [roomId, mutateRoom]
+  )
 
-  const handleRemoveDataset = async (datasetId: number) => {
-    mutateRoom((curr: Room | undefined) => {
-      if (!curr) return curr!
-      return {
-        ...curr,
-        datasets: (curr.datasets || []).filter((d) => d.id !== datasetId),
-        threads: (curr.threads || []).map((t) => ({
-          ...t,
-          selected_dataset_ids: (t.selected_dataset_ids || []).filter((id) => id !== datasetId),
-        })),
-      }
-    })
-    try {
-      await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
-        method: "DELETE",
+  const handleRenameDataset = useCallback(
+    async (datasetId: number, newLabel: string) => {
+      mutateRoom((curr: Room | undefined) => {
+        if (!curr) return curr!
+        return {
+          ...curr,
+          datasets: (curr.datasets || []).map((d) =>
+            d.id === datasetId ? { ...d, table_label: newLabel } : d
+          ),
+        }
       })
-    } catch {
-      mutateRoom()
-    }
-  }
-
-  const handleRenameDataset = async (datasetId: number, newLabel: string) => {
-    mutateRoom((curr: Room | undefined) => {
-      if (!curr) return curr!
-      return {
-        ...curr,
-        datasets: (curr.datasets || []).map((d) =>
-          d.id === datasetId ? { ...d, table_label: newLabel } : d
-        ),
+      try {
+        await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ table_label: newLabel }),
+        })
+      } catch {
+        mutateRoom()
       }
-    })
-    try {
-      await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ table_label: newLabel }),
+    },
+    [roomId, mutateRoom]
+  )
+
+  const handleFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+      e.target.value = ""
+      const targetThread = activeThreadId || `thread-${Date.now().toString(36)}`
+      await uploadFile(roomId, targetThread, file, (tId) => {
+        router.replace(`/rooms/${roomId}/c/${tId}`)
       })
-    } catch {
-      mutateRoom()
-    }
-  }
-
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ""
-    const targetThread = activeThreadId || `thread-${Date.now().toString(36)}`
-    await uploadFile(roomId, targetThread, file, (tId) => {
-      router.replace(`/rooms/${roomId}/c/${tId}`)
-    })
-  }
-
-  const pendingUploads = (room?.uploads || [])
-    .filter((u) => ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status))
-    .map((u) => ({
-      id: u.id,
-      fileName: u.original_name,
-      status: u.status,
-    }))
-
-  const pendingUpload = (room?.uploads || []).find((u) =>
-    ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status)
-  )
-  const isUploadRunning = Boolean(
-    pendingUpload && ["received", "processing", "uploading", "profiling"].includes(pendingUpload.status)
-  )
-  const isReviewPending = Boolean(
-    pendingUpload && pendingUpload.status === "needs_schema_review"
+    },
+    [activeThreadId, roomId, router, uploadFile]
   )
 
-  const rows =
-    room?.health?.rows && room.health.rows !== "0"
-      ? `${Number(room.health.rows).toLocaleString()} rows`
-      : null
-  const dates =
-    room?.health?.first_order && room.health.last_order
-      ? `${room.health.first_order} to ${room.health.last_order}`
-      : null
+  const onAddDatasetClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const pendingUploads = useMemo(() => {
+    return (room?.uploads || [])
+      .filter((u) => ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status))
+      .map((u) => ({
+        id: u.id,
+        fileName: u.original_name,
+        status: u.status,
+      }))
+  }, [room?.uploads])
+
+  const pendingUpload = useMemo(() => {
+    return (room?.uploads || []).find((u) =>
+      ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status)
+    )
+  }, [room?.uploads])
+
+  const isUploadRunning = useMemo(() => {
+    return Boolean(
+      pendingUpload && ["received", "processing", "uploading", "profiling"].includes(pendingUpload.status)
+    )
+  }, [pendingUpload])
+
+  const isReviewPending = useMemo(() => {
+    return Boolean(pendingUpload && pendingUpload.status === "needs_schema_review")
+  }, [pendingUpload])
+
+  const healthSummary = useMemo(() => {
+    const rows =
+      room?.health?.rows && room.health.rows !== "0"
+        ? `${Number(room.health.rows).toLocaleString()} rows`
+        : null
+    const dates =
+      room?.health?.first_order && room.health.last_order
+        ? `${room.health.first_order} to ${room.health.last_order}`
+        : null
+    return { rows, dates }
+  }, [room?.health?.rows, room?.health?.first_order, room?.health?.last_order])
+
+  const roomThreads = useMemo(() => room?.threads || [], [room?.threads])
 
   return (
     <RoomContext.Provider value={{ room: room ?? null, status, isLoading, error, mutateRoom }}>
@@ -257,7 +293,7 @@ export default function RoomShellLayout({
             mode="room"
             roomId={roomId}
             roomName={room?.name ?? "Data Room"}
-            threads={room?.threads || []}
+            threads={roomThreads}
             datasets={datasets}
             pendingUploads={pendingUploads}
             selectedDatasetIds={selectedDatasetIds}
@@ -266,11 +302,11 @@ export default function RoomShellLayout({
             isUploadRunning={isUploadRunning}
             isReviewPending={isReviewPending}
             onToggleDataset={handleToggleDataset}
-            onAddDatasetClick={() => fileInputRef.current?.click()}
+            onAddDatasetClick={onAddDatasetClick}
             onRemoveDataset={handleRemoveDataset}
             onRenameDataset={handleRenameDataset}
             onDeleteThread={handleDeleteThread}
-            healthSummary={{ rows, dates }}
+            healthSummary={healthSummary}
           />
         </aside>
 
@@ -302,7 +338,7 @@ export default function RoomShellLayout({
                 mode="room"
                 roomId={roomId}
                 roomName={room?.name ?? "Data Room"}
-                threads={room?.threads || []}
+                threads={roomThreads}
                 datasets={datasets}
                 pendingUploads={pendingUploads}
                 selectedDatasetIds={selectedDatasetIds}
@@ -311,11 +347,11 @@ export default function RoomShellLayout({
                 isUploadRunning={isUploadRunning}
                 isReviewPending={isReviewPending}
                 onToggleDataset={handleToggleDataset}
-                onAddDatasetClick={() => fileInputRef.current?.click()}
+                onAddDatasetClick={onAddDatasetClick}
                 onRemoveDataset={handleRemoveDataset}
                 onRenameDataset={handleRenameDataset}
                 onDeleteThread={handleDeleteThread}
-                healthSummary={{ rows, dates }}
+                healthSummary={healthSummary}
               />
             </div>
             <button

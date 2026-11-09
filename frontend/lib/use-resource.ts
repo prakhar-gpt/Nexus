@@ -64,9 +64,9 @@ export function mutateResource<T>(
     notify(key)
     return newData
   }
-  resourceCache.delete(key)
+  // When called without arguments, revalidate subscribers without wiping existing cached data
   notify(key)
-  return undefined
+  return resourceCache.get(key)
 }
 
 export function useResource<T>(key: string | null, fetcher: Fetcher<T>) {
@@ -129,10 +129,13 @@ export function useResource<T>(key: string | null, fetcher: Fetcher<T>) {
       subscribers.set(key, new Set())
     }
     const update = () => {
-      setState((prev) => ({
-        ...prev,
-        data: resourceCache.get(key),
-      }))
+      setState((prev) => {
+        const nextData = resourceCache.get(key)
+        return {
+          ...prev,
+          data: nextData !== undefined ? nextData : prev.data,
+        }
+      })
     }
     subscribers.get(key)?.add(update)
 

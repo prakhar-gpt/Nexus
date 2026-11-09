@@ -41,7 +41,7 @@ interface DatasetSectionProps {
   onRenameDataset?: (datasetId: number, newLabel: string) => Promise<void> | void
 }
 
-export function DatasetSection({
+function DatasetSectionComponent({
   roomId,
   datasets,
   pendingUploads = [],
@@ -261,4 +261,6 @@ export function DatasetSection({
     </div>
   )
 }
+
+export const DatasetSection = React.memo(DatasetSectionComponent)
 
