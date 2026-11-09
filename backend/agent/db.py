@@ -48,20 +48,53 @@ def reader_password() -> str:
 
 
 def psql(sql: str, *, user: str, password: str, database: str) -> str:
-    if not PSQL.exists():
-        raise DatabaseError(f"psql not found at {PSQL}")
+    db_name = database
+    if (not db_name or db_name == "nexus_db") and getattr(settings, "PG_DATABASE", None):
+        db_name = settings.PG_DATABASE
+
+    db_host = os.environ.get("PGHOST") or getattr(settings, "PG_HOST", "localhost")
+    db_port = os.environ.get("PGPORT") or getattr(settings, "PG_PORT", "5432")
+
+    # 1. Prefer native psycopg2 execution (no CLI dependency, uses exact database host/name)
+    try:
+        import csv
+        import io
+        import psycopg2
+
+        conn = psycopg2.connect(
+            dbname=db_name,
+            user=user,
+            password=password,
+            host=db_host,
+            port=int(db_port),
+        )
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            if cur.description:
+                out = io.StringIO()
+                writer = csv.writer(out)
+                writer.writerow([d[0] for d in cur.description])
+                writer.writerows(cur.fetchall())
+                return out.getvalue()
+            return ""
+    except Exception as py_exc:
+        # 2. Fallback to psql CLI if available
+        if not PSQL.exists():
+            raise DatabaseError(str(py_exc)) from py_exc
+
     env = {
         "PATH": os.environ.get("PATH", ""),
         "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
         "PGCLIENTENCODING": "UTF8",
-        "PGHOST": os.environ.get("PGHOST", getattr(settings, "PG_HOST", "localhost") if "settings" in globals() else "localhost"),
-        "PGPORT": os.environ.get("PGPORT", getattr(settings, "PG_PORT", "5432") if "settings" in globals() else "5432"),
+        "PGHOST": db_host,
+        "PGPORT": str(db_port),
         "PGUSER": user,
         "PGPASSWORD": password,
-        "PGDATABASE": database,
+        "PGDATABASE": db_name,
     }
     result = subprocess.run(
-        [str(PSQL), "-w", "-v", "ON_ERROR_STOP=1", "-X", "-q", "--csv", "-d", database],
+        [str(PSQL), "-w", "-v", "ON_ERROR_STOP=1", "-X", "-q", "--csv", "-d", db_name],
         input=sql,
         text=True,
         encoding="utf-8",

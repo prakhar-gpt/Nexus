@@ -44,13 +44,35 @@ def get_writer_connection():
 
 
 def execute(sql: str) -> list[dict[str, str]]:
+    """Execute SQL as writer using psycopg2 connection, or fallback to psql."""
+    conn = None
     try:
-        output = psql(sql, user=WRITER_USER, password=writer_password(), database=DATABASE)
-    except Exception as exc:
-        raise StoreError(str(exc)) from exc
-    if not output.strip():
-        return []
-    return list(csv.DictReader(io.StringIO(output)))
+        conn = get_writer_connection()
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            if cur.description:
+                columns = [col[0] for col in cur.description]
+                rows = cur.fetchall()
+                return [
+                    dict(zip(columns, (str(val) if val is not None else "" for val in row)))
+                    for row in rows
+                ]
+            return []
+    except Exception as db_exc:
+        try:
+            output = psql(sql, user=WRITER_USER, password=writer_password(), database=DATABASE)
+            if not output.strip():
+                return []
+            return list(csv.DictReader(io.StringIO(output)))
+        except Exception:
+            raise StoreError(str(db_exc)) from db_exc
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def sql_literal(value) -> str:

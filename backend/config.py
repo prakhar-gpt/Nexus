@@ -32,6 +32,28 @@ def _load_env_file() -> dict[str, str]:
 _FILE_ENV = _load_env_file()
 
 
+def _parse_database_url() -> dict[str, str]:
+    """Parse DATABASE_URL to automatically infer PG_HOST, PG_DATABASE, etc."""
+    db_url = os.environ.get("DATABASE_URL") or _FILE_ENV.get("DATABASE_URL")
+    if not db_url:
+        return {}
+    try:
+        from urllib.parse import urlparse
+        p = urlparse(db_url)
+        return {
+            "database": p.path.lstrip("/") if p.path else "",
+            "host": p.hostname or "",
+            "port": str(p.port or 5432) if p.port else "5432",
+            "user": p.username or "",
+            "password": p.password or "",
+        }
+    except Exception:
+        return {}
+
+
+_DB_URL_PARTS = _parse_database_url()
+
+
 def _get_str(key: str, default: str = "") -> str:
     val = os.environ.get(key)
     if val is not None and val.strip():
@@ -230,10 +252,10 @@ class Settings:
     # Database Runner & CLI Infrastructure
     # -----------------------------------------------------------------------
     PSQL_PATH: str = field(default_factory=lambda: os.environ.get("PSQL_PATH") or (import_shutil := __import__("shutil")).which("psql") or r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
-    PG_HOST: str = field(default_factory=lambda: _get_str("PGHOST", "localhost"))
-    PG_PORT: str = field(default_factory=lambda: _get_str("PGPORT", "5432"))
+    PG_HOST: str = field(default_factory=lambda: _get_str("PGHOST", _DB_URL_PARTS.get("host", "localhost")))
+    PG_PORT: str = field(default_factory=lambda: _get_str("PGPORT", _DB_URL_PARTS.get("port", "5432")))
     PG_READER_USER: str = field(default_factory=lambda: os.environ.get("PG_READER_USER", "nexus_reader"))
-    PG_DATABASE: str = field(default_factory=lambda: os.environ.get("PGDATABASE", "nexus_db"))
+    PG_DATABASE: str = field(default_factory=lambda: _get_str("PGDATABASE", _DB_URL_PARTS.get("database", "nexus_db")))
 
     # -----------------------------------------------------------------------
     # Backward-Compatibility Aliases
