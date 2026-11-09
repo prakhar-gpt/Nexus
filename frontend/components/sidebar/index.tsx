@@ -119,9 +119,9 @@ export function Sidebar({
         {/* 1. Top row */}
         {mode === "hub" ? (
           <div className="flex items-center justify-between pb-1">
-            <span className="text-xs font-medium tracking-tight text-sidebar-foreground">
+            <h1 className="text-sm font-semibold tracking-tight text-sidebar-foreground">
               Nexus
-            </span>
+            </h1>
           </div>
         ) : (
           <div className="flex items-center justify-between pb-1">
@@ -144,9 +144,9 @@ export function Sidebar({
               </Link>
             )}
 
-            <span className="text-xs font-medium tracking-tight text-sidebar-foreground">
+            <h1 className="text-sm font-semibold tracking-tight text-sidebar-foreground">
               Nexus
-            </span>
+            </h1>
           </div>
         )}
 

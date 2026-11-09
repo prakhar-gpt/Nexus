@@ -118,39 +118,37 @@ export function AuthForm({ mode }: AuthFormProps) {
   const loginLink = nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"
 
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 pb-12">
-      <div className="w-full max-w-[360px] -mt-12 flex flex-col">
-        {/* Top Header: Wordmark + Heading + Muted sentence */}
-        <div className="flex flex-col gap-1 mb-8">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-[360px] flex flex-col">
+        {/* Top Header: Nexus big header + quiet non-header action subtitle */}
+        <div className="flex flex-col mb-6 text-left">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-foreground">
             Nexus
-          </span>
-          <h1 className="text-2xl font-medium tracking-tight text-foreground">
-            {mode === "login" ? "Sign in" : "Create your account"}
           </h1>
-          <p className="text-xs text-muted-foreground">
-            Commercial due diligence and retail analytics.
+          <p className="text-xs text-muted-foreground mt-1">
+            Commercial due diligence & retail analytics
+          </p>
+          <p className="text-xs font-medium text-foreground mt-3">
+            {mode === "login" ? "Sign in to your account" : "Create your account"}
           </p>
         </div>
 
-        {/* Form-level error alert */}
-        <div className="min-h-[28px] mb-3">
-          {formError ? (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="flex items-center gap-2 p-2 text-xs text-destructive bg-destructive/10 border border-destructive/20"
-            >
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{formError}</span>
-            </div>
-          ) : null}
-        </div>
+        {/* Form-level error alert (rendered only when present) */}
+        {formError && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="flex items-center gap-2 p-2.5 mb-4 text-xs text-destructive bg-destructive/10 border border-destructive/20"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{formError}</span>
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
           {/* Full Name for Signup */}
           {mode === "signup" && (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label htmlFor="auth-name" className="text-xs font-medium text-foreground">
                 Full name
               </label>
@@ -171,16 +169,14 @@ export function AuthForm({ mode }: AuthFormProps) {
                   fieldErrors.name ? "border-destructive" : "border-input"
                 }`}
               />
-              <div className="min-h-[16px]">
-                {fieldErrors.name ? (
-                  <span className="text-[11px] text-destructive">{fieldErrors.name}</span>
-                ) : null}
-              </div>
+              {fieldErrors.name && (
+                <span className="text-[11px] text-destructive">{fieldErrors.name}</span>
+              )}
             </div>
           )}
 
           {/* Email */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             <label htmlFor="auth-email" className="text-xs font-medium text-foreground">
               {mode === "signup" ? "Work email" : "Email"}
             </label>
@@ -201,15 +197,13 @@ export function AuthForm({ mode }: AuthFormProps) {
                 fieldErrors.email ? "border-destructive" : "border-input"
               }`}
             />
-            <div className="min-h-[16px]">
-              {fieldErrors.email ? (
-                <span className="text-[11px] text-destructive">{fieldErrors.email}</span>
-              ) : null}
-            </div>
+            {fieldErrors.email && (
+              <span className="text-[11px] text-destructive">{fieldErrors.email}</span>
+            )}
           </div>
 
           {/* Password */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             <label htmlFor="auth-password" className="text-xs font-medium text-foreground">
               Password
             </label>
@@ -239,20 +233,18 @@ export function AuthForm({ mode }: AuthFormProps) {
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <div className="min-h-[16px]">
-              {fieldErrors.password ? (
-                <span className="text-[11px] text-destructive">{fieldErrors.password}</span>
-              ) : mode === "signup" ? (
-                <span className="text-[11px] text-muted-foreground">At least 8 characters</span>
-              ) : null}
-            </div>
+            {fieldErrors.password ? (
+              <span className="text-[11px] text-destructive">{fieldErrors.password}</span>
+            ) : mode === "signup" ? (
+              <span className="text-[11px] text-muted-foreground">At least 8 characters</span>
+            ) : null}
           </div>
 
           {/* Primary Action Button */}
           <Button
             type="submit"
             disabled={isSubmitting}
-            className="h-9 w-full text-xs font-medium mt-1 cursor-pointer"
+            className="h-9 w-full text-xs font-medium mt-1.5 cursor-pointer"
           >
             {isSubmitting ? (
               <>

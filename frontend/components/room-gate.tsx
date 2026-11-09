@@ -77,9 +77,9 @@ export const RoomGate = forwardRef<ComposerHandle, RoomGateProps>(function RoomG
           className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-dashed border-border hover:border-foreground/60 bg-card p-4 cursor-pointer transition-colors"
         >
           <div className="flex flex-col gap-0.5">
-            <h3 className="text-xs font-medium text-foreground">
+            <p className="text-xs font-medium text-foreground">
               Add a dataset to start
-            </h3>
+            </p>
             <p className="text-[11px] text-muted-foreground">
               Drop or select a .csv or .xlsx to analyze.
             </p>

@@ -94,7 +94,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-[400px] rounded-[var(--radius)] border border-border bg-popover p-6 shadow-none">
         <DialogHeader className="gap-1 p-0 text-left">
-          <DialogTitle className="text-base font-medium text-foreground">
+          <DialogTitle className="text-xl font-semibold text-foreground tracking-tight">
             Nexus
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
