@@ -50,3 +50,4 @@ BEGIN
         GRANT SELECT ON TABLE runs TO nexus_reader;
     END IF;
 END $$;
+
