@@ -13,9 +13,10 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
 
   const latestUpload = room.uploads && room.uploads.length > 0 ? room.uploads[0] : null
   const hasLoadedRows = Boolean(room.health?.rows && room.health.rows !== "0")
+  const hasApprovedDatasets = Boolean(room.datasets && room.datasets.length > 0)
 
-  // 1. If rows are loaded into the data room, it is ready for queries!
-  if (hasLoadedRows) {
+  // 1. If rows or approved datasets are in the data room, it is ready for queries!
+  if (hasLoadedRows || hasApprovedDatasets) {
     return { type: "ready" }
   }
 

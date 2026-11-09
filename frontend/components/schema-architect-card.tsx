@@ -4,7 +4,7 @@
  * schema-architect-card.tsx
  *
  * Schema Architect in-chat message. Renders through the same MessageItem layout as Nexus:
- * - Small "Nexus · filename" label
+ * - Small "Nexus" label
  * - Live step list (AgentSteps) while profiling
  * - Collapsible summary once proposal arrives
  * - Compact, editable inline proposal card adhering strictly to Nexus Design Language:
@@ -616,7 +616,7 @@ export function SchemaArchitectCard({
     <div className="w-full">
       {/* Author label */}
       <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-1.5 select-none">
-        Nexus · <span className="normal-case text-foreground/70">{data.fileName}</span>
+        Nexus
       </span>
 
       {/* ── Live Steps / Summary (Nexus Agent Pattern) ── */}

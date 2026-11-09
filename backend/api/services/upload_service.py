@@ -745,7 +745,11 @@ def update_upload_schema(upload_id: int, proposal_edits: dict) -> dict:
     }
 
 
-def approve_upload_schema(upload_id: int, background: BackgroundTasks | None = None) -> dict:
+def approve_upload_schema(
+    upload_id: int,
+    background: BackgroundTasks | None = None,
+    thread_id: str | None = None,
+) -> dict:
     """POST /uploads/{id}/schema/approve -> validate, build DDL, create table, load COPY rows."""
     upload, raw_rows, header_line, headers, df = _get_upload_df_and_rows(upload_id)
     raw_proposal = upload.get("schema_proposal")
@@ -844,6 +848,56 @@ def approve_upload_schema(upload_id: int, background: BackgroundTasks | None = N
             )
 
     questions = _generate_suggested_questions(proposal)
+
+    # Resolve thread for this upload so the conversation history is preserved on reload
+    clean_thread = (thread_id or "").strip()
+    if not clean_thread:
+        latest_t = execute(
+            f"SELECT id FROM threads WHERE workspace_id = {int(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
+        )
+        clean_thread = latest_t[0]["id"] if latest_t else "default"
+
+    from api.services.workspace_service import get_or_create_thread
+    get_or_create_thread(int(upload["workspace_id"]), clean_thread)
+
+    clean_grain = re.sub(
+        r"^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*",
+        "",
+        proposal.get("grain", "") or "",
+        flags=re.I,
+    ).strip()
+    handoff_text = f"I've loaded {friendly_label} ({clean_grain}, {loaded:,} rows). Here's what you can ask:"
+    orig_name = upload.get("original_name") or f"{friendly_label}.csv"
+    question_text = f"Uploaded dataset: {orig_name}"
+    checker_payload = {
+        "thread_id": clean_thread,
+        "kind": "upload",
+        "verified": True,
+        "table_name": table_name,
+        "table_label": friendly_label,
+        "grain": clean_grain,
+        "row_count": loaded,
+        "quarantined_count": quarantined,
+        "suggested_questions": questions,
+        "handoff_data": {
+            "tableLabel": friendly_label,
+            "tableName": table_name,
+            "grain": clean_grain,
+            "rowCount": loaded,
+            "quarantinedCount": quarantined,
+            "suggestedQuestions": questions,
+        },
+    }
+
+    checker_payload["upload_id"] = int(upload_id)
+
+    # Clean any stale upload run for this upload_id, then persist the human-readable turn
+    execute(
+        f"DELETE FROM runs WHERE workspace_id = {int(upload['workspace_id'])} AND (checker_result->>'upload_id') = {sql_literal(str(upload_id))};\n"
+        f"INSERT INTO runs (workspace_id, question, answer, checker_result, latency_ms) "
+        f"VALUES ({int(upload['workspace_id'])}, {sql_literal(question_text)}, {sql_literal(handoff_text)}, "
+        f"{sql_literal(json.dumps(checker_payload))}::jsonb, 0);"
+    )
 
     # Emit handoff BEFORE done so frontend receives it in stream order
     _emit_handoff(

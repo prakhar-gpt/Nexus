@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useSyncExternalStore, useCallback } from "react"
+import { mutateResource } from "./use-resource"
 import {
   API_URL,
   apiFetch,
@@ -106,6 +107,11 @@ interface ChatStoreContextType {
     roomId: string | number,
     threadId: string,
     uploadId: string
+  ) => Promise<void>
+  rehydrateUpload: (
+    roomId: string | number,
+    threadId: string,
+    upload: { id: string | number; original_name: string; status: string }
   ) => Promise<void>
   abortStream: (roomId: string | number, threadId: string) => void
   recordFeedback: (
@@ -309,6 +315,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
             if (!notifiedFirstToken) {
               onFirstToken?.(threadId)
             }
+            mutateResource(`room:${roomId}`)
           } else if (event === "error") {
             const serverMsg =
               (data?.error as string) ||
@@ -599,14 +606,18 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
   const approveSchema = useCallback(
     async (roomId: string | number, threadId: string, uploadId: string) => {
       const key = makeKey(roomId, threadId)
-      const res = await apiFetch(`${API_URL}/uploads/${uploadId}/schema/approve`, {
-        method: "POST",
-      })
+      const res = await apiFetch(
+        `${API_URL}/uploads/${uploadId}/schema/approve?thread_id=${encodeURIComponent(threadId)}`,
+        { method: "POST" }
+      )
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err?.detail?.message || err?.detail || "Could not approve table creation.")
       }
       const data = await res.json()
+
+      // Revalidate room immediately so the sidebar datasets section updates with the new dataset
+      mutateResource(`room:${roomId}`)
 
       // Immediately transition in-chat message to loaded state
       const curr = threadStates.get(key)
@@ -747,6 +758,123 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
+  const rehydrateUpload = useCallback(
+    async (
+      roomId: string | number,
+      threadId: string,
+      upload: { id: string | number; original_name: string; status: string }
+    ) => {
+      const key = makeKey(roomId, threadId)
+      const curr = threadStates.get(key)
+      if (curr?.messages.some((m) => m.uploadData?.uploadId === String(upload.id))) {
+        return
+      }
+
+      const userMsgId = `upload-user-${upload.id}`
+      const assistantMsgId = `upload-asst-${upload.id}`
+      const userMsg: ChatMessage = {
+        id: userMsgId,
+        role: "user",
+        text: `Uploaded dataset: ${upload.original_name}`,
+      }
+
+      let proposal = undefined
+      let validation = undefined
+      let preview = undefined
+
+      if (upload.status === "needs_schema_review") {
+        try {
+          const res = await apiFetch(`${API_URL}/uploads/${upload.id}/schema`)
+          if (res.ok) {
+            const data = await res.json()
+            proposal = data.proposal
+            validation = data.validation
+            preview = data.preview
+          }
+        } catch {}
+      }
+
+      const architectMsg: ChatMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        text: "",
+        uploadData: {
+          uploadId: String(upload.id),
+          fileName: upload.original_name,
+          fileSize: 0,
+          status: (upload.status === "needs_schema_review" ? "needs_schema_review" : "profiling") as any,
+          stages: [],
+          proposal,
+          validation,
+          preview,
+          architectSteps: [
+            { id: "s1", tool: "check_file", status: "done", label: `Checked ${upload.original_name}` },
+            { id: "s2", tool: "read_types", status: "done", label: "Read column types and null rates" },
+            { id: "s3", tool: "table_grain", status: "done", label: "Determined table grain" },
+          ],
+        },
+      }
+
+      const prev = threadStates.get(key) || DEFAULT_THREAD_STATE
+      threadStates.set(key, {
+        ...prev,
+        busy: upload.status !== "needs_schema_review",
+        messages: [userMsg, architectMsg, ...(prev?.messages || []).filter((m) => !m.uploadData)],
+      })
+      notifyKey(key)
+
+      if (upload.status !== "needs_schema_review" && upload.status !== "loaded" && upload.status !== "rejected") {
+        const source = new EventSource(`${API_URL}/uploads/${upload.id}/events`)
+        source.onmessage = async (evt: MessageEvent) => {
+          if (!evt.data) return
+          let payload: any = {}
+          try {
+            payload = JSON.parse(evt.data)
+          } catch {
+            return
+          }
+          if (
+            payload.status === "needs_schema_review" ||
+            payload.event === "architect_proposed" ||
+            payload.final === "needs_schema_review"
+          ) {
+            source.close()
+            try {
+              const res = await apiFetch(`${API_URL}/uploads/${upload.id}/schema`)
+              if (res.ok) {
+                const sData = await res.json()
+                const cState = threadStates.get(key)
+                if (cState) {
+                  threadStates.set(key, {
+                    ...cState,
+                    busy: false,
+                    messages: cState.messages.map((m) =>
+                      m.id === assistantMsgId && m.uploadData
+                        ? {
+                            ...m,
+                            uploadData: {
+                              ...m.uploadData,
+                              status: "needs_schema_review",
+                              proposal: sData.proposal,
+                              validation: sData.validation,
+                              preview: sData.preview,
+                            },
+                          }
+                        : m
+                    ),
+                  })
+                  notifyKey(key)
+                }
+              }
+            } catch {}
+          }
+        }
+        source.onerror = () => source.close()
+      }
+    },
+    []
+  )
+
   const recordFeedback = useCallback(
     async (runId: number, rating: "up" | "down", reason?: string): Promise<boolean> => {
       try {
@@ -780,6 +908,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         uploadFile,
         approveSchema,
         rejectSchema,
+        rehydrateUpload,
         abortStream,
         recordFeedback,
         clearAll,
@@ -799,22 +928,51 @@ export function useChatStore() {
 }
 
 function turnsToMessages(turns: Turn[]): ChatMessage[] {
-  return turns.flatMap((turn) => [
-    { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
-    {
-      id: `a-${turn.run_id}`,
-      role: "assistant" as const,
-      text: turn.answer,
-      badge: badgeFor({ kind: turn.kind, verified: turn.verified }),
-      sql: turn.sql,
-      rowCount: turn.rows?.length ?? 0,
-      runId: turn.run_id,
-      rows: turn.rows ?? [],
-      steps: turn.steps ?? [],
-      missingMeasure: (turn.checker_result?.missing_measure as string) || undefined,
-      untraced: (turn.checker_result?.untraced as string[]) || undefined,
-    },
-  ])
+  return turns.flatMap((turn) => {
+    const cr = (turn.checker_result as any) || {}
+    const isUploadHandoff =
+      turn.kind === "upload" ||
+      turn.question.startsWith("Uploaded dataset:") ||
+      Boolean(cr.handoff_data)
+
+    if (isUploadHandoff) {
+      const handoff = cr.handoff_data || {
+        tableLabel: cr.table_label || "Dataset",
+        tableName: cr.table_name || "",
+        grain: cr.grain || "",
+        rowCount: Number(cr.row_count || 0),
+        quarantinedCount: Number(cr.quarantined_count || 0),
+        suggestedQuestions: cr.suggested_questions || [],
+      }
+
+      return [
+        { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
+        {
+          id: `a-${turn.run_id}`,
+          role: "assistant" as const,
+          text: turn.answer,
+          handoffData: handoff,
+        },
+      ]
+    }
+
+    return [
+      { id: `q-${turn.run_id}`, role: "user" as const, text: turn.question },
+      {
+        id: `a-${turn.run_id}`,
+        role: "assistant" as const,
+        text: turn.answer,
+        badge: badgeFor({ kind: turn.kind, verified: turn.verified }),
+        sql: turn.sql,
+        rowCount: turn.rows?.length ?? 0,
+        runId: turn.run_id,
+        rows: turn.rows ?? [],
+        steps: turn.steps ?? [],
+        missingMeasure: (turn.checker_result?.missing_measure as string) || undefined,
+        untraced: (turn.checker_result?.untraced as string[]) || undefined,
+      },
+    ]
+  })
 }
 
 function badgeFor(data: Record<string, unknown>): AnswerBadge {

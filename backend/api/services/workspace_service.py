@@ -214,6 +214,21 @@ def list_workspace_datasets(workspace_id: int) -> list[dict]:
     return datasets
 
 
+def rename_dataset(workspace_id: int, dataset_id: int, new_label: str) -> dict:
+    """Rename a dataset's friendly table label."""
+    clean_label = new_label.strip()
+    found = execute(
+        f"SELECT id FROM datasets WHERE id = {int(dataset_id)} AND workspace_id = {int(workspace_id)}"
+    )
+    if not found:
+        raise HTTPException(status_code=404, detail="dataset not found in this workspace")
+    execute(
+        f"UPDATE datasets SET table_label = {sql_literal(clean_label)} "
+        f"WHERE id = {int(dataset_id)} AND workspace_id = {int(workspace_id)}"
+    )
+    return {"ok": True, "dataset_id": dataset_id, "table_label": clean_label}
+
+
 def remove_dataset(workspace_id: int, dataset_id: int) -> dict:
     """Remove a dataset in one atomic transaction: table, catalog rows, quarantine rows, and threads array_remove."""
     found = execute(
@@ -343,6 +358,7 @@ def get_turns(workspace_id: int, thread_id: str | None = None) -> list[dict]:
                 "tools_used": check.get("tools_used") or [],
                 "python_results": check.get("python_results") or [],
                 "thread_id": check.get("thread_id") or "default",
+                "checker_result": check,
             }
         )
     return turns

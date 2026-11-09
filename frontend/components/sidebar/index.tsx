@@ -23,6 +23,7 @@ export interface SidebarProps {
   selectedDatasetIds?: number[]
   status?: RoomStatus
   isUploadRunning?: boolean
+  isReviewPending?: boolean
   onToggleDataset?: (datasetId: number, checked: boolean) => void
   onAddDatasetClick?: () => void
   onOpenSetupCard?: (uploadId: string | number) => void
@@ -61,6 +62,7 @@ export function Sidebar({
   selectedDatasetIds = [],
   status,
   isUploadRunning = false,
+  isReviewPending = false,
   onToggleDataset,
   onAddDatasetClick,
   onOpenSetupCard,
@@ -97,6 +99,10 @@ export function Sidebar({
             router.push("/rooms/new")
           }
         } else {
+          // Block new chat creation while an upload is running or pending schema review
+          if (isUploadRunning || isReviewPending) {
+            return
+          }
           if (onNewThread) {
             onNewThread()
           } else {
@@ -108,7 +114,7 @@ export function Sidebar({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [router, roomId, mode, onNewThread, onNewWorkspace])
+  }, [router, roomId, mode, onNewThread, onNewWorkspace, isUploadRunning, isReviewPending])
 
   const isIngesting = status?.type === "ingesting"
   const hasRooms = workspaces.length > 0
@@ -218,8 +224,14 @@ export function Sidebar({
         ) : onNewThread ? (
           <button
             type="button"
+            disabled={isUploadRunning || isReviewPending}
             onClick={onNewThread}
-            className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors font-normal"
+            className={`flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground transition-colors font-normal ${
+              isUploadRunning || isReviewPending
+                ? "opacity-40 cursor-not-allowed pointer-events-none"
+                : "hover:bg-sidebar-accent"
+            }`}
+            title={isUploadRunning || isReviewPending ? "Finish or approve upload before starting a new chat" : undefined}
           >
             <div className="flex items-center gap-1.5">
               <Plus className="h-3.5 w-3.5" />
@@ -229,6 +241,19 @@ export function Sidebar({
               ⌘K
             </kbd>
           </button>
+        ) : isUploadRunning || isReviewPending ? (
+          <div
+            className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground opacity-40 cursor-not-allowed select-none font-normal"
+            title="Finish or approve upload before starting a new chat"
+          >
+            <div className="flex items-center gap-1.5">
+              <Plus className="h-3.5 w-3.5" />
+              <span>New chat</span>
+            </div>
+            <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
+              ⌘K
+            </kbd>
+          </div>
         ) : (
           <Link
             href={`/rooms/${roomId}`}

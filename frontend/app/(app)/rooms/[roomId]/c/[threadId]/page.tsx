@@ -27,6 +27,7 @@ export default function ExistingThreadPage({
     uploadFile,
     approveSchema,
     rejectSchema,
+    rehydrateUpload,
     abortStream,
     recordFeedback,
   } = useChatStore()
@@ -40,13 +41,37 @@ export default function ExistingThreadPage({
     setTimeout(() => setToastMessage(null), 4000)
   }
 
+  // Hydrate immediately from in-memory room.turns if available so chat history displays instantly
+  useEffect(() => {
+    const currentState = getThreadStateDirect(roomId, threadId)
+    if (currentState.messages.length === 0 && room?.turns) {
+      const filtered = room.turns.filter((t) => (t.thread_id || "default") === threadId)
+      if (filtered.length > 0) {
+        initThreadTurns(roomId, threadId, filtered)
+        setThreadExists(true)
+      }
+    }
+  }, [roomId, threadId, room?.turns, initThreadTurns])
+
+  // Restore active review/upload card if this workspace has a pending upload on reload
+  const pendingUpload = (room?.uploads || []).find((u) =>
+    ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status)
+  )
+
+  useEffect(() => {
+    const currentState = getThreadStateDirect(roomId, threadId)
+    if (pendingUpload && currentState.messages.length === 0) {
+      rehydrateUpload(roomId, threadId, pendingUpload)
+      setThreadExists(true)
+    }
+  }, [roomId, threadId, pendingUpload, rehydrateUpload])
+
   // Load thread turns on mount or thread switch
   useEffect(() => {
     const currentState = getThreadStateDirect(roomId, threadId)
     if (currentState.messages.length > 0) return
 
     let active = true
-    setLoadingTurns(true)
 
     async function load() {
       try {
@@ -70,11 +95,14 @@ export default function ExistingThreadPage({
           return
         }
 
-        if (active) setThreadExists(false)
+        // If thread exists in room.threads metadata, it is a valid fresh thread
+        const isKnown = room?.threads?.some((t) => t.id === threadId)
+        if (active) setThreadExists(Boolean(isKnown))
       } catch {
         if (active && room?.turns) {
           const filtered = room.turns.filter((t) => (t.thread_id || "default") === threadId)
           initThreadTurns(roomId, threadId, filtered)
+          setThreadExists(true)
         }
       } finally {
         if (active) setLoadingTurns(false)
@@ -85,7 +113,7 @@ export default function ExistingThreadPage({
     return () => {
       active = false
     }
-  }, [roomId, threadId, room, getThreadState, initThreadTurns])
+  }, [roomId, threadId, room?.turns, room?.threads, getThreadState, initThreadTurns])
 
   const threadState = useThreadState(roomId, threadId)
 
@@ -124,13 +152,16 @@ export default function ExistingThreadPage({
     )
   }
 
+  const primaryDataset = room?.datasets && room.datasets.length > 0 ? room.datasets[0] : null
+  const activeDatasetName = primaryDataset?.table_label ?? room?.name ?? "Superstore"
+
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <ChatPane
         draft={threadState.draft}
         messages={threadState.messages}
         busy={threadState.busy}
-        datasetName={room?.name ?? "Superstore"}
+        datasetName={activeDatasetName}
         onDraft={(val) => setDraft(roomId, threadId, val)}
         onAsk={(q) => ask(roomId, threadId, q)}
         onAbort={() => abortStream(roomId, threadId)}

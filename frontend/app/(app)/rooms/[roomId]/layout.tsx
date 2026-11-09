@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, use } from "react"
+import React, { useEffect, useState, useRef, use } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Menu, X } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
@@ -8,6 +8,7 @@ import { useResource } from "@/lib/use-resource"
 import { API_URL, apiFetch, type Room } from "@/lib/api"
 import { deriveRoomStatus } from "@/lib/room-status"
 import { RoomContext } from "@/lib/room-context"
+import { useChatStore } from "@/lib/chat-store"
 
 const SUPERSTORE_FALLBACK: Room = {
   id: 1,
@@ -19,6 +20,7 @@ const SUPERSTORE_FALLBACK: Room = {
       status: "loaded",
     },
   ],
+  datasets: [],
   health: {
     rows: "9800",
     first_order: "2015-01-03",
@@ -81,6 +83,8 @@ export default function RoomShellLayout({
   const router = useRouter()
   const pathname = usePathname()
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { uploadFile } = useChatStore()
 
   const {
     data: room,
@@ -90,6 +94,21 @@ export default function RoomShellLayout({
   } = useResource(`room:${roomId}`, () => fetchRoomData(roomId))
 
   const status = deriveRoomStatus(room)
+
+  // Derive active thread ID and selection state
+  const activeThreadId = pathname.includes("/c/")
+    ? pathname.split("/c/")[1]?.split("/")[0]
+    : undefined
+
+  const activeThread = room?.threads?.find((t) => t.id === activeThreadId)
+  const datasets = room?.datasets || []
+  const allDatasetIds = datasets.map((d) => d.id)
+
+  const [ephemeralSelectedIds, setEphemeralSelectedIds] = useState<number[] | null>(null)
+
+  // When on an existing thread, read its selection; otherwise read ephemeral or all
+  const selectedDatasetIds = activeThread?.selected_dataset_ids
+    ?? (ephemeralSelectedIds ?? allDatasetIds)
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -113,6 +132,106 @@ export default function RoomShellLayout({
     })
   }
 
+  const handleToggleDataset = async (datasetId: number, checked: boolean) => {
+    const current = selectedDatasetIds
+    const next = checked
+      ? Array.from(new Set([...current, datasetId]))
+      : current.filter((id) => id !== datasetId)
+
+    if (activeThreadId) {
+      mutateRoom((curr: Room | undefined) => {
+        if (!curr) return curr!
+        return {
+          ...curr,
+          threads: (curr.threads || []).map((t) =>
+            t.id === activeThreadId ? { ...t, selected_dataset_ids: next } : t
+          ),
+        }
+      })
+      try {
+        await apiFetch(`${API_URL}/workspaces/${roomId}/threads/${activeThreadId}/datasets`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dataset_ids: next }),
+        })
+      } catch {
+        mutateRoom()
+      }
+    } else {
+      setEphemeralSelectedIds(next)
+    }
+  }
+
+  const handleRemoveDataset = async (datasetId: number) => {
+    mutateRoom((curr: Room | undefined) => {
+      if (!curr) return curr!
+      return {
+        ...curr,
+        datasets: (curr.datasets || []).filter((d) => d.id !== datasetId),
+        threads: (curr.threads || []).map((t) => ({
+          ...t,
+          selected_dataset_ids: (t.selected_dataset_ids || []).filter((id) => id !== datasetId),
+        })),
+      }
+    })
+    try {
+      await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
+        method: "DELETE",
+      })
+    } catch {
+      mutateRoom()
+    }
+  }
+
+  const handleRenameDataset = async (datasetId: number, newLabel: string) => {
+    mutateRoom((curr: Room | undefined) => {
+      if (!curr) return curr!
+      return {
+        ...curr,
+        datasets: (curr.datasets || []).map((d) =>
+          d.id === datasetId ? { ...d, table_label: newLabel } : d
+        ),
+      }
+    })
+    try {
+      await apiFetch(`${API_URL}/workspaces/${roomId}/datasets/${datasetId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ table_label: newLabel }),
+      })
+    } catch {
+      mutateRoom()
+    }
+  }
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ""
+    const targetThread = activeThreadId || `thread-${Date.now().toString(36)}`
+    await uploadFile(roomId, targetThread, file, (tId) => {
+      router.replace(`/rooms/${roomId}/c/${tId}`)
+    })
+  }
+
+  const pendingUploads = (room?.uploads || [])
+    .filter((u) => ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status))
+    .map((u) => ({
+      id: u.id,
+      fileName: u.original_name,
+      status: u.status,
+    }))
+
+  const pendingUpload = (room?.uploads || []).find((u) =>
+    ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status)
+  )
+  const isUploadRunning = Boolean(
+    pendingUpload && ["received", "processing", "uploading", "profiling"].includes(pendingUpload.status)
+  )
+  const isReviewPending = Boolean(
+    pendingUpload && pendingUpload.status === "needs_schema_review"
+  )
+
   const rows =
     room?.health?.rows && room.health.rows !== "0"
       ? `${Number(room.health.rows).toLocaleString()} rows`
@@ -124,6 +243,13 @@ export default function RoomShellLayout({
 
   return (
     <RoomContext.Provider value={{ room: room ?? null, status, isLoading, error, mutateRoom }}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.xlsx"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
       <div className="flex h-svh w-full flex-col bg-background text-foreground md:flex-row overflow-hidden">
         {/* Desktop Sidebar: 260px fixed, never remounts across threads */}
         <aside className="hidden md:block h-full shrink-0">
@@ -132,7 +258,17 @@ export default function RoomShellLayout({
             roomId={roomId}
             roomName={room?.name ?? "Data Room"}
             threads={room?.threads || []}
+            datasets={datasets}
+            pendingUploads={pendingUploads}
+            selectedDatasetIds={selectedDatasetIds}
+            activeThreadId={activeThreadId}
             status={status}
+            isUploadRunning={isUploadRunning}
+            isReviewPending={isReviewPending}
+            onToggleDataset={handleToggleDataset}
+            onAddDatasetClick={() => fileInputRef.current?.click()}
+            onRemoveDataset={handleRemoveDataset}
+            onRenameDataset={handleRenameDataset}
             onDeleteThread={handleDeleteThread}
             healthSummary={{ rows, dates }}
           />
@@ -167,7 +303,17 @@ export default function RoomShellLayout({
                 roomId={roomId}
                 roomName={room?.name ?? "Data Room"}
                 threads={room?.threads || []}
+                datasets={datasets}
+                pendingUploads={pendingUploads}
+                selectedDatasetIds={selectedDatasetIds}
+                activeThreadId={activeThreadId}
                 status={status}
+                isUploadRunning={isUploadRunning}
+                isReviewPending={isReviewPending}
+                onToggleDataset={handleToggleDataset}
+                onAddDatasetClick={() => fileInputRef.current?.click()}
+                onRemoveDataset={handleRemoveDataset}
+                onRenameDataset={handleRenameDataset}
                 onDeleteThread={handleDeleteThread}
                 healthSummary={{ rows, dates }}
               />

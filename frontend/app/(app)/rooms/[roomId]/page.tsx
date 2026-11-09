@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useRef, use } from "react"
+import React, { useRef, useEffect, use } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowUpRight } from "lucide-react"
 import { useRoom } from "@/lib/room-context"
 import { RoomGate } from "@/components/room-gate"
+import { ChatPane } from "@/components/chat-pane"
 import { useChatStore, useThreadState } from "@/lib/chat-store"
 import { DEFAULT_SUGGESTIONS } from "@/components/chat-pane"
 import type { ComposerHandle } from "@/components/composer"
@@ -19,7 +20,16 @@ export default function NewChatRoomPage({
 
   const router = useRouter()
   const { room, status, mutateRoom } = useRoom()
-  const { getThreadState, setDraft, ask, uploadFile, abortStream } = useChatStore()
+  const {
+    getThreadState,
+    setDraft,
+    ask,
+    uploadFile,
+    approveSchema,
+    rejectSchema,
+    rehydrateUpload,
+    abortStream,
+  } = useChatStore()
 
   // Track the ephemeral thread ID for the new chat
   const ephemeralThreadIdRef = useRef(`thread-${Date.now().toString(36)}`)
@@ -27,6 +37,16 @@ export default function NewChatRoomPage({
 
   const threadState = useThreadState(roomId, currentThreadId)
   const composerRef = useRef<ComposerHandle>(null)
+
+  const pendingUpload = (room?.uploads || []).find((u) =>
+    ["received", "processing", "uploading", "profiling", "needs_schema_review"].includes(u.status)
+  )
+
+  useEffect(() => {
+    if (pendingUpload && threadState.messages.length === 0) {
+      rehydrateUpload(roomId, currentThreadId, pendingUpload)
+    }
+  }, [roomId, currentThreadId, pendingUpload, threadState.messages.length, rehydrateUpload])
 
   async function handleUpload(file: File) {
     // Optimistically register thread in room sidebar
@@ -73,6 +93,32 @@ export default function NewChatRoomPage({
   }
 
   const isReady = status.type === "ready"
+  const primaryDataset = room?.datasets && room.datasets.length > 0 ? room.datasets[0] : null
+  const cleanGrain = primaryDataset?.grain
+    ? primaryDataset.grain.replace(/^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*/i, "").trim()
+    : null
+
+  // If there is an active upload or review in progress, keep the user on the upload/review stage
+  if (pendingUpload || threadState.messages.some((m) => m.uploadData)) {
+    return (
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <ChatPane
+          draft={threadState.draft}
+          messages={threadState.messages}
+          busy={threadState.busy}
+          datasetName={pendingUpload?.original_name ?? primaryDataset?.table_label ?? "Dataset"}
+          onDraft={(val) => setDraft(roomId, currentThreadId, val)}
+          onAsk={handleAsk}
+          onAbort={() => abortStream(roomId, currentThreadId)}
+          onFeedback={async () => false}
+          onToast={() => {}}
+          onUploadFile={handleUpload}
+          onApproveSchema={(uploadId) => approveSchema(roomId, currentThreadId, uploadId)}
+          onRejectSchema={(uploadId) => rejectSchema(roomId, currentThreadId, uploadId)}
+        />
+      </div>
+    )
+  }
 
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -81,6 +127,23 @@ export default function NewChatRoomPage({
         <div className="mx-auto flex h-full w-full max-w-[720px] flex-col justify-center py-12">
           {isReady ? (
             <>
+              {primaryDataset ? (
+                <div className="mb-6 border border-border bg-card/60 p-4">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                      Loaded dataset
+                    </span>
+                    <span className="text-xs font-semibold text-foreground">
+                      {primaryDataset.table_label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-mono leading-relaxed">
+                    {cleanGrain ? `One row = ${cleanGrain} · ` : ""}
+                    {Number(primaryDataset.row_count).toLocaleString()} rows loaded and ready for analysis.
+                  </p>
+                </div>
+              ) : null}
+
               <h1 className="text-[32px] font-medium tracking-tight text-foreground select-none">
                 What should we look at?
               </h1>
@@ -108,7 +171,7 @@ export default function NewChatRoomPage({
         ref={composerRef}
         status={status}
         roomId={roomId}
-        datasetName={room?.name ?? "Superstore"}
+        datasetName={primaryDataset?.table_label ?? room?.name ?? "Superstore"}
         draft={threadState.draft}
         busy={threadState.busy}
         onDraft={(val) => setDraft(roomId, currentThreadId, val)}

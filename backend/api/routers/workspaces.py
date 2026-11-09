@@ -18,6 +18,9 @@ class ChatRequest(BaseModel):
 class ThreadDatasetsUpdate(BaseModel):
     dataset_ids: list[int] = Field(default_factory=list)
 
+class DatasetLabelUpdate(BaseModel):
+    table_label: str = Field(min_length=1, max_length=100)
+
 from api.services.chat_service import generate_chat_events
 from api.services.upload_service import handle_file_upload
 from api.services.workspace_service import (
@@ -32,6 +35,7 @@ from api.services.workspace_service import (
     list_workspace_datasets,
     list_workspaces,
     remove_dataset,
+    rename_dataset,
     update_thread_datasets,
 )
 from ingest.store import execute
@@ -109,6 +113,14 @@ def get_datasets_endpoint(workspace_id: int):
     if get_workspace_meta(workspace_id) is None:
         raise HTTPException(status_code=404, detail="workspace not found")
     return list_workspace_datasets(workspace_id)
+
+
+@router.patch("/workspaces/{workspace_id}/datasets/{dataset_id}")
+def rename_dataset_endpoint(workspace_id: int, dataset_id: int, body: DatasetLabelUpdate):
+    """Rename an approved dataset's friendly table label."""
+    if get_workspace_meta(workspace_id) is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return rename_dataset(workspace_id, dataset_id, body.table_label)
 
 
 @router.delete("/workspaces/{workspace_id}/datasets/{dataset_id}")

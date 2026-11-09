@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -99,10 +99,10 @@ def update_schema_endpoint(upload_id: int, body: SchemaProposalUpdate):
 
 
 @router.post("/uploads/{upload_id}/schema/approve")
-def approve_schema_endpoint(upload_id: int):
+def approve_schema_endpoint(upload_id: int, thread_id: str | None = Query(default=None)):
     """Approve schema and execute deterministic table creation and COPY row load."""
     from api.services.upload_service import approve_upload_schema
-    return approve_upload_schema(upload_id)
+    return approve_upload_schema(upload_id, thread_id=thread_id)
 
 
 @router.post("/uploads/{upload_id}/schema/reject")
