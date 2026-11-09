@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS workspace_members (
 
 -- 4. Convert existing tables from bigint to uuid if not yet converted
 DO $$
+DECLARE
+    r RECORD;
 BEGIN
     IF EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -49,42 +51,57 @@ BEGIN
             DROP POLICY IF EXISTS sales_clean_reader_workspace ON public.sales_clean;
         END IF;
 
-        -- A. Drop foreign keys referencing workspaces(id)
-        ALTER TABLE uploads DROP CONSTRAINT IF EXISTS uploads_workspace_id_fkey;
-        ALTER TABLE datasets DROP CONSTRAINT IF EXISTS datasets_workspace_id_fkey;
-        ALTER TABLE threads DROP CONSTRAINT IF EXISTS threads_workspace_id_fkey;
-        ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_workspace_id_fkey;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
-            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_workspace_id_fkey;
-        END IF;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'architect_runs') THEN
-            ALTER TABLE architect_runs DROP CONSTRAINT IF EXISTS architect_runs_workspace_id_fkey;
-        END IF;
+        -- Drop ALL foreign keys referencing workspaces(id) across all tables
+        FOR r IN (
+            SELECT tc.table_schema, tc.table_name, tc.constraint_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'workspaces'
+              AND ccu.column_name = 'id'
+        ) LOOP
+            EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I;', r.table_schema, r.table_name, r.constraint_name);
+        END LOOP;
 
-        -- B. Drop foreign keys referencing uploads(id)
-        ALTER TABLE column_mapping DROP CONSTRAINT IF EXISTS column_mapping_upload_id_fkey;
-        ALTER TABLE quarantine DROP CONSTRAINT IF EXISTS quarantine_upload_id_fkey;
-        ALTER TABLE upload_attribute_schema DROP CONSTRAINT IF EXISTS upload_attribute_schema_upload_id_fkey;
-        ALTER TABLE datasets DROP CONSTRAINT IF EXISTS datasets_upload_id_fkey;
-        ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_upload_id_fkey;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
-            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_upload_id_fkey;
-        END IF;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'upload_events') THEN
-            ALTER TABLE upload_events DROP CONSTRAINT IF EXISTS upload_events_upload_id_fkey;
-        END IF;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'architect_runs') THEN
-            ALTER TABLE architect_runs DROP CONSTRAINT IF EXISTS architect_runs_upload_id_fkey;
-        END IF;
+        -- Drop ALL foreign keys referencing uploads(id) across all tables
+        FOR r IN (
+            SELECT tc.table_schema, tc.table_name, tc.constraint_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'uploads'
+              AND ccu.column_name = 'id'
+        ) LOOP
+            EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I;', r.table_schema, r.table_name, r.constraint_name);
+        END LOOP;
 
-        -- C. Drop foreign keys referencing datasets(id)
-        ALTER TABLE dataset_columns DROP CONSTRAINT IF EXISTS dataset_columns_dataset_id_fkey;
+        -- Drop ALL foreign keys referencing datasets(id) across all tables
+        FOR r IN (
+            SELECT tc.table_schema, tc.table_name, tc.constraint_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'datasets'
+              AND ccu.column_name = 'id'
+        ) LOOP
+            EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I;', r.table_schema, r.table_name, r.constraint_name);
+        END LOOP;
 
-        -- D. Drop foreign keys referencing runs(id)
-        ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_run_id_fkey;
-        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
-            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_run_id_fkey;
-        END IF;
+        -- Drop ALL foreign keys referencing runs(id) across all tables
+        FOR r IN (
+            SELECT tc.table_schema, tc.table_name, tc.constraint_name
+            FROM information_schema.table_constraints AS tc
+            JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND ccu.table_name = 'runs'
+              AND ccu.column_name = 'id'
+        ) LOOP
+            EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT IF EXISTS %I;', r.table_schema, r.table_name, r.constraint_name);
+        END LOOP;
 
         -- 1. Convert workspaces
         ALTER TABLE workspaces ALTER COLUMN id DROP IDENTITY IF EXISTS;
@@ -256,6 +273,11 @@ BEGIN
 
         -- Attach foreign key to workspace_members
         ALTER TABLE workspace_members ADD CONSTRAINT workspace_members_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'sales_clean' AND table_type = 'BASE TABLE') THEN
+            ALTER TABLE sales_clean ADD CONSTRAINT sales_clean_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE;
+            ALTER TABLE sales_clean ADD CONSTRAINT sales_clean_upload_id_fkey FOREIGN KEY (upload_id) REFERENCES uploads(id) ON DELETE CASCADE;
+        END IF;
 
         -- Backfill workspace_members for all existing workspaces
         INSERT INTO workspace_members (workspace_id, user_id, role)
