@@ -129,11 +129,18 @@ class Settings:
     MAX_CONCURRENT_SSE_PER_USER: int = field(default_factory=lambda: _get_int("MAX_CONCURRENT_SSE_PER_USER", 5))
 
     # CORS
-    CORS_ORIGINS: list[str] = field(default_factory=lambda: [
-        origin.strip() for origin in os.environ.get(
+    CORS_ORIGINS: list[str] = field(default_factory=lambda: list(dict.fromkeys([
+        clean
+        for raw in os.environ.get(
             "CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
-        ).split(",") if origin.strip()
-    ])
+        ).split(",")
+        if raw.strip()
+        for clean in (
+            raw.strip().strip('"').strip("'").rstrip("/"),
+            raw.strip().strip('"').strip("'").rstrip("/") + "/",
+        )
+        if clean
+    ])))
 
     # -----------------------------------------------------------------------
     # Ingestion & Upload Constraints

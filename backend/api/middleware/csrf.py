@@ -26,13 +26,14 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.url.path in ("/health", "/api/health"):
             return await call_next(request)
 
-        # 1. Validate Origin header if present against allowed CORS origins
+        # 1. Validate Origin header if present against allowed CORS origins or Vercel deployments
         origin = request.headers.get("origin")
         if origin:
             parsed_origin = origin.rstrip("/")
             allowed = {o.rstrip("/") for o in settings.CORS_ORIGINS}
-            # Allow origin if matched in configured CORS origins
-            if parsed_origin not in allowed:
+            is_vercel = parsed_origin.startswith("https://") and parsed_origin.endswith(".vercel.app")
+            # Allow origin if matched in configured CORS origins or vercel.app domain
+            if parsed_origin not in allowed and not is_vercel:
                 logger.warning(f"CSRF rejected: forbidden origin '{origin}' from IP {request.client.host if request.client else 'unknown'}")
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
