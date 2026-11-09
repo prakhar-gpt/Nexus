@@ -23,20 +23,25 @@ CREATE INDEX IF NOT EXISTS idx_threads_workspace ON threads(workspace_id);
 -- 3. RLS: strictly scoped by app.workspace_id for nexus_reader
 ALTER TABLE threads ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS threads_reader_workspace ON threads;
-CREATE POLICY threads_reader_workspace ON threads
-    FOR SELECT TO nexus_reader
-    USING (workspace_id = (NULLIF(current_setting('app.workspace_id', true), ''))::bigint);
-
-DROP POLICY IF EXISTS threads_writer_all ON threads;
-CREATE POLICY threads_writer_all ON threads
-    FOR ALL
-    TO nexus_writer
-    USING (true)
-    WITH CHECK (true);
-
-GRANT SELECT ON threads TO nexus_reader;
-GRANT ALL ON threads TO nexus_writer;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
+        DROP POLICY IF EXISTS threads_reader_workspace ON threads;
+        CREATE POLICY threads_reader_workspace ON threads
+            FOR SELECT TO nexus_reader
+            USING (workspace_id = (NULLIF(current_setting('app.workspace_id', true), ''))::bigint);
+        GRANT SELECT ON threads TO nexus_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
+        DROP POLICY IF EXISTS threads_writer_all ON threads;
+        CREATE POLICY threads_writer_all ON threads
+            FOR ALL
+            TO nexus_writer
+            USING (true)
+            WITH CHECK (true);
+        GRANT ALL ON threads TO nexus_writer;
+    END IF;
+END $$;
 
 -- 4. Normalize any existing runs with NULL thread_id to 'default'
 UPDATE runs 

@@ -75,25 +75,24 @@ WHERE owner_id IS NULL;
 -- We disable RLS so nexus_writer is never blocked by default-deny, and add a permissive policy as fallback.
 ALTER TABLE sessions DISABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS sessions_writer_all ON sessions;
-CREATE POLICY sessions_writer_all ON sessions
-    FOR ALL
-    TO nexus_writer
-    USING (true)
-    WITH CHECK (true);
-
-DROP POLICY IF EXISTS sessions_reader_all ON sessions;
-CREATE POLICY sessions_reader_all ON sessions
-    FOR SELECT
-    TO nexus_reader
-    USING (true);
-
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
-        GRANT SELECT ON sessions TO nexus_reader;
-    END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
+        DROP POLICY IF EXISTS sessions_writer_all ON sessions;
+        CREATE POLICY sessions_writer_all ON sessions
+            FOR ALL
+            TO nexus_writer
+            USING (true)
+            WITH CHECK (true);
         GRANT ALL ON sessions TO nexus_writer;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
+        DROP POLICY IF EXISTS sessions_reader_all ON sessions;
+        CREATE POLICY sessions_reader_all ON sessions
+            FOR SELECT
+            TO nexus_reader
+            USING (true);
+        GRANT SELECT ON sessions TO nexus_reader;
     END IF;
 END $$;

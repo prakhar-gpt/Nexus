@@ -176,6 +176,13 @@ CREATE TABLE IF NOT EXISTS eval_results (
 );
 
 -- Week 4 grants
-GRANT SELECT ON upload_attribute_schema TO nexus_reader;
-GRANT SELECT ON uploads, column_mapping, sales_clean TO nexus_reader;
-GRANT ALL ON upload_attribute_schema, uploads, column_mapping, sales_clean, quarantine, runs, feedback, eval_results TO nexus_writer;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
+        GRANT SELECT ON upload_attribute_schema TO nexus_reader;
+        GRANT SELECT ON uploads, column_mapping, sales_clean TO nexus_reader;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
+        GRANT ALL ON upload_attribute_schema, uploads, column_mapping, sales_clean, quarantine, runs, feedback, eval_results TO nexus_writer;
+    END IF;
+END $$;

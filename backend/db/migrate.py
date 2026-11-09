@@ -35,6 +35,26 @@ def run_migrations() -> None:
     # Ensure user_data schema exists
     cur.execute("CREATE SCHEMA IF NOT EXISTS user_data;")
 
+    # Ensure nexus_reader and nexus_writer roles exist if permissions permit
+    reader_pass = os.environ.get("NEXUS_READER_PASSWORD") or os.environ.get("PGPASSWORD", "nexus_reader_pass")
+    writer_pass = os.environ.get("NEXUS_WRITER_PASSWORD") or os.environ.get("PGPASSWORD", "nexus_writer_pass")
+    try:
+        cur.execute(f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
+                    CREATE ROLE nexus_reader WITH LOGIN PASSWORD '{reader_pass}';
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
+                    CREATE ROLE nexus_writer WITH LOGIN PASSWORD '{writer_pass}';
+                END IF;
+            END
+            $$;
+        """)
+        print("Verified nexus_reader and nexus_writer roles.")
+    except Exception as exc:
+        print(f"Role creation check note: {exc}")
+
     # Track applied migrations
     cur.execute("""
         CREATE TABLE IF NOT EXISTS public.schema_migrations (

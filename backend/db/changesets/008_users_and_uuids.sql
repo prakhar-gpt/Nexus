@@ -280,17 +280,24 @@ BEGIN
     END IF;
 END $$;
 
-DROP POLICY IF EXISTS threads_reader_workspace ON threads;
-CREATE POLICY threads_reader_workspace ON threads
-    FOR SELECT TO nexus_reader
-    USING (workspace_id = (NULLIF(current_setting('app.workspace_id', true), ''))::uuid);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
+        DROP POLICY IF EXISTS threads_reader_workspace ON threads;
+        CREATE POLICY threads_reader_workspace ON threads
+            FOR SELECT TO nexus_reader
+            USING (workspace_id = (NULLIF(current_setting('app.workspace_id', true), ''))::uuid);
+    END IF;
 
-DROP POLICY IF EXISTS threads_writer_all ON threads;
-CREATE POLICY threads_writer_all ON threads
-    FOR ALL
-    TO nexus_writer
-    USING (true)
-    WITH CHECK (true);
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
+        DROP POLICY IF EXISTS threads_writer_all ON threads;
+        CREATE POLICY threads_writer_all ON threads
+            FOR ALL
+            TO nexus_writer
+            USING (true)
+            WITH CHECK (true);
+    END IF;
+END $$;
 
 -- 6. Grant permissions on users, workspace_members, sales_clean
 DO $$
