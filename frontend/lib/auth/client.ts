@@ -50,7 +50,11 @@ export const authClient = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     })
-    return handleAuthResponse<User>(res)
+    const user = await handleAuthResponse<User>(res)
+    if (typeof document !== "undefined") {
+      document.cookie = "nexus_session=1; path=/; max-age=1209600; SameSite=Lax"
+    }
+    return user
   },
 
   async signup(email: string, password: string, name: string): Promise<User> {
@@ -63,7 +67,11 @@ export const authClient = {
         name: name.trim(),
       }),
     })
-    return handleAuthResponse<User>(res)
+    const user = await handleAuthResponse<User>(res)
+    if (typeof document !== "undefined") {
+      document.cookie = "nexus_session=1; path=/; max-age=1209600; SameSite=Lax"
+    }
+    return user
   },
 
   async logout(): Promise<void> {

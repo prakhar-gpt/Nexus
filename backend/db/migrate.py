@@ -10,20 +10,25 @@ CHANGESETS_DIR = Path(__file__).resolve().parent / "changesets"
 
 
 def run_migrations() -> None:
-    host = os.environ.get("PGHOST", "localhost")
-    port = int(os.environ.get("PGPORT", "5432"))
-    dbname = os.environ.get("PGDATABASE", "nexus_db")
-    user = os.environ.get("PGUSER", "postgres")
-    password = os.environ.get("NEXUS_WRITER_PASSWORD") or os.environ.get("PGPASSWORD", "postgres")
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        print("Connecting to PostgreSQL via DATABASE_URL...")
+        conn = psycopg2.connect(db_url)
+    else:
+        host = os.environ.get("PGHOST", "localhost")
+        port = int(os.environ.get("PGPORT", "5432"))
+        dbname = os.environ.get("PGDATABASE", "nexus_db")
+        user = os.environ.get("PGUSER", "postgres")
+        password = os.environ.get("NEXUS_WRITER_PASSWORD") or os.environ.get("PGPASSWORD", "postgres")
 
-    print(f"Connecting to {dbname} on {host}:{port} as {user}...")
-    conn = psycopg2.connect(
-        dbname=dbname,
-        user=user,
-        password=password,
-        host=host,
-        port=port,
-    )
+        print(f"Connecting to {dbname} on {host}:{port} as {user}...")
+        conn = psycopg2.connect(
+            dbname=dbname,
+            user=user,
+            password=password,
+            host=host,
+            port=port,
+        )
     conn.autocommit = True
     cur = conn.cursor()
 
@@ -60,3 +65,4 @@ def run_migrations() -> None:
 
 if __name__ == "__main__":
     run_migrations()
+

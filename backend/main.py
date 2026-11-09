@@ -58,6 +58,11 @@ app.include_router(uploads_router)
 app.include_router(runs_router)
 app.include_router(users_router)
 
+
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok"}
+
 __all__ = [
     "app",
     "stream",

@@ -26,9 +26,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const u = await authClient.me()
       setUser(u)
       setStatus("authenticated")
+      if (typeof document !== "undefined") {
+        document.cookie = "nexus_session=1; path=/; max-age=1209600; SameSite=Lax"
+      }
     } catch {
       setUser(null)
       setStatus("unauthenticated")
+      if (typeof document !== "undefined") {
+        document.cookie = "nexus_session=; path=/; max-age=0; SameSite=Lax"
+      }
     }
   }, [])
 

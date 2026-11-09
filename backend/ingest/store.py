@@ -17,27 +17,29 @@ class StoreError(RuntimeError):
 
 
 def writer_password() -> str:
-    password = os.environ.get("NEXUS_WRITER_PASSWORD")
+    password = os.environ.get("NEXUS_WRITER_PASSWORD") or os.environ.get("PGPASSWORD")
     if password:
         return password
-    if not ENV_PATH.exists():
-        raise StoreError("NEXUS_WRITER_PASSWORD is not set.")
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-        if line.startswith("NEXUS_WRITER_PASSWORD="):
-            value = line.split("=", 1)[1].strip()
-            if value:
-                return value
-    raise StoreError("NEXUS_WRITER_PASSWORD is not set.")
+    if ENV_PATH.exists():
+        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+            if line.startswith("NEXUS_WRITER_PASSWORD="):
+                value = line.split("=", 1)[1].strip()
+                if value:
+                    return value
+    return "postgres"
 
 
 def get_writer_connection():
     """Return a psycopg2 connection authenticated as nexus_writer."""
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        return psycopg2.connect(db_url)
     return psycopg2.connect(
-        dbname=DATABASE,
-        user=WRITER_USER,
+        dbname=os.environ.get("PGDATABASE", DATABASE),
+        user=os.environ.get("PGUSER", WRITER_USER),
         password=writer_password(),
-        host="localhost",
-        port=5432,
+        host=os.environ.get("PGHOST", "localhost"),
+        port=int(os.environ.get("PGPORT", "5432")),
     )
 
 
