@@ -222,7 +222,9 @@ class Settings:
     # -----------------------------------------------------------------------
     # Database Runner & CLI Infrastructure
     # -----------------------------------------------------------------------
-    PSQL_PATH: str = field(default_factory=lambda: os.environ.get("PSQL_PATH", r"C:\Program Files\PostgreSQL\18\bin\psql.exe"))
+    PSQL_PATH: str = field(default_factory=lambda: os.environ.get("PSQL_PATH") or (import_shutil := __import__("shutil")).which("psql") or r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
+    PG_HOST: str = field(default_factory=lambda: _get_str("PGHOST", "localhost"))
+    PG_PORT: str = field(default_factory=lambda: _get_str("PGPORT", "5432"))
     PG_READER_USER: str = field(default_factory=lambda: os.environ.get("PG_READER_USER", "nexus_reader"))
     PG_DATABASE: str = field(default_factory=lambda: os.environ.get("PGDATABASE", "nexus_db"))
 
