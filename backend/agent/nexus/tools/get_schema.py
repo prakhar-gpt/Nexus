@@ -29,12 +29,12 @@ def get_schema() -> str:
     """See which canonical sales columns, capabilities, and dynamic attributes have values in this data room."""
 
 
-def execute_schema(workspace_id: int) -> str:
+def execute_schema(workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> str:
     """Inspect canonical columns, capabilities, and dynamic attributes for a workspace."""
     from agent.nexus.tools.run_sql import SqlRejected, execute_sql
 
     try:
-        rows = execute_sql(SCHEMA_SQL, workspace_id)
+        rows = execute_sql(SCHEMA_SQL, workspace_id, allowed_dataset_ids=allowed_dataset_ids)
     except SqlRejected as exc:
         return f"rejected: {exc}"
     if not rows:
@@ -78,13 +78,21 @@ def execute_schema(workspace_id: int) -> str:
                     sql_expr = f"(attributes->>'{k}')"
                 lines.append(f"  - {k} ({t}): exact SQL expression `{sql_expr}`, samples={samples}")
 
-    # List all approved custom datasets for this workspace
+    # List all approved custom datasets allowed for this workspace / thread
     try:
         from ingest.store import execute as store_execute
-        dataset_rows = store_execute(
+        sql = (
             f"SELECT id, table_name, table_label, grain, grain_key_columns, row_count "
-            f"FROM datasets WHERE workspace_id = {int(workspace_id)} ORDER BY id"
+            f"FROM datasets WHERE workspace_id = {int(workspace_id)}"
         )
+        if allowed_dataset_ids is not None:
+            if not allowed_dataset_ids:
+                dataset_rows = []
+            else:
+                id_list = ",".join(str(int(i)) for i in allowed_dataset_ids)
+                dataset_rows = store_execute(sql + f" AND id IN ({id_list}) ORDER BY id")
+        else:
+            dataset_rows = store_execute(sql + " ORDER BY id")
     except Exception:
         dataset_rows = []
 

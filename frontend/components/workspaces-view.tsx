@@ -82,100 +82,105 @@ export function WorkspacesView({
 
   const initials = session?.name
     ? session.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
-        .slice(0, 2)
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
     : "DA"
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
-      {/* Slim Top Row (56px, bottom hairline) */}
-      <header className="h-14 border-b border-border px-6 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold tracking-tight text-foreground select-none">
-            Nexus
-          </span>
-          <span className="hidden sm:inline text-xs text-muted-foreground border-l border-border pl-3 select-none">
-            Commercial due diligence & retail analytics
-          </span>
-        </div>
+      {/* Slim Top Row (56px, bottom hairline, sharing the exact 960px container) */}
+      <header className="h-14 border-b border-border shrink-0 w-full">
+        <div className="w-full max-w-[960px] mx-auto px-6 h-full flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold tracking-tight text-foreground select-none">
+              Nexus
+            </span>
+            <span className="hidden sm:inline text-xs text-muted-foreground border-l border-border pl-3 select-none">
+              Commercial due diligence & retail analytics
+            </span>
+          </div>
 
-        <div className="flex items-center gap-3">
-          {session ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                <div className="flex h-6 w-6 items-center justify-center bg-accent text-accent-foreground text-[10px] font-medium border border-border">
-                  {initials}
-                </div>
-                <span className="hidden md:inline font-normal">
-                  Signed in as <strong className="font-medium text-foreground">{session.name}</strong>
-                </span>
-              </DropdownMenuTrigger>
-
-              <DropdownMenuContent
-                align="end"
-                className="w-56 mt-1 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-none"
-              >
-                <DropdownMenuLabel className="font-normal px-2 py-1.5">
-                  <div className="flex flex-col gap-1">
-                    <p className="text-xs font-medium text-foreground">{session.name}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">{session.email}</p>
-                    <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                      {session.role}
-                    </span>
+          <div className="flex items-center gap-3">
+            {session ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                  <div className="flex h-6 w-6 items-center justify-center bg-accent text-accent-foreground text-[10px] font-medium border border-border">
+                    {initials}
                   </div>
-                </DropdownMenuLabel>
+                  <span className="hidden md:inline font-normal">
+                    Signed in as <strong className="font-medium text-foreground">{session.name}</strong>
+                  </span>
+                </DropdownMenuTrigger>
 
-                <DropdownMenuSeparator className="bg-border my-1" />
-
-                <DropdownMenuItem
-                  onClick={toggleTheme}
-                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
+                <DropdownMenuContent
+                  align="end"
+                  className="w-56 mt-1 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-none"
                 >
-                  <Sun className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Toggle theme</span>
-                </DropdownMenuItem>
+                  <DropdownMenuLabel className="font-normal px-2 py-1.5">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs font-medium text-foreground">{session.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{session.email}</p>
+                      <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+                        {session.role}
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
 
-                <DropdownMenuSeparator className="bg-border my-1" />
+                  <DropdownMenuSeparator className="bg-border my-1" />
 
-                <DropdownMenuItem
-                  onClick={handleSignOut}
-                  className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Link
-              href="/login"
-              className={buttonVariants({ variant: "ghost", size: "sm", className: "h-8 text-xs text-muted-foreground hover:text-foreground" })}
-            >
-              Sign in
-            </Link>
-          )}
+                  <DropdownMenuItem
+                    onClick={toggleTheme}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
+                  >
+                    <Sun className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Toggle theme</span>
+                  </DropdownMenuItem>
 
-          <Link
-            href="/rooms/new"
-            className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium" })}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            <span>New data room</span>
-          </Link>
+                  <DropdownMenuSeparator className="bg-border my-1" />
+
+                  <DropdownMenuItem
+                    onClick={handleSignOut}
+                    className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link
+                href="/login"
+                className={buttonVariants({ variant: "ghost", size: "sm", className: "h-8 text-xs text-muted-foreground hover:text-foreground" })}
+              >
+                Sign in
+              </Link>
+            )}
+
+            {/* Exactly one primary action: show in header only when data rooms exist */}
+            {!loading && workspaces.length > 0 && (
+              <Link
+                href="/rooms/new"
+                className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium" })}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                <span>New data room</span>
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Main Hub Body (max 960px centered) */}
+      {/* Main Hub Body (max 960px centered, shares left edge with header) */}
       <main className="w-full max-w-[960px] mx-auto px-6 py-10 flex-1 flex flex-col">
         <div>
           <h1 className="text-[28px] font-semibold leading-tight text-foreground tracking-tight">
             Data rooms
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Isolated workspaces for querying sales data, inspecting SQL, and chatting with the copilot.
+            Isolated data rooms for your diligence spreadsheets. Add a spreadsheet, ask questions, and see the query behind every answer.
           </p>
         </div>
 
@@ -220,18 +225,20 @@ export function WorkspacesView({
           </div>
         ) : null}
 
-        {/* Empty State: one centered block, no illustration */}
+        {/* Empty State: dashed-border panel directly under heading, left-aligned */}
         {!loading && !error && workspaces.length === 0 ? (
-          <div className="my-auto py-16 flex flex-col items-center justify-center text-center max-w-sm mx-auto">
-            <h2 className="text-base font-medium text-foreground">
-              No data rooms yet
-            </h2>
-            <p className="text-xs text-muted-foreground mt-1 mb-4">
-              Create an isolated workspace to upload diligence spreadsheets and run SQL queries.
-            </p>
+          <div className="mt-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-dashed border-border bg-card p-5">
+            <div className="flex flex-col gap-1 text-left">
+              <h2 className="text-xs font-medium text-foreground">
+                No data rooms yet
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Create a data room, add a spreadsheet, and ask questions in plain English.
+              </p>
+            </div>
             <Link
               href="/rooms/new"
-              className={buttonVariants({ size: "sm", className: "h-8 px-4 text-xs font-medium" })}
+              className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium shrink-0" })}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
               <span>New data room</span>
@@ -254,7 +261,7 @@ export function WorkspacesView({
                 New data room
               </span>
               <span className="text-[11px] text-muted-foreground mt-0.5">
-                Upload and isolate sales data
+                Add a new data room
               </span>
             </Link>
 
@@ -269,9 +276,8 @@ export function WorkspacesView({
                   key={ws.id}
                   href={`/rooms/${ws.id}`}
                   prefetch={true}
-                  className={`group relative flex flex-col justify-between min-h-[170px] p-5 border bg-card cursor-pointer outline-none transition-colors hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring ${
-                    isActive ? "border-foreground/40" : "border-border"
-                  }`}
+                  className={`group relative flex flex-col justify-between min-h-[170px] p-5 border bg-card cursor-pointer outline-none transition-colors hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring ${isActive ? "border-foreground/40" : "border-border"
+                    }`}
                 >
                   <div>
                     {/* Top row */}
@@ -313,12 +319,12 @@ export function WorkspacesView({
                       <span className="flex items-center gap-1">
                         <FileSpreadsheet className="h-3.5 w-3.5" />
                         <span>
-                          {uploadCount} {uploadCount === 1 ? "file" : "files"}
+                          {uploadCount} {uploadCount === 1 ? "dataset" : "datasets"}
                         </span>
                       </span>
                       <span>·</span>
                       <span>
-                        {runCount} {runCount === 1 ? "query" : "queries"}
+                        {runCount} {runCount === 1 ? "chat" : "chats"}
                       </span>
                     </div>
                   </div>
@@ -352,7 +358,7 @@ export function WorkspacesView({
           }
         }}
         title={`Delete "${workspaceToDelete?.name}"?`}
-        description="All uploaded spreadsheets and runs will be archived."
+        description="All datasets and chats in this data room will be permanently removed."
         confirmText="Delete"
       />
     </div>

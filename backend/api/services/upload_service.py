@@ -665,13 +665,6 @@ def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_call
         )
         proposal_dict = proposal_obj.model_dump()
 
-        # Audit run in unified runs table
-        execute(
-            "INSERT INTO runs (workspace_id, upload_id, agent_kind, question, plan, answer, latency_ms, model) "
-            f"VALUES ({int(workspace_id)}, {int(upload_id)}, 'nexus', 'Schema Analysis', "
-            f"{sql_literal(json.dumps(tool_calls))}, {sql_literal(json.dumps(proposal_dict))}, {lat}, {sql_literal(model_id)})"
-        )
-
     execute(
         f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_dict))}::jsonb, "
         f"status = 'needs_schema_review' WHERE id = {int(upload_id)}"
@@ -835,6 +828,21 @@ def approve_upload_schema(upload_id: int, background: BackgroundTasks | None = N
 
     execute(f"UPDATE uploads SET status = 'loaded' WHERE id = {int(upload_id)}")
 
+    # Auto-check newly approved dataset in active thread if one exists
+    new_ds_row = execute(f"SELECT id FROM datasets WHERE upload_id = {int(upload_id)}")
+    if new_ds_row:
+        new_ds_id = int(new_ds_row[0]["id"])
+        latest_thread = execute(
+            f"SELECT id FROM threads WHERE workspace_id = {int(upload['workspace_id'])} ORDER BY updated_at DESC LIMIT 1"
+        )
+        if latest_thread:
+            t_id = latest_thread[0]["id"]
+            execute(
+                f"UPDATE threads SET selected_dataset_ids = array_append(selected_dataset_ids, {new_ds_id}), updated_at = now() "
+                f"WHERE workspace_id = {int(upload['workspace_id'])} AND id = {sql_literal(t_id)} "
+                f"AND NOT ({new_ds_id} = ANY(selected_dataset_ids))"
+            )
+
     questions = _generate_suggested_questions(proposal)
 
     # Emit handoff BEFORE done so frontend receives it in stream order
@@ -918,9 +926,6 @@ def regenerate_upload_schema(upload_id: int, user_hint: str | None = None) -> di
     proposal_dict = proposal_obj.model_dump()
 
     execute(
-        "INSERT INTO runs (upload_id, workspace_id, agent_kind, question, plan, answer, latency_ms, model) "
-        f"VALUES ({int(upload_id)}, {int(upload['workspace_id'])}, 'nexus', 'Schema Analysis', "
-        f"{sql_literal(json.dumps(tool_calls))}, {sql_literal(json.dumps(proposal_dict))}, {lat}, {sql_literal(model_id)});\n"
         f"UPDATE uploads SET schema_proposal = {sql_literal(json.dumps(proposal_dict))}::jsonb WHERE id = {int(upload_id)};"
     )
 

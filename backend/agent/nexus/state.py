@@ -40,6 +40,7 @@ class AgentState(TypedDict, total=False):
     python_rows: list  # results from run_python: [{"label": str, "value": float}]
     sql_results: dict  # results by id or alias: {"sql_1": [...], ...}
     tools_used: list  # list of tool names called this turn: ["run_sql", "run_python"]
+    allowed_dataset_ids: list[int] | None  # filtered datasets allowed for this thread
 
 
 def format_status_line(name: str, status: str) -> str:

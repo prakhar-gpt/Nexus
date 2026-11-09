@@ -71,9 +71,9 @@ learned something non-obvious:
 3. Cross-link, don't duplicate — link to the detailed file rather
    than re-explaining inline.
 
-4. Verify all tests pass:
-   - `pytest backend/tests` (all unit & integration tests)
-   - `python backend/eval/runner.py` (30-question golden set)
+4. Test & Verification Execution (User-Driven Only):
+   - Do NOT run tests, typecheck, lint, or eval runner autonomously. Note what commands the user should run to verify.
+   - Run tests only when the user explicitly requests it.
 
 5. Give the user a one-line summary of exactly what was added or
    changed in `context/` so they can verify without opening files.

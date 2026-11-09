@@ -113,15 +113,19 @@ def _check_ast(cleaned_sql: str) -> None:
                         )
 
 
-def get_allowed_tables(workspace_id: int | None = None) -> set[str]:
+def get_allowed_tables(workspace_id: int | None = None, allowed_dataset_ids: list[int] | None = None) -> set[str]:
     """Fetch allowed query tables: sales_clean + registered workspace tables in datasets catalog."""
     allowed = {"sales_clean"}
     if workspace_id is not None:
         try:
             from ingest.store import execute as store_execute
-            rows = store_execute(
-                f"SELECT table_name FROM datasets WHERE workspace_id = {int(workspace_id)}"
-            )
+            sql = f"SELECT id, table_name FROM datasets WHERE workspace_id = {int(workspace_id)}"
+            if allowed_dataset_ids is not None:
+                if not allowed_dataset_ids:
+                    return allowed  # only sales_clean if no custom datasets checked
+                id_str = ",".join(str(int(i)) for i in allowed_dataset_ids)
+                sql += f" AND id IN ({id_str})"
+            rows = store_execute(sql)
             for r in rows:
                 if r.get("table_name"):
                     allowed.add(r["table_name"].lower())
@@ -130,7 +134,7 @@ def get_allowed_tables(workspace_id: int | None = None) -> set[str]:
     return allowed
 
 
-def guard_sql(sql: str, workspace_id: int | None = None) -> str:
+def guard_sql(sql: str, workspace_id: int | None = None, allowed_dataset_ids: list[int] | None = None) -> str:
     """Validate that query is a single, safe SELECT query against allowed tables without aggregate arithmetic or joins."""
     if sql is None or not str(sql).strip():
         raise SqlRejected("SQL is empty.")
@@ -158,13 +162,16 @@ def guard_sql(sql: str, workspace_id: int | None = None) -> str:
 
     stripped = _EXTRACT_FROM.sub("", masked)
     ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(stripped)}
-    allowed_tables = get_allowed_tables(workspace_id)
+    all_workspace_tables = get_allowed_tables(workspace_id, allowed_dataset_ids=None)
+    allowed_tables = get_allowed_tables(workspace_id, allowed_dataset_ids=allowed_dataset_ids)
     allowed = ctes | allowed_tables
 
     referenced_tables: list[str] = []
     for match in _RELATION.finditer(stripped):
         relation = match.group(1).lower()
         if relation not in allowed:
+            if relation in all_workspace_tables:
+                raise SqlRejected("That dataset is not enabled for this chat")
             raise SqlRejected(f"Table '{relation}' is not accessible or does not exist.")
         if relation not in ctes:
             referenced_tables.append(relation)
@@ -180,13 +187,13 @@ def guard_sql(sql: str, workspace_id: int | None = None) -> str:
 # Execution Handlers
 # ---------------------------------------------------------------------------
 
-def execute_sql(sql: str, workspace_id: int) -> list[dict[str, str]]:
+def execute_sql(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> list[dict[str, str]]:
     """Execute raw SQL under reader role with RLS local isolation."""
     if isinstance(workspace_id, bool) or not isinstance(workspace_id, int):
         raise SqlRejected("workspace_id must be an integer.")
     if workspace_id < 1:
         raise SqlRejected("workspace_id must be positive.")
-    cleaned = guard_sql(sql, workspace_id=workspace_id)
+    cleaned = guard_sql(sql, workspace_id=workspace_id, allowed_dataset_ids=allowed_dataset_ids)
     script = f"""
     BEGIN;
     SET LOCAL app.workspace_id = '{workspace_id}';
@@ -216,13 +223,13 @@ def execute_sql(sql: str, workspace_id: int) -> list[dict[str, str]]:
 run_sql = execute_sql
 
 
-def execute_query(sql: str, workspace_id: int) -> tuple[str, list[dict], str | None]:
+def execute_query(sql: str, workspace_id: int, allowed_dataset_ids: list[int] | None = None) -> tuple[str, list[dict], str | None]:
     """Execute a read-only query and return prompt preview, raw rows, and validated SQL."""
     text = str(sql or "").strip()
     if not text:
         return "rejected: sql is empty", [], None
     try:
-        rows = execute_sql(text, workspace_id)
+        rows = execute_sql(text, workspace_id, allowed_dataset_ids=allowed_dataset_ids)
     except SqlRejected as exc:
         return f"rejected: {exc}", [], None
     if not rows:

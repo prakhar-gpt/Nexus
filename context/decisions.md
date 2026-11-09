@@ -221,3 +221,25 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
     6. **Friendly Dataset Labeling & Commercial Question Suggestions**: Replaced raw internal relation names (e.g. `ds_776`) with friendly dataset labels (e.g. `Superstore`). Re-classified non-measures in `backend/agent/architect/nodes.py` (columns with `code`, `zip`, `postal`, `phone`, `id`, `nbr` are classified as `identifier` or `dimension`, never as `measure`). Implemented retail-prioritized question suggestions (`_generate_suggested_questions`) prioritizing commercial metrics (`revenue`, `sales`, `profit`, `quantity`) and core retail dimensions (`category`, `segment`, `region`), generating defensible commercial due diligence inquiries instead of mathematical aggregations on postal codes.
   * *Rejected:* Unstyled browser dropdowns; cluttered multi-line step stacking with green checkmarks; displaying internal SQL table names (`ds_*`) to end users; naive random question heuristics that average zip codes.
   * *Files affected:* `frontend/components/schema-architect-card.tsx`, `frontend/components/agent-steps.tsx`, `frontend/components/ui/scroll-area.tsx`, `frontend/components/ui/table.tsx`, `frontend/app/globals.css`, `frontend/lib/chat-store.tsx`, `frontend/components/dashboard.tsx`, `backend/agent/architect/nodes.py`, `backend/agent/architect/graph.py`, `backend/api/services/upload_service.py`, `backend/tests/test_ingest.py`.
+
+* **Decision 51 (2026-11-09):** Generalization of Data Rooms Page Rules into Design Language and View Alignment.
+  * *Reason:*
+    1. **One Shared Container & Left Edge Alignment**: Updated `context/design-language.md` and `frontend/components/workspaces-view.tsx` so the header, page heading, and body share the identical container (`w-full max-w-[960px] mx-auto px-6`) and left edge, verified across 1920, 1280, and 390px viewports. Never give the header and body different container widths.
+    2. **One Primary Action per View**: When a view is empty, the empty-state button is the primary action and the header button is hidden; when content exists, the action moves to the header. Never show two identical primary buttons.
+    3. **Left-Aligned Empty State**: Eliminated viewport vertical centering (`my-auto py-16`) and mixed centered alignment. Empty states sit directly under the page heading (`mt-8`) using the left-aligned dashed-border panel pattern (`border border-dashed border-border bg-card p-5`).
+    4. **Strict Naming & Copy Standards**: Enforced plain English without implementation jargon (e.g., describing actions as "add a spreadsheet, ask questions" rather than "run SQL queries"). Standardized on the three user-facing nouns: **data room**, **dataset**, and **chat**, eliminating internal synonyms (`workspace`, `thread`, `table`, `upload`). Subtitle, empty title, and empty text updated to canonical strings.
+    5. **Dev-Only Artifact Disablement**: Disabled Next.js framework dev indicators (`devIndicators: false` in `next.config.ts`) so framework badges never obstruct UI elements in development.
+    6. **Pre-Merge UI Review Checklist**: Added a 13-point pre-merge checklist in `context/design-language.md`.
+  * *Rejected:* Full-width headers with mismatched left margins; duplicate primary buttons on empty states; vertically centered empty screens with implementation jargon; leaving dev badges active.
+  * *Files affected:* `context/design-language.md`, `frontend/components/workspaces-view.tsx`, `frontend/next.config.ts`, `context/active-context.md`, `context/decisions.md`.
+
+* **Decision 52 (2026-11-09):** Standing Rule: Prohibit autonomous test, typecheck, lint, build, server, or eval execution.
+  * *Reason:*
+    1. Overrides all previous protocols that mandated running tests after every stage or turn.
+    2. The agent must never autonomously execute `pytest`, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, or manual checklist walkthroughs.
+    3. The agent must not start dev servers, take screenshots, or open browsers unless explicitly requested by the user.
+    4. Code and tests may still be authored or updated; only execution is restricted to explicit user command.
+    5. Commands are executed only when the user explicitly instructs (e.g. "run the tests"), and permissions apply strictly to that single request. Changes remain uncommitted unless commit is explicitly requested.
+    6. All completion reports conclude with a single-line summary of what the user should run to verify.
+  * *Rejected:* Automatic test execution on every edit; background server launches; unsolicited git commits.
+  * *Files affected:* `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `context/active-context.md`, `context/decisions.md`.

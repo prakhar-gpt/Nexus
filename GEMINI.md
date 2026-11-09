@@ -19,9 +19,15 @@ Whenever a new chat session begins or you receive a new user request:
    - `backend/tests/`: Consolidated pytest suite (`pytest backend/tests`).
    - `context/`: Project memory and architectural decision logs.
 
-## CORE PRINCIPLES
+## CORE PRINCIPLES & STANDING RULES
 - **No Mental Arithmetic**: Every commercial number must come from `run_sql` or `run_python` outputs verified by `checker.py`.
 - **Database Isolation**: Queries are SELECT-only under non-superuser `nexus_reader` with RLS (`app.workspace_id`), 5s timeout, and 25-row preview cap.
 - **Python Sandbox**: Code executed via `run_python` is pre-normalized via `clean_code()` to strip code fences and flatten whitespace, then run in a networkless, memory-capped subprocess.
-- **Verification Mandatory**: Always run `pytest backend/tests` and `python backend/eval/runner.py` before completing turns.
+- **Standing Rule: No Autonomous Test/Build/Server Execution**:
+  1. Do NOT run `pytest`, the backend suite, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, dev servers, or manual-checklist walkthroughs unless explicitly instructed.
+  2. Write/update code and test files, then stop. Keep reports concise (files added, changed, dead code, assumptions, unfinished items).
+  3. End every report with one line specifying what the user should run to verify (e.g. "To verify: pytest backend/tests, npm run typecheck --prefix frontend"). Do not run them.
+  4. Flag suspected breakage in one line without running commands to check.
+  5. Permission to run a command applies only to the specific request where asked, never standing.
+  6. Commit only when explicitly requested. Otherwise leave changes uncommitted.
 

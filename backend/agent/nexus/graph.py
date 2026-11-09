@@ -73,10 +73,13 @@ class Agent:
 
         self.graph = workflow.compile(checkpointer=MemorySaver())
 
-    def _prepare(self, question: str, workspace_id: int, thread_id: str | None, history):
+    def _prepare(self, question: str, workspace_id: int, thread_id: str | None, history, allowed_dataset_ids: list[int] | None = None):
         effective_thread = thread_id.strip() if thread_id else "default"
         config = {
-            "configurable": {"thread_id": f"ws-{int(workspace_id)}-thread-{effective_thread}"},
+            "configurable": {
+                "thread_id": f"ws-{int(workspace_id)}-thread-{effective_thread}",
+                "allowed_dataset_ids": allowed_dataset_ids,
+            },
             "recursion_limit": 30,
         }
         try:
@@ -93,6 +96,7 @@ class Agent:
         payload = {
             "messages": incoming,
             "workspace_id": int(workspace_id),
+            "allowed_dataset_ids": allowed_dataset_ids,
             "rows": [],
             "sqls": [],
             "steps": [],
@@ -119,17 +123,17 @@ class Agent:
             "model": self.model_name,
         }
 
-    def ask(self, question: str, workspace_id: int, *, thread_id: str | None = None, history=None) -> dict:
+    def ask(self, question: str, workspace_id: int, *, thread_id: str | None = None, history=None, allowed_dataset_ids: list[int] | None = None) -> dict:
         """Run the complete agent graph and return the audited final result."""
         started = time.perf_counter()
-        config, payload = self._prepare(question, workspace_id, thread_id, history)
+        config, payload = self._prepare(question, workspace_id, thread_id, history, allowed_dataset_ids=allowed_dataset_ids)
         values = self.graph.invoke(payload, config)
         return self._result(values, started)
 
-    def watch(self, question: str, workspace_id: int, *, thread_id: str | None = None, history=None):
+    def watch(self, question: str, workspace_id: int, *, thread_id: str | None = None, history=None, allowed_dataset_ids: list[int] | None = None):
         """Yield tool lines and answer tokens as they happen, then the finished result."""
         started = time.perf_counter()
-        config, payload = self._prepare(question, workspace_id, thread_id, history)
+        config, payload = self._prepare(question, workspace_id, thread_id, history, allowed_dataset_ids=allowed_dataset_ids)
         saw_token = False
 
         try:

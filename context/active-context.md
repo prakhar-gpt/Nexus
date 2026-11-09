@@ -1,5 +1,11 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T05:47:00+05:30
+Updated At: 2026-11-09T06:05:00+05:30
+
+### Standing Operational Rule: Autonomous Test & Build Execution Prohibited
+- **Zero Autonomous Test/Build/Server Execution**: Do NOT run `pytest`, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, or manual checklist walkthroughs unless explicitly instructed by the user. Do not start dev servers, take screenshots, or open browsers.
+- **Reporting Protocol**: Write code, stop, and keep the report concise (files added, files changed, dead code, assumptions, unfinished items). Flag suspected breakages in one line without running commands. End every report with one line specifying the exact commands for the user to verify (e.g. `To verify: pytest backend/tests, npm run typecheck --prefix frontend`).
+- **Tests Allowed to be Written**: Creating or updating test files is permitted; executing them is strictly prohibited unless asked.
+- **Explicit Instruction Only**: Permission to run any test/build/script applies strictly to the single request where granted and is never standing. Commit only when requested.
 
 Nexus is organized with a clean, senior-engineer root layout:
 - `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette). Completely in-chat dataset upload and schema review.
@@ -8,6 +14,7 @@ Nexus is organized with a clean, senior-engineer root layout:
 - `datasets/`: Public & synthetic datasets (`datasets/Superstore/Superstore.csv`).
 
 ### Current Active State & Refactors Completed
+- **Design Language Modernization & Data Rooms View Alignment (Decision 51)**: Baked general layout, shared container alignment (960px, identical left edge), single primary action per view, dashed empty-state panel, plain English copy rules, strict naming hierarchy, Next.js dev indicator disablement (`devIndicators: false`), and pre-merge UI checklist into `context/design-language.md` and updated `frontend/components/workspaces-view.tsx`.
 - **Elimination of Hash Dataset Labels (Original File Name Fidelity)**:
   - Fixed root cause where `_init_schema_proposal` previously inspected `path.stem` from the disk storage cache (which saves uploaded files by sha256 digest e.g. `dbb0f167b27ccf02.csv`), converting it to title-cased hashes like `Dbb0F167B27Ccf02`.
   - Replaced disk path stems with `original_name` from the `uploads` table across `_init_schema_proposal`, `approve_upload_schema`, and `create_and_load_custom_table` (e.g. `Superstore.csv` -> `Superstore`).

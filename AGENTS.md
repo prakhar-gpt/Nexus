@@ -40,10 +40,17 @@ Whenever a new chat session is invoked, you MUST execute this protocol before wr
 - **Python Tool Robustness**: Code passed to `run_python` is normalized with `clean_code()` to eliminate leading indentation errors and code fences before AST checking, running in an isolated OS subprocess (no network, 10s timeout, 256MB cap).
 - **Audit Trail Persistence**: Every chat turn preserves the full execution audit trail (tool calls, durations, statuses, queries, outputs) in PostgreSQL `runs` and hydrates on workspace reload.
 
-## VERIFICATION PROTOCOL
-Before completing any task, always run and verify:
-1. `pytest backend/tests` (Must pass 30/30).
-2. `python backend/eval/runner.py` (Must pass 100% sql correctness, 100% numeric faithfulness, 100% refusal accuracy).
-3. If frontend files were modified: `npm.cmd run typecheck --prefix frontend` (0 errors).
-4. Update `context/active-context.md` and append any architectural decision to `context/decisions.md`.
+## OPERATIONAL PROTOCOL & STANDING EXECUTION RULES
+**Standing Rule — Do NOT run tests, typecheck, lint, build commands, or the eval runner unless explicitly requested by the user.**
+This applies to all tasks, including UI-only changes, and overrides any previous "run tests after each stage" or "run typecheck, lint, and tests" instructions in earlier prompts, plans, or docs.
+
+1. **No Autonomous Test or Build Execution**: Do NOT run `pytest`, the backend suite, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, or manual-checklist walkthroughs on your own.
+2. **No Autonomous Server or Browser Launch**: Do not start dev servers, take screenshots, or open a browser to verify unless explicitly asked.
+3. **Execution Scope**: Write the code, then stop. Keep reports concise: files added, files changed, dead code, assumptions, anything unfinished.
+4. **Writing Tests Allowed**: You may still WRITE or UPDATE test files when the task calls for them. Just do not execute them.
+5. **Report Ending Requirement**: End every report with one line listing what the user should run to verify, e.g.: "To verify: `pytest backend/tests`, `npm run typecheck --prefix frontend`." Do not run them.
+6. **Risk Flagging**: If you believe something is likely broken (a changed signature, a migration that could fail, an unresolved type), state it in the report in one line. Do not run commands to confirm it.
+7. **Static Reads Permitted**: Opening files, searching code, and reading logs pasted by the user are fully permitted. Running commands that execute project code or modify state (tests, migrations, scripts, servers) requires explicit user instruction.
+8. **Explicit Command Invocations**: When the user says "run the tests" (or names a command), run exactly that and report the result. The permission applies to that specific request only and is not standing.
+9. **No Autonomous Commits**: Commit after a stage only if the user explicitly asked to commit. Otherwise leave changes uncommitted.
 

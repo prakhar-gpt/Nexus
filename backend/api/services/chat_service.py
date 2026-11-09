@@ -88,17 +88,26 @@ def export_result_csv(run_id: int) -> Response:
     )
 
 
-def generate_chat_events(workspace_id: int, question: str, stream_func, thread_id: str = "default"):
+def generate_chat_events(
+    workspace_id: int,
+    question: str,
+    stream_func,
+    thread_id: str = "default",
+    allowed_dataset_ids: list[int] | None = None,
+):
     """Generator yielding formatted Server-Sent Events from the agent stream."""
     result = None
     clean_thread = (thread_id or "default").strip()
     try:
-        # Pass thread_id to the agent stream function if accepted, otherwise fall back cleanly
-        stream_kwargs = {"thread_id": clean_thread}
+        # Pass thread_id and allowed_dataset_ids to the agent stream function
+        stream_kwargs = {"thread_id": clean_thread, "allowed_dataset_ids": allowed_dataset_ids}
         try:
             stream_iter = stream_func(question, workspace_id, **stream_kwargs)
         except TypeError:
-            stream_iter = stream_func(question, workspace_id)
+            try:
+                stream_iter = stream_func(question, workspace_id, thread_id=clean_thread)
+            except TypeError:
+                stream_iter = stream_func(question, workspace_id)
 
         for kind, payload in stream_iter:
             if kind == "step" and isinstance(payload, dict):
