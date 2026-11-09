@@ -51,7 +51,10 @@ export const authClient = {
       body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
     })
     const user = await handleAuthResponse<User>(res)
-    if (typeof document !== "undefined") {
+    if (typeof window !== "undefined") {
+      if (user?.token) {
+        localStorage.setItem("nexus_token", user.token)
+      }
       document.cookie = "nexus_session=1; path=/; max-age=1209600; SameSite=Lax"
     }
     return user
@@ -68,7 +71,10 @@ export const authClient = {
       }),
     })
     const user = await handleAuthResponse<User>(res)
-    if (typeof document !== "undefined") {
+    if (typeof window !== "undefined") {
+      if (user?.token) {
+        localStorage.setItem("nexus_token", user.token)
+      }
       document.cookie = "nexus_session=1; path=/; max-age=1209600; SameSite=Lax"
     }
     return user
@@ -80,7 +86,8 @@ export const authClient = {
         method: "POST",
       })
     } finally {
-      if (typeof document !== "undefined") {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("nexus_token")
         document.cookie = "nexus_session=; path=/; max-age=0; SameSite=Lax"
       }
     }

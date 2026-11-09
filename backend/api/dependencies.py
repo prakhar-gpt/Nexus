@@ -28,6 +28,12 @@ def get_current_user(
     token = nexus_session
     if not token and authorization and authorization.startswith("Bearer "):
         token = authorization[7:].strip()
+    if not token:
+        token = (
+            request.query_params.get("token")
+            or request.query_params.get("session")
+            or request.query_params.get("access_token")
+        )
 
     if not token:
         raise HTTPException(

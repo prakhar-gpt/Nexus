@@ -743,7 +743,11 @@ export function Dashboard() {
   }
 
   function listenToUpload(uploadId: number, messageId?: string) {
-    const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`, { withCredentials: true })
+    const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
+    const eventsUrl = token
+      ? `${API_URL}/uploads/${uploadId}/events?token=${encodeURIComponent(token)}`
+      : `${API_URL}/uploads/${uploadId}/events`
+    const source = new EventSource(eventsUrl, { withCredentials: true })
     source.onmessage = async (event) => {
       const payload = readEvent<{
         // legacy stage events

@@ -101,13 +101,18 @@ export function registerUnauthorizedCleanup(fn: () => void): () => void {
  * Automatically ensures credentials: "include" and custom state-changing headers.
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
+
+  const mergedHeaders: Record<string, string> = {
+    "X-Requested-With": "XMLHttpRequest",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init?.headers as Record<string, string>) || {}),
+  }
+
   const mergedInit: RequestInit = {
     ...init,
     credentials: init?.credentials || "include",
-    headers: {
-      "X-Requested-With": "XMLHttpRequest",
-      ...(init?.headers || {}),
-    },
+    headers: mergedHeaders,
   }
 
   const response = await fetch(input, mergedInit)
@@ -117,6 +122,7 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
       try {
         localStorage.removeItem("nexus_session")
         localStorage.removeItem("nexus_user")
+        localStorage.removeItem("nexus_token")
         document.cookie = "nexus_session=; path=/; max-age=0; SameSite=Lax"
       } catch {}
 

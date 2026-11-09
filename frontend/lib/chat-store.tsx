@@ -522,7 +522,11 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         }))
 
         // Listen to live SSE upload events with credentials for authenticated session cookies
-        const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`, { withCredentials: true })
+        const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
+        const eventsUrl = token
+          ? `${API_URL}/uploads/${uploadId}/events?token=${encodeURIComponent(token)}`
+          : `${API_URL}/uploads/${uploadId}/events`
+        const source = new EventSource(eventsUrl, { withCredentials: true })
 
         const handleSseMessage = async (evt: MessageEvent) => {
           if (!evt.data) return
@@ -923,7 +927,11 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       notifyKey(key)
 
       if (upload.status !== "needs_schema_review" && upload.status !== "loaded" && upload.status !== "rejected") {
-        const source = new EventSource(`${API_URL}/uploads/${upload.id}/events`, { withCredentials: true })
+        const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
+        const eventsUrl = token
+          ? `${API_URL}/uploads/${upload.id}/events?token=${encodeURIComponent(token)}`
+          : `${API_URL}/uploads/${upload.id}/events`
+        const source = new EventSource(eventsUrl, { withCredentials: true })
         source.onmessage = async (evt: MessageEvent) => {
           if (!evt.data) return
           let payload: any = {}

@@ -4,6 +4,7 @@ export interface User {
   name: string
   role: string
   createdAt?: string
+  token?: string
 }
 
 export type Session = User

@@ -44,6 +44,7 @@ class UserProfileResponse(BaseModel):
     name: str
     role: str
     created_at: str
+    token: str | None = None
 
 
 class SessionInfoResponse(BaseModel):
@@ -91,6 +92,7 @@ def signup_endpoint(body: SignupRequest, request: Request, response: Response):
         name=user.name,
         role=user.role,
         created_at=user.created_at.isoformat() if user.created_at else "",
+        token=raw_token,
     )
 
 
@@ -107,6 +109,7 @@ def login_endpoint(body: LoginRequest, request: Request, response: Response):
         name=user.name,
         role=user.role,
         created_at=user.created_at.isoformat() if user.created_at else "",
+        token=raw_token,
     )
 
 
@@ -115,9 +118,12 @@ def logout_endpoint(
     request: Request,
     response: Response,
     nexus_session: str | None = Cookie(default=None, alias=settings.SESSION_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ):
     """Revoke active session and delete session cookie."""
     token = nexus_session or request.cookies.get(settings.SESSION_COOKIE_NAME)
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization[7:].strip()
     logout_user(token)
     response.delete_cookie(
         key=settings.SESSION_COOKIE_NAME,
