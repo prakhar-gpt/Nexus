@@ -65,7 +65,7 @@ export function AuthForm({ mode, embedded = false }: AuthFormProps) {
     setIsSubmitting(true)
     try {
       if (activeMode === "login") await signIn(email.trim(), password)
-      else await signUp(name.trim(), email.trim(), password)
+      else await signUp(email.trim(), password, name.trim())
       router.push(targetRedirect)
     } catch (err: any) {
       if (err instanceof AuthError) {
