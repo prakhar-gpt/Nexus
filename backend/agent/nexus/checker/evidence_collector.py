@@ -7,9 +7,9 @@ import re
 from decimal import Decimal
 from sqlalchemy import select
 
-from agent.nexus.extraction import normalize_raw_number
-from agent.nexus.matching import match_target_value
-from agent.nexus.provenance import EvidenceRecord, derive_column_kind
+from agent.nexus.checker.extraction import normalize_raw_number
+from agent.nexus.checker.matching import match_target_value
+from agent.nexus.checker.provenance import EvidenceRecord, derive_column_kind
 
 
 def lookup_table_metadata(

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 from agent.nexus.checker import check_answer
-from agent.nexus.extraction import extract_numbers, is_contextual_year, normalize_raw_number
-from agent.nexus.normalization import normalize_text, strip_fenced_code_blocks
+from agent.nexus.checker.extraction import extract_numbers, is_contextual_year, normalize_raw_number
+from agent.nexus.checker.normalization import normalize_text, strip_fenced_code_blocks
 
 
 # ---------------------------------------------------------------------------

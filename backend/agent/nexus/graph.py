@@ -77,8 +77,8 @@ class Agent:
 
         serde = JsonPlusSerializer(
             allowed_msgpack_modules=[
-                ("agent.nexus.provenance", "EvidenceRecord"),
-                ("agent.nexus.provenance", "ClaimProvenance"),
+                ("agent.nexus.checker.provenance", "EvidenceRecord"),
+                ("agent.nexus.checker.provenance", "ClaimProvenance"),
             ]
         )
         self.graph = workflow.compile(checkpointer=MemorySaver(serde=serde))

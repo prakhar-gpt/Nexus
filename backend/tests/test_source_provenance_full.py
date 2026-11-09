@@ -7,17 +7,15 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from agent.nexus.checker import check_answer
-from agent.nexus.evidence_collector import (
-    collect_python_evidence,
-    collect_sql_evidence,
-    extract_python_input_lineage,
-)
-from agent.nexus.provenance import (
+from agent.nexus.checker import (
     ClaimProvenance,
     EvidenceRecord,
     bind_claim,
+    check_answer,
     check_truncation_caveat,
+    collect_python_evidence,
+    collect_sql_evidence,
+    extract_python_input_lineage,
 )
 from agent.nexus.tools.run_sql import guard_sql
 from api.services.provenance_service import (

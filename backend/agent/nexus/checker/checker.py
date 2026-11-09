@@ -6,15 +6,15 @@ import re
 import time
 from decimal import Decimal
 
-from agent.nexus.extraction import (
+from agent.nexus.checker.extraction import (
     _NUMBER,
     extract_numbers,
     is_contextual_year,
     is_exempt_number,
     normalize_raw_number,
 )
-from agent.nexus.normalization import normalize_text, strip_fenced_code_blocks
-from agent.nexus.provenance import (
+from agent.nexus.checker.normalization import normalize_text, strip_fenced_code_blocks
+from agent.nexus.checker.provenance import (
     ClaimProvenance,
     EvidenceRecord,
     bind_claim,

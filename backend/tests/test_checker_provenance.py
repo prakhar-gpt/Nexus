@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from agent.nexus.checker import check_answer
-from agent.nexus.provenance import (
+from agent.nexus.checker import (
     ClaimProvenance,
     EvidenceRecord,
     bind_claim,
+    check_answer,
     check_truncation_caveat,
     derive_column_kind,
     is_currency_or_percent_claim,

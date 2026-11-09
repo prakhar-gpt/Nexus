@@ -10,7 +10,7 @@ import sqlglot
 from sqlglot import exp
 
 from agent.db import DATABASE, READER_USER, DatabaseError, psql, reader_password
-from agent.nexus.provenance import QueryResult, get_referenced_table
+from agent.nexus.checker import QueryResult, get_referenced_table
 
 try:
     from config import settings

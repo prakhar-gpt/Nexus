@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-from agent.nexus.normalization import normalize_text, strip_fenced_code_blocks
+from agent.nexus.checker.normalization import normalize_text, strip_fenced_code_blocks
 
 # ---------------------------------------------------------------------------
 # Regex patterns for numbers, dates, ordinals, and year contexts

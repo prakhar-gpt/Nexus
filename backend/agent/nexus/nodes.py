@@ -6,8 +6,7 @@ import time
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.config import get_stream_writer
 
-from agent.nexus.checker import check_answer, is_clarification
-from agent.nexus.evidence_collector import collect_python_evidence, collect_sql_evidence
+from agent.nexus.checker import check_answer, collect_python_evidence, collect_sql_evidence, is_clarification
 from agent.nexus.state import AgentState, MAX_TOOL_STEPS, MESSAGE_TAIL, STEP_LIMIT, format_status_line
 from agent.nexus.tools import (
     TOOLS,

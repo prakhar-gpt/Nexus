@@ -6,8 +6,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 
-from agent.nexus.extraction import normalize_raw_number
-from agent.nexus.matching import is_loss_context, match_target_value
+from agent.nexus.checker.extraction import normalize_raw_number
+from agent.nexus.checker.matching import is_loss_context, match_target_value
 
 
 class QueryResult(tuple):
