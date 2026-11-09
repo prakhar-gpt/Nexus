@@ -255,6 +255,8 @@ class Settings:
     PG_HOST: str = field(default_factory=lambda: _get_str("PGHOST", _DB_URL_PARTS.get("host", "localhost")))
     PG_PORT: str = field(default_factory=lambda: _get_str("PGPORT", _DB_URL_PARTS.get("port", "5432")))
     PG_READER_USER: str = field(default_factory=lambda: os.environ.get("PG_READER_USER", "nexus_reader"))
+    PG_USER: str = field(default_factory=lambda: _get_str("PGUSER", _DB_URL_PARTS.get("user", "postgres")))
+    PG_PASSWORD: str = field(default_factory=lambda: _get_str("PGPASSWORD", _DB_URL_PARTS.get("password", "")))
     PG_DATABASE: str = field(default_factory=lambda: _get_str("PGDATABASE", _DB_URL_PARTS.get("database", "nexus_db")))
 
     # -----------------------------------------------------------------------

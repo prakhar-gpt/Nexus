@@ -53,60 +53,53 @@ def psql(sql: str, *, user: str, password: str, database: str) -> str:
         db_name = settings.PG_DATABASE
 
     db_host = os.environ.get("PGHOST") or getattr(settings, "PG_HOST", "localhost")
-    db_port = os.environ.get("PGPORT") or getattr(settings, "PG_PORT", "5432")
+    db_port = int(os.environ.get("PGPORT") or getattr(settings, "PG_PORT", "5432"))
 
-    # 1. Prefer native psycopg2 execution (no CLI dependency, uses exact database host/name)
-    try:
-        import csv
-        import io
-        import psycopg2
+    # Credential attempts: primary user (e.g. reader), then writer fallback
+    attempts = [(user, password)]
+    fallback_user = getattr(settings, "PG_USER", None) or os.environ.get("PGUSER") or "nexus_writer"
+    fallback_pass = (
+        getattr(settings, "PG_PASSWORD", None)
+        or os.environ.get("PGPASSWORD")
+        or getattr(settings, "NEXUS_WRITER_PASSWORD", "")
+    )
+    if fallback_user and (fallback_user != user or fallback_pass != password):
+        attempts.append((fallback_user, fallback_pass))
 
-        conn = psycopg2.connect(
-            dbname=db_name,
-            user=user,
-            password=password,
-            host=db_host,
-            port=int(db_port),
-        )
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            if cur.description:
-                out = io.StringIO()
-                writer = csv.writer(out)
-                writer.writerow([d[0] for d in cur.description])
-                writer.writerows(cur.fetchall())
-                return out.getvalue()
-            return ""
-    except Exception as py_exc:
-        # 2. Fallback to psql CLI if available
-        if not PSQL.exists():
+    last_error: Exception | None = None
+    for attempt_user, attempt_pass in attempts:
+        try:
+            import csv
+            import io
+            import psycopg2
+
+            conn = psycopg2.connect(
+                dbname=db_name,
+                user=attempt_user,
+                password=attempt_pass,
+                host=db_host,
+                port=db_port,
+            )
+            conn.autocommit = True
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                if cur.description:
+                    out = io.StringIO()
+                    writer = csv.writer(out)
+                    writer.writerow([d[0] for d in cur.description])
+                    writer.writerows(cur.fetchall())
+                    return out.getvalue()
+                return ""
+        except Exception as py_exc:
+            last_error = py_exc
+            if "password authentication failed" in str(py_exc) or "fe_sendauth" in str(py_exc):
+                continue
+            # SQL semantic / syntax error: raise directly for agent feedback
             raise DatabaseError(str(py_exc)) from py_exc
 
-    env = {
-        "PATH": os.environ.get("PATH", ""),
-        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
-        "PGCLIENTENCODING": "UTF8",
-        "PGHOST": db_host,
-        "PGPORT": str(db_port),
-        "PGUSER": user,
-        "PGPASSWORD": password,
-        "PGDATABASE": db_name,
-    }
-    result = subprocess.run(
-        [str(PSQL), "-w", "-v", "ON_ERROR_STOP=1", "-X", "-q", "--csv", "-d", db_name],
-        input=sql,
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
-        env=env,
-        check=False,
-    )
-    if result.returncode != 0:
-        err = result.stderr.strip() or result.stdout.strip()
-        message = err if err else f"psql failed with exit code {result.returncode}"
-        raise DatabaseError(message)
-    return result.stdout
+    if last_error:
+        raise DatabaseError(str(last_error)) from last_error
+    return ""
 
 
 def ensure_reader(admin_password: str, reader_password_value: str) -> None:

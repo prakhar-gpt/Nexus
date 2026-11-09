@@ -504,7 +504,7 @@ export function SchemaArchitectCard({
 
   useEffect(() => {
     if (!debouncedProposal || !uploadId) return
-    fetch(`${API_URL}/uploads/${uploadId}/schema`, {
+    apiFetch(`${API_URL}/uploads/${uploadId}/schema`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(debouncedProposal),

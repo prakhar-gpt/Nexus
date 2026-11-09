@@ -44,9 +44,13 @@ def run_migrations() -> None:
             BEGIN
                 IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_reader') THEN
                     CREATE ROLE nexus_reader WITH LOGIN PASSWORD '{reader_pass}';
+                ELSE
+                    ALTER ROLE nexus_reader WITH PASSWORD '{reader_pass}';
                 END IF;
                 IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'nexus_writer') THEN
                     CREATE ROLE nexus_writer WITH LOGIN PASSWORD '{writer_pass}';
+                ELSE
+                    ALTER ROLE nexus_writer WITH PASSWORD '{writer_pass}';
                 END IF;
             END
             $$;
