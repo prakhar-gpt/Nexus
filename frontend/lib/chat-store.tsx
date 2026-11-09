@@ -493,15 +493,26 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
           // Handoff event
           if (evtName === "handoff" || payload.event === "handoff") {
+            const curr = threadStates.get(key)
+            const uploadMsg = curr?.messages.find((m: any) => m.uploadData)
+            const rawFileName = uploadMsg?.uploadData?.fileName?.replace(/\.[^/.]+$/, "") || ""
+            const cleanFileLabel = rawFileName
+              ? rawFileName.replace(/[_-]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+              : ""
+
+            let tblLabel = payload.table_label || ""
+            if (cleanFileLabel && (!tblLabel || /^[0-9a-fA-F]{12,}$/.test(tblLabel) || /^ds_\d+$/i.test(tblLabel) || tblLabel.toLowerCase() === "custom dataset")) {
+              tblLabel = cleanFileLabel
+            }
+
             const handoffData = {
-              tableLabel: payload.table_label || "",
+              tableLabel: tblLabel || cleanFileLabel || "Dataset",
               tableName: payload.table_name || "",
               grain: payload.grain || "",
               rowCount: payload.row_count || 0,
               quarantinedCount: payload.quarantined_count || 0,
               suggestedQuestions: payload.suggested_questions || [],
             }
-            const curr = threadStates.get(key)
             if (curr) {
               threadStates.set(key, {
                 ...curr,
@@ -619,11 +630,20 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
 
         // Derive friendly dataset label and grain from proposal / file name
         const uploadMsg = curr.messages.find((m) => m.uploadData)
-        const friendlyLabel =
+        const rawFileName = uploadMsg?.uploadData?.fileName?.replace(/\.[^/.]+$/, "") || ""
+        const cleanFileLabel = rawFileName
+          ? rawFileName.replace(/[_-]/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : ""
+
+        let friendlyLabel =
           data.table_label ||
           uploadMsg?.uploadData?.proposal?.table_label ||
-          uploadMsg?.uploadData?.fileName?.replace(/\.[^/.]+$/, "") ||
+          cleanFileLabel ||
           "Dataset"
+
+        if (cleanFileLabel && (/^[0-9a-fA-F]{12,}$/.test(friendlyLabel) || /^ds_\d+$/i.test(friendlyLabel) || friendlyLabel.toLowerCase() === "custom dataset")) {
+          friendlyLabel = cleanFileLabel
+        }
 
         const rawGrain = data.grain || uploadMsg?.uploadData?.proposal?.grain || "transaction record"
         const cleanGrain = rawGrain

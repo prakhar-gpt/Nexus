@@ -83,18 +83,10 @@ export function toolLabel(tool: string, rawLabel?: string, isRunning?: boolean):
 // ─────────────────────────────────────────────
 
 function StepIndicatorDot({ status }: { status: AgentStepStatus }) {
-  if (status === "running") {
-    return (
-      <span className="relative flex h-2 w-2 shrink-0">
-        <span className="motion-safe:animate-ping motion-reduce:hidden absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-      </span>
-    )
-  }
   if (status === "error") {
     return <span className="relative inline-flex rounded-full h-1.5 w-1.5 shrink-0 bg-destructive/80" />
   }
-  // Neutral calm dot for completed steps — no loud green ticks
+  // Neutral calm dot — no red or green dots
   return <span className="relative inline-flex rounded-full h-1.5 w-1.5 shrink-0 bg-muted-foreground/40" />
 }
 
@@ -128,10 +120,6 @@ export function AgentSteps({
         aria-live="polite"
         className="flex items-center gap-2 text-xs text-muted-foreground my-2 select-none"
       >
-        <span className="relative flex h-2 w-2 shrink-0">
-          <span className="motion-safe:animate-ping motion-reduce:hidden absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-        </span>
         <span className="motion-safe:animate-pulse motion-reduce:animate-none font-medium text-foreground/80 font-mono text-[12px]">
           Thinking…
         </span>
@@ -139,7 +127,7 @@ export function AgentSteps({
     )
   }
 
-  // 1. Streaming mode: show exactly ONE active tool line pulsating at a time (Nexus style)
+  // 1. Streaming mode: show exactly ONE active tool line pulsating at a time (Nexus style, zero red dot)
   if (isStreaming) {
     const activeStep = steps[steps.length - 1]
     const isError = activeStep.status === "error"
@@ -152,16 +140,6 @@ export function AgentSteps({
         aria-live="polite"
         className="flex items-center gap-2 text-xs text-muted-foreground my-2 select-none"
       >
-        {isRunning ? (
-          <span className="relative flex h-2 w-2 shrink-0">
-            <span className="motion-safe:animate-ping motion-reduce:hidden absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-          </span>
-        ) : isError ? (
-          <span className="relative inline-flex rounded-full h-2 w-2 shrink-0 bg-destructive/80" />
-        ) : (
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 shrink-0 bg-muted-foreground/40" />
-        )}
         <span
           className={
             isRunning

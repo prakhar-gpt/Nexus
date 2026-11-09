@@ -40,9 +40,11 @@ def room_id() -> int:
 def main() -> int:
     client = TestClient(app)
     rooms = client.get("/workspaces")
-    check("list rooms", rooms.status_code == 200 and any(item["name"] == "Superstore" for item in rooms.json()))
+    superstore_item = next((item for item in rooms.json() if item["name"] == "Superstore"), None)
+    check("list rooms", rooms.status_code == 200 and superstore_item is not None)
+    superstore_id = superstore_item["id"] if superstore_item else 1
 
-    detail = client.get("/workspaces/1")
+    detail = client.get(f"/workspaces/{superstore_id}")
     body = detail.json()
     check(
         "superstore health",
@@ -81,7 +83,7 @@ def main() -> int:
     )
     with client.stream(
         "POST",
-        "/workspaces/1/chat",
+        f"/workspaces/{superstore_id}/chat",
         json={"question": "What is total revenue?"},
     ) as response:
         text = response.read().decode()
@@ -90,7 +92,7 @@ def main() -> int:
     payload = json.loads(done.split("data: ", 1)[1].strip())
     exported = client.get(f"/results/{payload['run_id']}/export")
     check("export", exported.status_code == 200 and b"2261536.78" in exported.content)
-    again = client.get("/workspaces/1")
+    again = client.get(f"/workspaces/{superstore_id}")
     turns = again.json().get("turns") or []
     check(
         "chat history",

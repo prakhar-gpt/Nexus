@@ -401,6 +401,10 @@ function ColRow({ col, idx, onChange }: ColRowProps) {
 
 function HandoffMessage({ handoff, onAsk }: { handoff: HandoffData; onAsk?: (q: string) => void }) {
   const cleanGrain = cleanGrainText(handoff.grain)
+  let displayLabel = handoff.tableLabel || handoff.tableName
+  if (/^[0-9a-fA-F]{12,}$/.test(displayLabel) || /^ds_\d+$/i.test(displayLabel)) {
+    displayLabel = handoff.tableLabel && !/^[0-9a-fA-F]{12,}$/.test(handoff.tableLabel) ? handoff.tableLabel : "Dataset"
+  }
 
   return (
     <div className="mt-6 w-full text-[15px] leading-relaxed text-foreground">
@@ -409,7 +413,7 @@ function HandoffMessage({ handoff, onAsk }: { handoff: HandoffData; onAsk?: (q: 
       </span>
       <p className="mb-3">
         I&apos;ve loaded{" "}
-        <strong className="font-medium text-foreground">{handoff.tableLabel || handoff.tableName}</strong>{" "}
+        <strong className="font-medium text-foreground">{displayLabel}</strong>{" "}
         (one row = {cleanGrain || "transaction record"},{" "}
         <span className="tabular-nums font-mono">{Number(handoff.rowCount).toLocaleString()}</span> rows
         {handoff.quarantinedCount > 0

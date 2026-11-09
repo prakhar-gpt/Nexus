@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import uuid
+from pathlib import Path
 from fastapi import BackgroundTasks, HTTPException, Response
 
 from api.services.workspace_service import get_mappings, get_workspace_meta
@@ -653,7 +654,10 @@ def _init_schema_proposal(upload_id: int, path, workspace_id: int, progress_call
         import pandas as pd
         df = pd.DataFrame(data_rows)
 
-        label = path.stem.replace("_", " ").replace("-", " ").title()
+        upload_rows = execute(f"SELECT original_name FROM uploads WHERE id = {int(upload_id)}")
+        orig_name = upload_rows[0]["original_name"] if upload_rows and upload_rows[0].get("original_name") else path.name
+        raw_stem = Path(orig_name).stem if orig_name else path.stem
+        label = raw_stem.replace("_", " ").replace("-", " ").title()
         proposal_obj, tool_calls, lat, model_id = run_schema_architect(
             df,
             table_label=label,
@@ -802,10 +806,23 @@ def approve_upload_schema(upload_id: int, background: BackgroundTasks | None = N
     record_upload_event(upload_id, "create", "done", "Custom table created", payload={"event": "table_created", "table_name": f"ds_{upload_id}"})
     record_upload_event(upload_id, "load", "start", "Loading dataset rows…")
 
+    # Compute clean friendly dataset label from original filename or proposal
+    import re
+    orig = upload.get("original_name") or ""
+    clean_orig = Path(orig).stem.replace("_", " ").replace("-", " ").title() if orig else ""
+    table_lbl = (proposal.get("table_label") or "").strip()
+    is_hash = bool(re.match(r"^[0-9a-fA-F]{12,}$", table_lbl)) or table_lbl.lower().startswith("ds_")
+    if clean_orig and (not table_lbl or is_hash or table_lbl.lower() == "custom dataset"):
+        friendly_label = clean_orig
+    else:
+        friendly_label = table_lbl or clean_orig or f"Dataset {upload_id}"
+    if friendly_label.lower().endswith(('.csv', '.xlsx', '.xls', '.tsv')):
+        friendly_label = friendly_label.rsplit('.', 1)[0]
+
     loaded, quarantined, table_name = create_and_load_custom_table(
         upload_id=int(upload_id),
         workspace_id=int(upload["workspace_id"]),
-        table_label=proposal.get("table_label", "Custom Dataset"),
+        table_label=friendly_label,
         grain=proposal.get("grain", ""),
         grain_key_columns=proposal.get("grain_key_columns", []),
         columns=proposal.get("columns", []),
@@ -817,10 +834,6 @@ def approve_upload_schema(upload_id: int, background: BackgroundTasks | None = N
     )
 
     execute(f"UPDATE uploads SET status = 'loaded' WHERE id = {int(upload_id)}")
-
-    friendly_label = proposal.get("table_label") or upload.get("original_name") or table_name
-    if friendly_label.lower().endswith(('.csv', '.xlsx', '.xls', '.tsv')):
-        friendly_label = friendly_label.rsplit('.', 1)[0]
 
     questions = _generate_suggested_questions(proposal)
 

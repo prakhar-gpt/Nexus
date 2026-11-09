@@ -43,14 +43,6 @@ export function ToolLine({ activity, isWaiting }: ToolLineProps) {
       aria-live="polite"
       className="flex items-center gap-2 text-xs text-muted-foreground my-2.5 select-none"
     >
-      {isRunning ? (
-        <span className="relative flex h-2 w-2">
-          <span className="motion-safe:animate-ping motion-reduce:hidden absolute inline-flex h-full w-full rounded-full bg-primary/40 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
-        </span>
-      ) : isError ? (
-        <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive/80" />
-      ) : null}
       <span
         className={
           isRunning

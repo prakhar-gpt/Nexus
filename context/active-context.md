@@ -1,5 +1,5 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T05:32:00+05:30
+Updated At: 2026-11-09T05:47:00+05:30
 
 Nexus is organized with a clean, senior-engineer root layout:
 - `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette). Completely in-chat dataset upload and schema review.
@@ -8,6 +8,14 @@ Nexus is organized with a clean, senior-engineer root layout:
 - `datasets/`: Public & synthetic datasets (`datasets/Superstore/Superstore.csv`).
 
 ### Current Active State & Refactors Completed
+- **Elimination of Hash Dataset Labels (Original File Name Fidelity)**:
+  - Fixed root cause where `_init_schema_proposal` previously inspected `path.stem` from the disk storage cache (which saves uploaded files by sha256 digest e.g. `dbb0f167b27ccf02.csv`), converting it to title-cased hashes like `Dbb0F167B27Ccf02`.
+  - Replaced disk path stems with `original_name` from the `uploads` table across `_init_schema_proposal`, `approve_upload_schema`, and `create_and_load_custom_table` (e.g. `Superstore.csv` -> `Superstore`).
+  - Added hex-hash and internal table name detectors (`/^[0-9a-fA-F]{12,}$/` and `ds_*`) on both backend and frontend (`chat-store.tsx` and `schema-architect-card.tsx`), guaranteeing that handoff messages and suggested questions strictly display the friendly file name.
+  - Migrated existing records in `datasets` table to title-cased `original_name`.
+- **UI Distraction Cleanup (No Red Tool Dots)**:
+  - Removed decorative red pulsing dots (`bg-primary`) from `frontend/components/tool-line.tsx` and `frontend/components/agent-steps.tsx`.
+  - Active tool execution pulses gently via typography (`animate-pulse font-medium text-foreground/80 font-mono text-[12px]`) without alarming red dots.
 - **Modern In-Chat Schema Approval & UI Polish (Decision 50)**:
   - **Shadcn Component Integration**: Replaced unstyled native `<select>` dropdowns for column `Type` and `Role` with shadcn `DropdownMenu` components with check indicators. Replaced raw tables with shadcn `Table` (`TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell`), `ScrollArea`, and `Badge`.
   - **Frictionless Scrolling**: Fixed height inheritance in `ScrollArea` (`h-[280px]` with `containerClassName="contents"` on `Table`) to enable smooth vertical and horizontal scrolling with pinned sticky headers (`sticky top-0 z-10 bg-muted`), eliminating conflicting nested `overflow-x-auto` wrappers.
