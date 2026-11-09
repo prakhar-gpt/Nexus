@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server"
 
 function isValidNextPath(path: string | null): boolean {
   if (!path) return false
-  return path.startsWith("/") && !path.startsWith("//")
+  return path.startsWith("/") && !path.startsWith("//") && !path.includes("\\")
 }
 
 export function proxy(request: NextRequest) {
@@ -11,13 +11,7 @@ export function proxy(request: NextRequest) {
   const sessionCookie = request.cookies.get("nexus_session")?.value
   const isAuthenticated = Boolean(sessionCookie)
 
-  // 1. Root '/' server redirect: signed in -> /rooms, else /login
-  if (pathname === "/") {
-    const target = isAuthenticated ? "/rooms" : "/login"
-    return NextResponse.redirect(new URL(target, request.url))
-  }
-
-  // 2. Auth routes (/login, /signup): redirect authenticated users to /rooms
+  // 1. Auth routes (/login, /signup): redirect authenticated users to /rooms
   if (pathname === "/login" || pathname === "/signup") {
     if (isAuthenticated) {
       const nextParam = request.nextUrl.searchParams.get("next")
@@ -27,7 +21,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // 3. Protected routes (/rooms, /rooms/*): redirect unauthenticated users to /login?next=...
+  // 2. Protected routes (/rooms, /rooms/*): redirect unauthenticated users to /login?next=...
   if (pathname.startsWith("/rooms")) {
     if (!isAuthenticated) {
       const nextUrl = new URL("/login", request.url)
@@ -44,6 +38,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/signup", "/rooms/:path*"],
+  matcher: ["/login", "/signup", "/rooms/:path*"],
 }
-

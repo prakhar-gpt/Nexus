@@ -47,9 +47,9 @@ export interface SidebarProps {
   loadingWorkspaces?: boolean
   workspacesError?: string | null
   onRetryWorkspaces?: () => void
-  onSelectWorkspace?: (id: number) => void
+  onSelectWorkspace?: (id: WorkspaceSummary["id"]) => void
   onNewWorkspace?: () => void
-  onDeleteWorkspace?: (id: number) => Promise<void> | void
+  onDeleteWorkspace?: (id: WorkspaceSummary["id"]) => Promise<void> | void
 }
 
 function SidebarComponent({
@@ -126,9 +126,9 @@ function SidebarComponent({
         {/* 1. Top row */}
         {mode === "hub" ? (
           <div className="flex items-center justify-between pb-1">
-            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
+            <span className="text-2xl font-bold tracking-tight text-sidebar-foreground">
               Nexus
-            </h1>
+            </span>
           </div>
         ) : (
           <div className="flex items-center justify-between pb-1">
@@ -151,9 +151,9 @@ function SidebarComponent({
               </Link>
             )}
 
-            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
+            <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
               Nexus
-            </h1>
+            </span>
           </div>
         )}
 
@@ -205,26 +205,46 @@ function SidebarComponent({
             <button
               type="button"
               onClick={onNewWorkspace}
-              className="flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border bg-primary text-primary-foreground border-primary hover:bg-primary/90 font-medium"
+              className={
+                hasRooms
+                  ? "flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border bg-primary text-primary-foreground border-primary hover:bg-primary/90 font-medium"
+                  : "flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent font-medium"
+              }
             >
               <div className="flex items-center gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
                 <span>New data room</span>
               </div>
-              <kbd className="font-mono text-[10px] px-1 border border-primary-foreground/30 text-primary-foreground/80">
+              <kbd
+                className={
+                  hasRooms
+                    ? "font-mono text-[10px] px-1 border border-primary-foreground/30 text-primary-foreground/80"
+                    : "font-mono text-[10px] px-1 border border-sidebar-border text-muted-foreground"
+                }
+              >
                 ⌘K
               </kbd>
             </button>
           ) : (
             <Link
               href="/rooms/new"
-              className="flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border bg-primary text-primary-foreground border-primary hover:bg-primary/90 font-medium"
+              className={
+                hasRooms
+                  ? "flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border bg-primary text-primary-foreground border-primary hover:bg-primary/90 font-medium"
+                  : "flex w-full items-center justify-between px-2.5 py-1.5 text-xs transition-colors border border-sidebar-border bg-transparent text-sidebar-foreground hover:bg-sidebar-accent font-medium"
+              }
             >
               <div className="flex items-center gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
                 <span>New data room</span>
               </div>
-              <kbd className="font-mono text-[10px] px-1 border border-primary-foreground/30 text-primary-foreground/80">
+              <kbd
+                className={
+                  hasRooms
+                    ? "font-mono text-[10px] px-1 border border-primary-foreground/30 text-primary-foreground/80"
+                    : "font-mono text-[10px] px-1 border border-sidebar-border text-muted-foreground"
+                }
+              >
                 ⌘K
               </kbd>
             </Link>
@@ -235,11 +255,10 @@ function SidebarComponent({
               type="button"
               disabled={isUploadRunning || isReviewPending}
               onClick={onNewThread}
-              className={`flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground transition-colors font-normal ${
-                isUploadRunning || isReviewPending
-                  ? "opacity-40 cursor-not-allowed pointer-events-none"
-                  : "hover:bg-sidebar-accent"
-              }`}
+              className={`flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground transition-colors font-normal ${isUploadRunning || isReviewPending
+                ? "opacity-40 cursor-not-allowed pointer-events-none"
+                : "hover:bg-sidebar-accent"
+                }`}
               title={isUploadRunning || isReviewPending ? "Finish or approve upload before starting a new chat" : undefined}
             >
               <div className="flex items-center gap-1.5">
