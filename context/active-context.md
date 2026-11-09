@@ -15,7 +15,12 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Current Active State & Refactors Completed
 
-#### 1. Database Table Purge & Retirement of Legacy Tables (Decision 58)
+#### 1. Hybrid Database Architecture — SQLAlchemy ORM for Domain CRUD (Decision 59)
+- **SQLAlchemy Engine, Session & Models**: Created `backend/db/session.py` (`SessionLocal`, connection pooling, `session_scope()`) and `backend/db/models.py` with declarative models for `User`, `WorkspaceMember`, `Workspace`, `Upload`, `Dataset`, `DatasetColumn`, `Thread`, `Run`, `Feedback`, `AgentEvent`, and `Quarantine`.
+- **Domain Services Refactored**: Refactored `workspace_service.py`, `upload_service.py`, `chat_service.py`, and `api/routers/users.py` from raw string SQL interpolation to parameterized SQLAlchemy ORM queries, eliminating manual escaping and providing strongly-typed attribute access.
+- **Agent & Ingest Preserved**: Preserved raw SQL execution strictly for `run_sql` (guarded SELECT-only queries under `nexus_reader` with RLS) and streaming COPY (`copy_expert`) in `custom_table.py` for sub-second data ingestion.
+
+#### 2. Database Table Purge & Retirement of Legacy Tables (Decision 58)
 - **Purged Unused Tables (Changeset 009)**: Successfully dropped `column_mapping`, `upload_attribute_schema`, and `eval_results` from PostgreSQL `nexus_db`.
 - **Preserved `quarantine`**: Confirmed active in user data quality workflow (tracks invalid CSV/XLSX rows, displays quarantined counts in room header/dataset list, and powers CSV download endpoint).
 - **Preserved `sales_clean`**: Confirmed active as a zero-storage compatibility VIEW over `user_data.ds_superstore`, powering the 30-question evaluation benchmark suite (`backend/eval/golden_set.json`) and core pytest suites.

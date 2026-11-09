@@ -10,66 +10,83 @@ from fastapi import HTTPException, Response
 
 def format_sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
-from ingest import StoreError, execute, make_inert, sql_id, sql_literal
+import uuid
+from ingest import make_inert
+from db.session import session_scope
+from db.models import Run, Feedback
 
 
 def save_run(workspace_id: int | str, question: str, result: dict, thread_id: str = "default") -> str:
-    """Persist an agent execution run, its SQL queries, answer, checker audit result, and python results."""
+    """Persist an agent execution run, its SQL queries, answer, checker audit result, and python results via SQLAlchemy."""
     clean_thread = (thread_id or "default").strip()
     check_data = result.get("check") or {}
-    payload = json.dumps(
-        {
-            "status": check_data.get("status", "verified" if check_data.get("verified") else "caveat"),
-            "verified": check_data.get("verified", False),
-            "untraced": check_data.get("untraced", []),
-            "matched": check_data.get("matched", []),
-            "kind": result["kind"],
-            "rows": result["rows"],
-            "tools_used": result.get("tools_used", []),
-            "steps": result.get("steps", []),
-            "python_results": result.get("python_results", []),
-            "thread_id": clean_thread,
-        }
-    )
-    py_res_json = json.dumps(result.get("python_results") or [])
+    checker_payload = {
+        "status": check_data.get("status", "verified" if check_data.get("verified") else "caveat"),
+        "verified": check_data.get("verified", False),
+        "untraced": check_data.get("untraced", []),
+        "matched": check_data.get("matched", []),
+        "kind": result["kind"],
+        "rows": result["rows"],
+        "tools_used": result.get("tools_used", []),
+        "steps": result.get("steps", []),
+        "python_results": result.get("python_results", []),
+        "thread_id": clean_thread,
+    }
+    py_results = result.get("python_results") or []
     try:
-        rows = execute(
-            "INSERT INTO runs "
-            "(workspace_id, question, plan, sql_list, answer, checker_result, python_results, "
-            "latency_ms, tokens, cost, model) "
-            f"VALUES ({sql_id(workspace_id)}, {sql_literal(question)}, "
-            f"{sql_literal(result['plan'])}, {sql_literal(result['sql'])}, "
-            f"{sql_literal(result['answer'])}, {sql_literal(payload)}::jsonb, "
-            f"{sql_literal(py_res_json)}::jsonb, "
-            f"{int(result['latency_ms'])}, 0, 0, {sql_literal(result.get('model') or 'langgraph')}) "
-            "RETURNING id"
+        ws_uuid = uuid.UUID(str(workspace_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workspace UUID")
+
+    with session_scope() as session:
+        run = Run(
+            workspace_id=ws_uuid,
+            question=question,
+            plan=result.get("plan"),
+            sql_list=result.get("sql"),
+            answer=result.get("answer"),
+            checker_result=checker_payload,
+            python_results=py_results,
+            latency_ms=int(result.get("latency_ms") or 0),
+            tokens=0,
+            cost=0.0,
+            model=result.get("model") or "langgraph",
         )
-    except StoreError as exc:
-        raise HTTPException(status_code=500, detail="could not store the run") from exc
-    return str(rows[0]["id"])
+        session.add(run)
+        session.flush()
+        return str(run.id)
 
 
 def record_feedback(run_id: int | str, rating: str, reason: str | None = None) -> dict:
-    """Record user thumbs up / down feedback."""
-    found = execute(f"SELECT id FROM runs WHERE id = {sql_id(run_id)}")
-    if not found:
-        raise HTTPException(status_code=404, detail="run not found")
-    execute(
-        "INSERT INTO feedback (run_id, rating, reason) "
-        f"VALUES ({sql_id(run_id)}, {sql_literal(rating)}, {sql_literal(reason)})"
-    )
+    """Record user thumbs up / down feedback via SQLAlchemy."""
+    try:
+        run_uuid = uuid.UUID(str(run_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid run UUID")
+
+    with session_scope() as session:
+        run = session.get(Run, run_uuid)
+        if not run:
+            raise HTTPException(status_code=404, detail="run not found")
+        feedback = Feedback(run_id=run_uuid, rating=rating, reason=reason)
+        session.add(feedback)
     return {"ok": True}
 
 
 def export_result_csv(run_id: int | str) -> Response:
-    """Export the SQL results of a run as a sanitized CSV download."""
-    found = execute(
-        "SELECT answer, checker_result FROM runs "
-        f"WHERE id = {sql_id(run_id)}"
-    )
-    if not found:
-        raise HTTPException(status_code=404, detail="run not found")
-    stored = json.loads(found[0]["checker_result"])
+    """Export the SQL results of a run as a sanitized CSV download via SQLAlchemy."""
+    try:
+        run_uuid = uuid.UUID(str(run_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid run UUID")
+
+    with session_scope() as session:
+        run = session.get(Run, run_uuid)
+        if not run:
+            raise HTTPException(status_code=404, detail="run not found")
+        stored = run.checker_result or {}
+        answer = run.answer or ""
+
     rows = stored.get("rows") or []
     buffer = io.StringIO()
     writer = csv.writer(buffer)
@@ -80,7 +97,7 @@ def export_result_csv(run_id: int | str) -> Response:
             writer.writerow([make_inert(str(row.get(header, ""))) for header in headers])
     else:
         writer.writerow(["answer"])
-        writer.writerow([make_inert(found[0]["answer"])])
+        writer.writerow([make_inert(answer)])
     return Response(
         buffer.getvalue(),
         media_type="text/csv",

@@ -39,48 +39,63 @@ def record_upload_event(
     _AGENT_SEQS[upload_id] = seq
 
     event_payload = dict(payload or {})
-    event_payload.setdefault("upload_id", upload_id)
+    event_payload.setdefault("upload_id", str(upload_id))
     event_payload.setdefault("seq", seq)
     event_payload.setdefault("stage", stage)
     event_payload.setdefault("event_type", event_type)
     event_payload.setdefault("label", label)
 
     try:
-        execute(
-            f"INSERT INTO agent_events (agent_kind, upload_id, seq, stage, event_type, label, payload) "
-            f"VALUES ('nexus', {sql_id(upload_id)}, {int(seq)}, {sql_literal(stage)}, {sql_literal(event_type)}, "
-            f"{sql_literal(label)}, {sql_literal(json.dumps(event_payload))}::jsonb)"
-        )
+        from db.session import session_scope
+        from db.models import AgentEvent
+        import uuid
+        up_uuid = uuid.UUID(str(upload_id))
+        with session_scope() as session:
+            ev = AgentEvent(
+                agent_kind="nexus",
+                upload_id=up_uuid,
+                seq=int(seq),
+                stage=stage,
+                event_type=event_type,
+                label=label,
+                payload=event_payload,
+            )
+            session.add(ev)
     except Exception:
         # Fallback to in-memory if DB transiently unready
         pass
 
-    PROGRESS.setdefault(upload_id, []).append(event_payload)
+    PROGRESS.setdefault(str(upload_id), []).append(event_payload)
     return event_payload
 
 
 def fetch_upload_events_from_db(upload_id: int | str, since_seq: int = 0) -> list[dict]:
-    """Retrieve ordered persistent agent events since a given sequence number."""
-    from ingest.store import execute
+    """Retrieve ordered persistent agent events since a given sequence number using SQLAlchemy."""
     try:
-        rows = execute(
-            f"SELECT seq, stage, event_type, label, payload, created_at FROM agent_events "
-            f"WHERE upload_id = {sql_id(upload_id)} AND seq > {int(since_seq)} "
-            f"ORDER BY seq ASC"
-        )
-        events = []
-        for r in rows:
-            p = r.get("payload")
-            data = json.loads(p) if isinstance(p, str) else dict(p or {})
-            data.setdefault("seq", int(r["seq"]))
-            data.setdefault("stage", r["stage"])
-            data.setdefault("event_type", r["event_type"])
-            data.setdefault("label", r["label"])
-            events.append(data)
-        return events
+        from db.session import session_scope
+        from db.models import AgentEvent
+        from sqlalchemy import select
+        import uuid
+        up_uuid = uuid.UUID(str(upload_id))
+        with session_scope() as session:
+            events = session.execute(
+                select(AgentEvent)
+                .where(AgentEvent.upload_id == up_uuid, AgentEvent.seq > since_seq)
+                .order_by(AgentEvent.seq.asc())
+            ).scalars().all()
+            return [
+                {
+                    "seq": e.seq,
+                    "stage": e.stage,
+                    "event_type": e.event_type,
+                    "label": e.label,
+                    **(e.payload or {}),
+                }
+                for e in events
+            ]
     except Exception:
         return [
-            item for item in PROGRESS.get(upload_id, [])
+            item for item in PROGRESS.get(str(upload_id), [])
             if item.get("seq", 0) > since_seq
         ]
 
@@ -891,13 +906,41 @@ def approve_upload_schema(
 
     checker_payload["upload_id"] = str(upload_id)
 
-    # Clean any stale upload run for this upload_id, then persist the human-readable turn
-    execute(
-        f"DELETE FROM runs WHERE workspace_id = {sql_id(upload['workspace_id'])} AND (checker_result->>'upload_id') = {sql_literal(str(upload_id))};\n"
-        f"INSERT INTO runs (workspace_id, question, answer, checker_result, latency_ms) "
-        f"VALUES ({sql_id(upload['workspace_id'])}, {sql_literal(question_text)}, {sql_literal(handoff_text)}, "
-        f"{sql_literal(json.dumps(checker_payload))}::jsonb, 0);"
-    )
+    # Clean any stale upload run for this upload_id, then persist the human-readable turn via SQLAlchemy
+    try:
+        from db.session import session_scope
+        from db.models import Run
+        from sqlalchemy import select
+        import uuid
+        ws_uuid = uuid.UUID(str(upload["workspace_id"]))
+        up_uuid = uuid.UUID(str(upload_id))
+        with session_scope() as session:
+            stale_runs = session.execute(
+                select(Run).where(
+                    Run.workspace_id == ws_uuid,
+                    Run.checker_result.op("->>")("upload_id") == str(upload_id),
+                )
+            ).scalars().all()
+            for r in stale_runs:
+                session.delete(r)
+
+            run = Run(
+                workspace_id=ws_uuid,
+                upload_id=up_uuid,
+                question=question_text,
+                answer=handoff_text,
+                checker_result=checker_payload,
+                latency_ms=0,
+            )
+            session.add(run)
+    except Exception:
+        # Fallback to store execute
+        execute(
+            f"DELETE FROM runs WHERE workspace_id = {sql_id(upload['workspace_id'])} AND (checker_result->>'upload_id') = {sql_literal(str(upload_id))};\n"
+            f"INSERT INTO runs (workspace_id, question, answer, checker_result, latency_ms) "
+            f"VALUES ({sql_id(upload['workspace_id'])}, {sql_literal(question_text)}, {sql_literal(handoff_text)}, "
+            f"{sql_literal(json.dumps(checker_payload))}::jsonb, 0);"
+        )
 
     # Emit handoff BEFORE done so frontend receives it in stream order
     _emit_handoff(

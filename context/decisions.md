@@ -290,3 +290,13 @@ Decisions 6–13 were incorporated from the v2 product document on 2026-11-08. T
        - `sales_clean`: Preserved as a zero-storage compatibility `VIEW` over `user_data.ds_superstore`. Powers all 30 benchmark tests in `backend/eval/golden_set.json` and pytest suites.
   * *Rejected:* Dropping `quarantine` (breaks user data quality inspection and CSV export); dropping `sales_clean` (breaks all 30 golden set benchmarks and SQL test assertions).
   * *Files affected:* `backend/db/changesets/009_retire_unused_tables.sql`, `backend/db/seeds/load_superstore.py`, `backend/api/services/workspace_service.py`, `backend/api/services/eval_service.py`, `backend/ingest/pipeline.py`, `backend/tests/test_ingest.py`, `context/decisions.md`, `context/active-context.md`.
+
+
+* **Decision 59 (2026-11-09):** Hybrid Database Architecture (SQLAlchemy ORM for Application CRUD, Raw SQL for Agent/Streaming COPY).
+  * *Reason:*
+    1. **Hybrid Architecture**: Adopted industry-standard hybrid database access pattern for AI data applications:
+       - **SQLAlchemy ORM (`backend/db/models.py`, `backend/db/session.py`)**: Strongly-typed model definitions and pooled sessions for standard application domain entities (`User`, `WorkspaceMember`, `Workspace`, `Upload`, `Dataset`, `DatasetColumn`, `Thread`, `Run`, `Feedback`, `AgentEvent`, `Quarantine`). Refactored domain services (`workspace_service.py`, `upload_service.py`, `chat_service.py`, `users.py`) from manual string-formatted SQL to parameterized SQLAlchemy queries, eliminating SQL injection surface, manual escaping (`sql_literal`), and untyped dictionary row access.
+       - **Raw SQL & Streaming COPY (`backend/agent/nexus/tools/run_sql.py`, `backend/ingest/custom_table.py`)**: Preserved strictly for runtime dynamic agent SQL execution under `nexus_reader` with RLS (`SET LOCAL app.workspace_id = ...`) and driver-level streaming COPY (`copy_expert`) for sub-second 10,000+ row batch ingestion into dynamic tables (`user_data.ds_*`).
+    2. **Connection Pooling & Session Scope**: Configured `engine = create_engine(..., pool_pre_ping=True, pool_size=10, max_overflow=20)` and `session_scope()` context manager ensuring deterministic commit/rollback behavior on API requests.
+  * *Rejected:* Forcing the LLM agent to generate SQLAlchemy expressions; forcing bulk ingestion through ORM `session.add_all()` (unacceptable 20x latency penalty vs streaming COPY).
+  * *Files affected:* `backend/db/session.py`, `backend/db/models.py`, `backend/api/routers/users.py`, `backend/api/services/workspace_service.py`, `backend/api/services/chat_service.py`, `backend/api/services/upload_service.py`, `context/decisions.md`, `context/active-context.md`.
