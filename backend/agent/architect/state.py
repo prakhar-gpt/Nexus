@@ -7,7 +7,11 @@ from langgraph.graph.message import add_messages
 
 from agent.architect.models import SchemaProposal
 
-MAX_ARCHITECT_STEPS = 6
+try:
+    from config import settings
+    MAX_ARCHITECT_STEPS = settings.ARCHITECT_MAX_STEPS
+except Exception:
+    MAX_ARCHITECT_STEPS = 6
 
 
 class ArchitectState(TypedDict, total=False):

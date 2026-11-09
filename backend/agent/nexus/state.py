@@ -5,9 +5,16 @@ from __future__ import annotations
 from typing import Annotated, TypedDict
 from langgraph.graph.message import add_messages
 
-MAX_TOOL_STEPS = 8
-HISTORY_TURNS = 8
-MESSAGE_TAIL = 20
+try:
+    from config import settings
+    MAX_TOOL_STEPS = settings.NEXUS_MAX_TOOL_STEPS
+    HISTORY_TURNS = settings.NEXUS_HISTORY_TURNS
+    MESSAGE_TAIL = settings.NEXUS_MESSAGE_TAIL
+except Exception:
+    MAX_TOOL_STEPS = 8
+    HISTORY_TURNS = 8
+    MESSAGE_TAIL = 20
+
 STEP_LIMIT = "The step limit was reached before an answer."
 
 STATUS_RUNNING: dict[str, str] = {

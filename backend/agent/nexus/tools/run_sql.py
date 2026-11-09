@@ -11,8 +11,15 @@ from sqlglot import exp
 
 from agent.db import DATABASE, READER_USER, DatabaseError, psql, reader_password
 
-ROW_LIMIT = 200
-TIMEOUT_MS = 5000
+try:
+    from config import settings
+    ROW_LIMIT = settings.NEXUS_TOOL_SQL_ROW_LIMIT
+    TIMEOUT_MS = settings.NEXUS_TOOL_SQL_TIMEOUT_MS
+    PREVIEW_LIMIT = settings.NEXUS_TOOL_SQL_PREVIEW_LIMIT
+except Exception:
+    ROW_LIMIT = 200
+    TIMEOUT_MS = 5000
+    PREVIEW_LIMIT = 25
 
 
 class SqlRejected(ValueError):
@@ -230,8 +237,8 @@ def execute_query(sql: str, workspace_id: int | str, allowed_dataset_ids: list[s
     header = list(rows[0].keys())
     lines = [", ".join(header)]
 
-    # Token optimization: 25 rows preview covers all 17 subcategories, regions, segments
-    max_preview = 25
+    # Token optimization: Preview cap covers categorical breakdowns without prompt bloat
+    max_preview = PREVIEW_LIMIT
     for row in rows[:max_preview]:
         lines.append(", ".join("" if row.get(col) is None else str(row.get(col)) for col in header))
     if len(rows) > max_preview:

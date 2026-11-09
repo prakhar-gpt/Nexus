@@ -11,11 +11,20 @@ import zipfile
 
 from openpyxl import load_workbook
 
-MAX_BYTES = 50 * 1024 * 1024
-ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
-MAX_COLUMNS = 64
-MAX_ROWS = 600_000
-HEADER_SCAN = 20
+try:
+    from config import settings
+    MAX_BYTES = settings.UPLOAD_MAX_BYTES
+    ALLOWED_EXTENSIONS = settings.UPLOAD_ALLOWED_EXTENSIONS
+    MAX_COLUMNS = settings.UPLOAD_MAX_COLUMNS
+    MAX_ROWS = settings.UPLOAD_MAX_ROWS
+    HEADER_SCAN = settings.UPLOAD_HEADER_SCAN_ROWS
+except Exception:
+    MAX_BYTES = 50 * 1024 * 1024
+    ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+    MAX_COLUMNS = 64
+    MAX_ROWS = 600_000
+    HEADER_SCAN = 20
+
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%m/%d/%Y")
 _FORMULA_PREFIXES = ("=", "+", "-", "@")
 

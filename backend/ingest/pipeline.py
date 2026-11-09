@@ -13,7 +13,12 @@ from ingest.reader import RejectedFile, TableRejected, find_header, inspect, rea
 from utils import to_uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-UPLOAD_DIR = ROOT / "datasets" / "uploads"
+try:
+    from config import settings
+    _custom_dir = Path(settings.UPLOAD_DIR)
+    UPLOAD_DIR = _custom_dir if _custom_dir.is_absolute() else ROOT / _custom_dir
+except Exception:
+    UPLOAD_DIR = ROOT / "datasets" / "uploads"
 
 
 @dataclass

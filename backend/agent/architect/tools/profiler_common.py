@@ -5,9 +5,15 @@ from __future__ import annotations
 from typing import Any
 import pandas as pd
 
-MAX_CELL_CHARS = 80
-MAX_SAMPLE_ROWS = 30
-MAX_PREVIEW_ITEMS = 5
+try:
+    from config import settings
+    MAX_CELL_CHARS = settings.ARCHITECT_TOOL_MAX_CELL_CHARS
+    MAX_SAMPLE_ROWS = settings.ARCHITECT_TOOL_SAMPLE_ROWS
+    MAX_PREVIEW_ITEMS = settings.ARCHITECT_TOOL_PREVIEW_ITEMS
+except Exception:
+    MAX_CELL_CHARS = 80
+    MAX_SAMPLE_ROWS = 30
+    MAX_PREVIEW_ITEMS = 5
 
 
 def truncate_val(val: Any) -> str:

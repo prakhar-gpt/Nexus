@@ -5,7 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from langchain_core.tools import tool
 
-KB_ROOT = Path(__file__).resolve().parents[2] / "kb"
+try:
+    from config import settings
+    _custom_kb = Path(settings.NEXUS_TOOL_KB_DIR)
+    KB_ROOT = _custom_kb if _custom_kb.is_absolute() else Path(__file__).resolve().parents[2] / _custom_kb.name
+    KB_MAX_CHARS = settings.NEXUS_TOOL_KB_MAX_CHARS
+except Exception:
+    KB_ROOT = Path(__file__).resolve().parents[2] / "kb"
+    KB_MAX_CHARS = 6000
 
 
 @tool
@@ -24,4 +31,4 @@ def execute_kb(path: str) -> str:
         return "rejected: path is outside the knowledge base"
     if not candidate.is_file():
         return "rejected: file not found"
-    return candidate.read_text(encoding="utf-8")[:6000]
+    return candidate.read_text(encoding="utf-8")[:KB_MAX_CHARS]

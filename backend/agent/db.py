@@ -8,9 +8,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = ROOT / ".env"
-PSQL = Path(r"C:\Program Files\PostgreSQL\18\bin\psql.exe")
-READER_USER = "nexus_reader"
-DATABASE = "nexus_db"
+
+try:
+    from config import settings
+    PSQL = Path(settings.PSQL_PATH)
+    READER_USER = settings.PG_READER_USER
+    DATABASE = settings.PG_DATABASE
+except Exception:
+    PSQL = Path(os.environ.get("PSQL_PATH", r"C:\Program Files\PostgreSQL\18\bin\psql.exe"))
+    READER_USER = os.environ.get("PG_READER_USER", "nexus_reader")
+    DATABASE = os.environ.get("PGDATABASE", "nexus_db")
+
 READER_SQL = Path(__file__).resolve().parents[1] / "db" / "changesets" / "reader.sql"
 
 _ENV_KEYS = ("NEXUS_READER_PASSWORD",)
@@ -21,6 +29,11 @@ class DatabaseError(RuntimeError):
 
 
 def reader_password() -> str:
+    try:
+        if settings.NEXUS_READER_PASSWORD:
+            return settings.NEXUS_READER_PASSWORD
+    except Exception:
+        pass
     password = os.environ.get("NEXUS_READER_PASSWORD")
     if password:
         return password

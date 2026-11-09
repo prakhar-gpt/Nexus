@@ -19,6 +19,12 @@ PORT = os.environ.get("PGPORT", "5432")
 
 
 def _get_writer_password() -> str:
+    try:
+        from config import settings
+        if settings.NEXUS_WRITER_PASSWORD:
+            return settings.NEXUS_WRITER_PASSWORD
+    except Exception:
+        pass
     password = os.environ.get("NEXUS_WRITER_PASSWORD") or os.environ.get("PGPASSWORD")
     if password:
         return password

@@ -12,6 +12,12 @@ import subprocess
 import sys
 from langchain_core.tools import tool
 
+try:
+    from config import settings
+    PYTHON_TIMEOUT_SECONDS = settings.NEXUS_TOOL_PYTHON_TIMEOUT_SECONDS
+except Exception:
+    PYTHON_TIMEOUT_SECONDS = 10
+
 # ---------------------------------------------------------------------------
 # Declarative Tool Definition for LangChain / LangGraph
 # ---------------------------------------------------------------------------
@@ -283,7 +289,7 @@ def execute_sandboxed(code: str, dataframes: dict[str, list[dict]]) -> dict:
     try:
         proc = subprocess.run(
             [sys.executable, "-c", wrapper],
-            timeout=10,
+            timeout=PYTHON_TIMEOUT_SECONDS,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -294,7 +300,7 @@ def execute_sandboxed(code: str, dataframes: dict[str, list[dict]]) -> dict:
             "ok": False,
             "results": {},
             "stdout_truncated": "",
-            "error": "execution timed out after 10s",
+            "error": f"execution timed out after {PYTHON_TIMEOUT_SECONDS}s",
         }
 
     if proc.returncode != 0:

@@ -1,19 +1,19 @@
-"""The one hosted model the agent calls. Configured via MODEL_PROVIDER or first available key."""
+"""The one hosted model the agent calls. Configured via config.settings or environment."""
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from langchain_openai import ChatOpenAI
 
-ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+try:
+    from config import settings
+except Exception:
+    from backend.config import settings
 
-# Groq's current tool-calling model. Llama 3.3 was retired for this tier.
+
 PROVIDERS = (
-    ("groq", "GROQ_API_KEY", "https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
-    ("openrouter", "OPENROUTER_API_KEY", "https://openrouter.ai/api/v1", "openai/gpt-oss-120b"),
-    ("deepseek", "DEEPSEEK_API_KEY", "https://api.deepseek.com/v1", "deepseek-chat"),
+    ("groq", "GROQ_API_KEY", settings.GROQ_BASE_URL, settings.GROQ_DEFAULT_MODEL),
+    ("openrouter", "OPENROUTER_API_KEY", settings.OPENROUTER_BASE_URL, settings.OPENROUTER_DEFAULT_MODEL),
+    ("deepseek", "DEEPSEEK_API_KEY", settings.DEEPSEEK_BASE_URL, settings.DEEPSEEK_DEFAULT_MODEL),
 )
 
 
@@ -21,37 +21,29 @@ class ModelError(RuntimeError):
     pass
 
 
-def _secret(name: str) -> str:
-    value = os.environ.get(name, "").strip().strip('"').strip("'")
-    if value:
-        return value
-    if not ENV_PATH.exists():
-        return ""
-    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith(name + "="):
-            return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return ""
-
-
 def resolve() -> tuple[str, str, str, str]:
-    chosen = (_secret("MODEL_PROVIDER") or _secret("LLM_PROVIDER")).lower()
-    override_model = _secret("MODEL_NAME") or _secret("LLM_MODEL")
-    if chosen:
-        for label, key_name, base_url, model in PROVIDERS:
-            if label.lower() == chosen:
-                secret = _secret(key_name)
-                if not secret:
-                    raise ModelError(f"No key configured for provider '{chosen}' ({key_name}).")
-                return label, secret, base_url, override_model or model
-        raise ModelError(f"Unknown provider '{chosen}'. Valid providers: {', '.join(p[0] for p in PROVIDERS)}")
+    """Resolve the active LLM provider, secret key, base URL, and model name from settings."""
+    chosen = (settings.MODEL_PROVIDER or "").lower().strip()
+    override_model = settings.MODEL_NAME.strip()
 
-    for label, key_name, base_url, model in PROVIDERS:
-        secret = _secret(key_name)
+    provider_map = {
+        "groq": (settings.GROQ_API_KEY, settings.GROQ_BASE_URL, settings.GROQ_DEFAULT_MODEL),
+        "openrouter": (settings.OPENROUTER_API_KEY, settings.OPENROUTER_BASE_URL, settings.OPENROUTER_DEFAULT_MODEL),
+        "deepseek": (settings.DEEPSEEK_API_KEY, settings.DEEPSEEK_BASE_URL, settings.DEEPSEEK_DEFAULT_MODEL),
+    }
+
+    if chosen:
+        if chosen not in provider_map:
+            raise ModelError(f"Unknown provider '{chosen}'. Valid providers: {', '.join(provider_map.keys())}")
+        secret, base_url, default_model = provider_map[chosen]
+        if not secret:
+            raise ModelError(f"No key configured for provider '{chosen}'.")
+        return chosen, secret, base_url, override_model or default_model
+
+    for name, (secret, base_url, default_model) in provider_map.items():
         if secret:
-            return label, secret, base_url, override_model or model
+            return name, secret, base_url, override_model or default_model
+
     raise ModelError("No model key is configured.")
 
 
@@ -76,7 +68,7 @@ def chat_model() -> Hosted:
         base_url=base_url,
         model=model,
         streaming=True,
-        temperature=0,
-        max_tokens=800,
+        temperature=settings.MODEL_TEMPERATURE,
+        max_tokens=settings.MODEL_MAX_TOKENS,
     )
     return Hosted(client, f"{label}/{model}")
