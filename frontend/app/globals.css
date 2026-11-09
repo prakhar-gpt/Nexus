@@ -5,10 +5,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
+    --font-heading: var(--font-heading), "Playfair Display", Georgia, serif;
     --font-sans: var(--font-sans);
     --font-mono: var(--font-sans);
-    --font-serif: var(--font-sans);
+    --font-serif: var(--font-heading), "Playfair Display", Georgia, serif;
     --color-ok: var(--ok);
     --color-warn: var(--warn);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -129,6 +129,9 @@
     @apply border-border outline-ring/50;
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading), "Playfair Display", Georgia, serif;
   }
   body {
     @apply bg-background text-foreground;

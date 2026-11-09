@@ -11,11 +11,23 @@ export type Mapping = {
   confirmed_by_user: boolean
 }
 
+export type Dataset = {
+  id: number
+  upload_id?: number | null
+  table_name: string
+  table_label: string
+  grain: string
+  row_count: number
+  quarantine_count: number
+  created_at: string
+}
+
 export type Thread = {
   id: string
   title: string
   created_at: string
   turn_count: number
+  selected_dataset_ids?: number[]
 }
 
 export type WorkspaceSummary = {
@@ -30,6 +42,7 @@ export type Room = {
   id: number
   name: string
   uploads: { id: string; original_name: string; status: string }[]
+  datasets?: Dataset[]
   health: {
     rows: string
     first_order: string

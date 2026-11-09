@@ -46,25 +46,26 @@ The color system is fixed: white field, warm stone text and surfaces, and an inv
 
 ## 3. Typography, Shapes & Containers
 
-- **Font**: JetBrains Mono (`--font-sans`, `--font-mono`).
+- **Font**: Playfair Display for all headers (`h1`–`h6`, `--font-heading`); JetBrains Mono for body, code, and UI elements (`--font-sans`, `--font-mono`).
 - **Radius**: Square corners (`--radius: 0`).
 - **Weights**: Only 400 and 500 (600 reserved strictly for page titles).
 - **Numerics**: `tabular-nums` applied to all figures, dates, row counts, and percentages.
 - **Assistant Prose**: Open prose with no bubble, no background fill, 16px size, 1.65 line-height, and a 720px max column width.
-- **Grid & Shared Containers**: 4px grid. Every page uses one shared container (single max-width and horizontal padding token). The header, page heading, and content share the exact same left edge. Never give the header and body different containers:
-  - Conversation container: `max-w-[720px] mx-auto px-4 sm:px-6`
-  - Data rooms hub container: `max-w-[960px] mx-auto px-6` (the hub header uses this same 960px container, not full width)
-  - Verify layout alignment at 1920, 1280, and 390px.
+- **Unified App Shell**: 4px grid. All screens use the same application shell: a left sidebar (260px width) plus a main pane. The main pane content is set in a single shared 720px column (`max-w-[720px] mx-auto px-4 sm:px-6`).
+  - No separate top header bars on root hubs.
+  - No custom 960px or wide-card grid layouts.
+  - Below the tablet breakpoint (md: 768px), the sidebar collapses into a drawer opened by a menu button in a slim top bar that displays the "Nexus" wordmark.
+  - Verify layout and left-edge alignment at 1920, 1280, and 390px.
 
 ---
 
 ## 4. Layout & Alignment Rules
 
-1. **One shared container.** The header, page heading, and content share one left edge across all viewports. Never give the header and body different container widths or padding tokens. Verify at 1920, 1280, and 390px.
+1. **Unified app shell.** All views share the same left sidebar shell and 720px main pane column. No separate top header bar or multi-container drift across screens. Verify at 1920, 1280, and 390px.
 2. **Consistent alignment.** Alignment is consistent within a view: if the heading is left-aligned, empty states and panels are left-aligned too. No mixed centered/left layouts.
-3. **One primary action per view.** A view shows a single primary (red) call to action. When a page is empty, the empty-state button is the primary action and the header button is hidden. When content exists, the action moves to the header. Never show two identical primary buttons.
+3. **One primary action per view.** A view shows a single primary (red) call to action. When a page is empty, the empty-state button is the primary action and the header/sidebar button is quiet outline. When content exists, the action in the sidebar becomes primary. Never show two identical primary buttons.
 4. **Empty states.** Sit directly under the page heading (not vertically centered in the viewport), use the dashed-border panel pattern (same as "Add a dataset to start"), and are left-aligned: title, one line of text, one button.
-5. **No horizontal page scroll.** Wide tables scroll inside their own container with a sticky header.
+5. **No horizontal page scroll.** Wide tables scroll inside their own container with a sticky header. No horizontal scroll at 390px.
 6. **Truncation and text safety.** Long names and cell text truncate with a title tooltip. All file-derived text is rendered as text, never HTML.
 
 ---
@@ -72,16 +73,38 @@ The color system is fixed: white field, warm stone text and surfaces, and an inv
 ## 5. Screen Specifications
 
 ### Screen 1: Data Rooms Hub (`WorkspacesView`)
-- **Top Row**: 56px bar with bottom hairline, inside the shared 960px container. Left: "Nexus" wordmark + "Commercial due diligence & retail analytics". Right: Auth status, plus the primary "New data room" button **shown only when at least one data room exists**.
-- **Body**: 28px page heading (600 weight), muted subtitle, responsive 1/2/3-column grid (16px gap).
-- **Room Card**: Card surface with 1px hairline, 20px padding. Displays name, active indicator, dataset count, chat count, creation date, hover-reveal trash (opens `ConfirmDialog`), and "Open →" link.
-- **Action Tile**: Dashed hairline border, plus icon, tints to `accent` on hover. Shown only when data rooms exist.
-- **Empty State**: Dashed-border panel directly under the page heading, left-aligned, holding the primary "New data room" button (the single primary action in the view).
-- **Loading State**: 3 skeleton cards matching card height.
-- **Error State**: Inline banner with retry button.
+The Data Rooms Hub uses the exact same shell as the room view: a 260px left sidebar and a main pane in the shared 720px column. There is no separate top header bar.
+
+- **Sidebar (hub mode)**:
+  1. Top: "Nexus" wordmark in the same position as in room mode (`text-xs font-medium tracking-tight text-sidebar-foreground`).
+  2. **+ New data room** button, full-width, same position and size as "New chat" in room mode:
+     - Primary (red) button (`bg-primary text-primary-foreground`) when at least one room exists.
+     - Quiet outline button (`border border-sidebar-border bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent`) when zero rooms exist (the empty-state panel owns the primary action).
+  3. Section label **Data rooms**, then one row per room:
+     - Single-line truncated name (`text-xs font-medium truncate`).
+     - Quiet secondary line (`text-[11px] font-mono tabular-nums text-muted-foreground`): dataset count, last activity date.
+     - Hover-reveal trash icon that triggers `ConfirmDialog` with accessible label (`"Delete data room {name}"`).
+     - Clicking a row navigates into that room (`/rooms/{id}`). Keyboard accessible with visible focus and Enter-to-open.
+     - Navigation landmark `<nav aria-label="Data rooms">` with `aria-current="page"` on active room (none on the hub).
+  4. Sorting: Sort by last activity, newest first. Group nothing unless there are more than 8 rooms (then group by Today / Yesterday / Earlier like Chats).
+  5. Footer: Existing profile footer (avatar initials, name, email, role badge, theme toggle, logout). When signed out, show a "Sign in" button that opens `AuthModal` in the same spot.
+  6. Loading: 3 skeleton rows. Error: inline banner with retry inside the list area.
+
+- **Main Pane (hub mode)**:
+  - Left-aligned in the shared 720px column, vertically placed like the chat empty state (top-aligned, not vertically centered in the viewport).
+  - Heading (36–48px / text-4xl sm:text-5xl, 600, leading-tight, tracking-tight): `"Welcome, {first name}"`. If signed out or no name: `"Welcome"`.
+  - When rooms exist: one muted line under the heading: `"Select a data room to continue, or create a new one."`
+  - With zero rooms: heading `"Welcome, {first name}"`, and directly below it:
+    - Title: `"No data rooms yet"`
+    - Text: `"Create a workspace, add a spreadsheet, and ask questions in plain English."`
+  - No room cards, no action tile, no extra buttons in the main pane.
+  - Footer line: `"Answers are checked against query results. Verify before sharing."` pinned at the bottom.
+
+- **Responsive**:
+  - Below the tablet breakpoint (md: 768px), the sidebar becomes a drawer opened by a menu button in a slim top bar that displays the "Nexus" wordmark. Same behavior in hub and room modes. No horizontal scroll at 390px.
 
 ### Screen 2: Data Room (`ChatPane` and `Sidebar`)
-- **Sidebar (260px)**:
+- **Sidebar (room mode, 260px)**:
   1. Top navigation: "← Data rooms" and the "Nexus" wordmark.
   2. Data room name.
   3. **Datasets section.** One row per dataset: checkbox (whether the current chat may read it), label, grain line ("One row = an order line"), row count, and a quiet "N set aside (download)" link when rows were quarantined. A row's overflow menu has Rename, Download quarantine, and Remove (confirm dialog listing what is deleted). Pending uploads show "Analyzing…" or "Needs review" instead of a checkbox, and clicking one reopens its setup card. A quiet "+ Add dataset" control opens the file picker. Datasets belong to the data room and are shared by all chats.
@@ -126,9 +149,10 @@ There is no upload modal. Upload and schema review live in the setup card. Colum
 - **Agent Identity**: "Nexus" is the product and the chat agent. "Schema Architect" appears only in the setup card.
 - **Data Integrity**: Nexus never claims to have created or changed a dataset. Datasets are created only after the user approves.
 - **Canonical Strings**:
-  - Hub subtitle: `"Isolated data rooms for your diligence spreadsheets. Add a spreadsheet, ask questions, and see the query behind every answer."`
+  - Hub welcome heading: `"Welcome, {first name}"` (or `"Welcome"`)
+  - Hub with rooms subtitle: `"Select a data room to continue, or create a new one."`
   - Hub empty title: `"No data rooms yet"`
-  - Hub empty text: `"Create a data room, add a spreadsheet, and ask questions in plain English."`
+  - Hub empty text: `"Create a workspace, add a spreadsheet, and ask questions in plain English."`
   - Composer, no dataset: `"Add a dataset to start"`
   - Composer, none checked: `"Select a dataset to ask about"`
   - Footer: `"Answers are checked against query results. Verify before sharing."`
@@ -143,16 +167,16 @@ Framework dev indicators (such as the Next.js static route and build activity ba
 
 ## 9. Before Merging UI Changes (Checklist)
 
-- [ ] **Shared container**: Header, heading, and content share one container and left edge (verify at 1920, 1280, 390px)
-- [ ] **One primary action**: Exactly one primary action per view; no duplicate primary buttons (hidden in header when view is empty)
+- [ ] **Shared shell & container**: Sidebar (260px) and main pane (720px column) share the unified layout (verify at 1920, 1280, 390px)
+- [ ] **One primary action**: Exactly one primary action per view; no duplicate primary buttons (outline in sidebar when view is empty)
 - [ ] **Empty-state pattern**: Empty states sit directly under the heading and use the dashed-panel pattern, left-aligned
 - [ ] **Copy rules**: Plain English, no jargon, describes user actions without implementation details
 - [ ] **Naming hierarchy**: Uses only data room / dataset / chat (no workspace, thread, table, upload); canonical strings reused
 - [ ] **Honest states**: Async actions show loading, success, and failure; no stuck spinners; failures have a next step
 - [ ] **Real progress**: Long-running work shows live steps from real events
 - [ ] **Both palettes**: Light and dark palettes verified (dark is inverted hues, not OS-driven)
-- [ ] **Narrow viewport**: Responsive down to 390px without horizontal page scroll
-- [ ] **Focus & accessibility**: Keyboard operable, visible focus ring, `role="alert"` on errors, `aria-live="polite"` on steps
+- [ ] **Narrow viewport**: Responsive down to 390px with mobile drawer toggle; no horizontal page scroll
+- [ ] **Focus & accessibility**: Keyboard operable, visible focus ring, `role="alert"` on errors, `aria-live="polite"` on steps, `aria-current="page"` on active rooms
 - [ ] **Dev indicators**: Framework dev indicators disabled in development (`devIndicators: false`)
 - [ ] **File-derived text**: Rendered strictly as text, never HTML
 - [ ] **Refresh test**: Reload at each state and confirm nothing duplicates or disappears

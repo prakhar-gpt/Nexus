@@ -1,35 +1,15 @@
 "use client"
 
 import React, { useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  Plus,
-  Database,
-  Trash2,
-  ArrowRight,
-  FileSpreadsheet,
-  Calendar,
-  AlertCircle,
-  RefreshCw,
-  Sun,
-  Moon,
-  LogOut,
-} from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Menu, X } from "lucide-react"
 import type { WorkspaceSummary } from "@/lib/api"
 import { useSession } from "@/lib/auth/provider"
-import { useChatStore } from "@/lib/chat-store"
-import { clearResourceCache } from "@/lib/use-resource"
-import { ConfirmDialog } from "@/components/confirm-dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Sidebar } from "@/components/sidebar"
+import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
+import { AuthModal } from "@/components/auth-modal"
+import { API_URL, apiFetch } from "@/lib/api"
+import { mutateResource } from "@/lib/use-resource"
 
 interface WorkspacesViewProps {
   workspaces: WorkspaceSummary[]
@@ -55,311 +35,169 @@ export function WorkspacesView({
   onOpenAuthModal,
 }: WorkspacesViewProps) {
   const router = useRouter()
-  const { session, signOut } = useSession()
-  const { clearAll } = useChatStore()
-  const [workspaceToDelete, setWorkspaceToDelete] = useState<{
-    id: number
-    name: string
-  } | null>(null)
+  const { session } = useSession()
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
 
-  function toggleTheme() {
-    const isDark = document.documentElement.classList.contains("dark")
-    if (isDark) {
-      document.documentElement.classList.remove("dark")
-      localStorage.setItem("nexus_theme", "light")
+  const firstName = session?.name ? session.name.trim().split(" ")[0] : ""
+  const welcomeHeading = firstName ? `Welcome, ${firstName}` : "Welcome"
+  const hasRooms = workspaces.length > 0
+
+  function handleNewRoomClick() {
+    if (onOpenCreateModal) {
+      onOpenCreateModal()
     } else {
-      document.documentElement.classList.add("dark")
-      localStorage.setItem("nexus_theme", "dark")
+      setCreateModalOpen(true)
     }
   }
 
-  async function handleSignOut() {
-    clearAll()
-    clearResourceCache()
-    await signOut()
-    router.replace("/login")
+  async function handleCreateRoom(name: string) {
+    const res = await apiFetch(`${API_URL}/workspaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    })
+    if (!res.ok) throw new Error("Could not create data room.")
+    const data = await res.json()
+    mutateResource<WorkspaceSummary[]>("workspaces", (curr) => {
+      const item: WorkspaceSummary = {
+        id: data.id,
+        name: data.name || name,
+        created_at: new Date().toISOString(),
+        upload_count: 0,
+        run_count: 0,
+      }
+      return curr ? [item, ...curr] : [item]
+    })
+    router.push(`/rooms/${data.id}`)
   }
 
-  const initials = session?.name
-    ? session.name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
-    : "DA"
+  function handleSelectRoom(id: number) {
+    setMobileDrawerOpen(false)
+    if (onSelectWorkspace) {
+      onSelectWorkspace(id)
+    } else {
+      router.push(`/rooms/${id}`)
+    }
+  }
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background text-foreground">
-      {/* Slim Top Row (56px, bottom hairline, sharing the exact 960px container) */}
-      <header className="h-14 border-b border-border shrink-0 w-full">
-        <div className="w-full max-w-[960px] mx-auto px-6 h-full flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold tracking-tight text-foreground select-none">
-              Nexus
-            </span>
-            <span className="hidden sm:inline text-xs text-muted-foreground border-l border-border pl-3 select-none">
-              Commercial due diligence & retail analytics
-            </span>
+    <div className="flex h-svh w-full flex-col bg-background text-foreground md:flex-row overflow-hidden">
+      {/* Desktop Sidebar: 260px fixed shell (hub mode) */}
+      <aside className="hidden md:block h-full shrink-0">
+        <Sidebar
+          mode="hub"
+          workspaces={workspaces}
+          activeRoomId={currentRoomId}
+          loadingWorkspaces={loading}
+          workspacesError={error}
+          onRetryWorkspaces={onRetry}
+          onSelectWorkspace={handleSelectRoom}
+          onNewWorkspace={handleNewRoomClick}
+          onDeleteWorkspace={onDeleteWorkspace}
+          onOpenAuthModal={() => {
+            if (onOpenAuthModal) onOpenAuthModal()
+            else setAuthModalOpen(true)
+          }}
+        />
+      </aside>
+
+      {/* Mobile Header under 768px */}
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 md:hidden">
+        <span className="text-xs font-semibold tracking-tight text-foreground select-none">
+          Nexus
+        </span>
+
+        <button
+          type="button"
+          aria-label="Open navigation menu"
+          onClick={() => setMobileDrawerOpen(true)}
+          className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:opacity-80 p-1 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Mobile Drawer */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-[2px]">
+          <div className="h-full w-[260px] bg-sidebar shadow-none">
+            <Sidebar
+              mode="hub"
+              workspaces={workspaces}
+              activeRoomId={currentRoomId}
+              loadingWorkspaces={loading}
+              workspacesError={error}
+              onRetryWorkspaces={onRetry}
+              onSelectWorkspace={handleSelectRoom}
+              onNewWorkspace={() => {
+                setMobileDrawerOpen(false)
+                handleNewRoomClick()
+              }}
+              onDeleteWorkspace={onDeleteWorkspace}
+              onOpenAuthModal={() => {
+                setMobileDrawerOpen(false)
+                if (onOpenAuthModal) onOpenAuthModal()
+                else setAuthModalOpen(true)
+              }}
+            />
           </div>
-
-          <div className="flex items-center gap-3">
-            {session ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                  <div className="flex h-6 w-6 items-center justify-center bg-accent text-accent-foreground text-[10px] font-medium border border-border">
-                    {initials}
-                  </div>
-                  <span className="hidden md:inline font-normal">
-                    Signed in as <strong className="font-medium text-foreground">{session.name}</strong>
-                  </span>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent
-                  align="end"
-                  className="w-56 mt-1 rounded-[var(--radius)] border border-border bg-popover p-1 shadow-none"
-                >
-                  <DropdownMenuLabel className="font-normal px-2 py-1.5">
-                    <div className="flex flex-col gap-1">
-                      <p className="text-xs font-medium text-foreground">{session.name}</p>
-                      <p className="text-[11px] text-muted-foreground truncate">{session.email}</p>
-                      <span className="mt-1 w-fit border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
-                        {session.role}
-                      </span>
-                    </div>
-                  </DropdownMenuLabel>
-
-                  <DropdownMenuSeparator className="bg-border my-1" />
-
-                  <DropdownMenuItem
-                    onClick={toggleTheme}
-                    className="flex items-center gap-2 px-2 py-1.5 text-xs text-foreground cursor-pointer focus:bg-accent focus:text-accent-foreground"
-                  >
-                    <Sun className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>Toggle theme</span>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator className="bg-border my-1" />
-
-                  <DropdownMenuItem
-                    onClick={handleSignOut}
-                    className="flex items-center gap-2 px-2 py-1.5 text-xs text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Link
-                href="/login"
-                className={buttonVariants({ variant: "ghost", size: "sm", className: "h-8 text-xs text-muted-foreground hover:text-foreground" })}
-              >
-                Sign in
-              </Link>
-            )}
-
-            {/* Exactly one primary action: show in header only when data rooms exist */}
-            {!loading && workspaces.length > 0 && (
-              <Link
-                href="/rooms/new"
-                className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium" })}
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" />
-                <span>New data room</span>
-              </Link>
-            )}
-          </div>
+          <button
+            type="button"
+            aria-label="Close menu drawer"
+            onClick={() => setMobileDrawerOpen(false)}
+            className="flex-1 p-4 text-foreground/80 outline-none"
+          >
+            <X className="h-6 w-6 ml-auto" />
+          </button>
         </div>
-      </header>
+      )}
 
-      {/* Main Hub Body (max 960px centered, shares left edge with header) */}
-      <main className="w-full max-w-[960px] mx-auto px-6 py-10 flex-1 flex flex-col">
-        <div>
-          <h1 className="text-[28px] font-semibold leading-tight text-foreground tracking-tight">
-            Data rooms
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Isolated data rooms for your diligence spreadsheets. Add a spreadsheet, ask questions, and see the query behind every answer.
+      {/* Main Hub Pane: 720px shared column, top-placed like chat empty state */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col h-full overflow-y-auto">
+        <div className="w-full max-w-[720px] mx-auto px-4 sm:px-6 flex flex-col flex-1 justify-between pt-16 sm:pt-20 pb-4">
+          <div className="flex flex-col text-left">
+            <h1 className="text-4xl sm:text-5xl font-semibold leading-tight text-foreground tracking-tight">
+              {welcomeHeading}
+            </h1>
+
+            {/* With rooms: single muted guidance line */}
+            {hasRooms ? (
+              <p className="text-sm sm:text-base text-muted-foreground mt-3">
+                Select a data room to continue, or create a new one.
+              </p>
+            ) : (
+              /* With zero rooms: clean text without outer box or button */
+              <div className="mt-6 flex flex-col gap-1 text-left">
+                <h2 className="text-sm sm:text-base font-medium text-foreground">
+                  No data rooms yet
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  Create a workspace, add a spreadsheet, and ask questions in plain English.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Persistent footer line matching chat view */}
+          <p className="text-center text-[11px] text-muted-foreground/60 py-3 select-none">
+            Answers are checked against query results. Verify before sharing.
           </p>
         </div>
-
-        {/* Error State: inline banner with Retry button */}
-        {error ? (
-          <div
-            role="alert"
-            className="mt-6 flex items-center justify-between p-3.5 bg-destructive/10 border border-destructive/20 text-xs text-destructive"
-          >
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-            {onRetry ? (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:opacity-80"
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>Retry</span>
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        {/* Loading State: 3 skeleton cards */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-[170px] border border-border bg-card p-5 flex flex-col justify-between animate-pulse"
-              >
-                <div className="flex flex-col gap-2">
-                  <div className="h-4 bg-muted w-3/4" />
-                  <div className="h-3 bg-muted/60 w-1/2 mt-2" />
-                </div>
-                <div className="h-3 bg-muted/40 w-1/3" />
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {/* Empty State: dashed-border panel directly under heading, left-aligned */}
-        {!loading && !error && workspaces.length === 0 ? (
-          <div className="mt-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-dashed border-border bg-card p-5">
-            <div className="flex flex-col gap-1 text-left">
-              <h2 className="text-xs font-medium text-foreground">
-                No data rooms yet
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Create a data room, add a spreadsheet, and ask questions in plain English.
-              </p>
-            </div>
-            <Link
-              href="/rooms/new"
-              className={buttonVariants({ size: "sm", className: "h-8 px-3 text-xs font-medium shrink-0" })}
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" />
-              <span>New data room</span>
-            </Link>
-          </div>
-        ) : null}
-
-        {/* Grid of Data Rooms */}
-        {!loading && workspaces.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
-            {/* First Tile: "New data room" dashed hairline button */}
-            <Link
-              href="/rooms/new"
-              className="group flex flex-col items-center justify-center min-h-[170px] p-5 border border-dashed border-border hover:border-foreground/30 hover:bg-accent/40 transition-colors text-center cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <div className="flex h-8 w-8 items-center justify-center bg-muted text-muted-foreground group-hover:text-foreground transition-colors mb-2">
-                <Plus className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-medium text-foreground">
-                New data room
-              </span>
-              <span className="text-[11px] text-muted-foreground mt-0.5">
-                Add a new data room
-              </span>
-            </Link>
-
-            {/* Room Cards: full-card Link with trash button stopping propagation */}
-            {workspaces.map((ws) => {
-              const isActive = ws.id === currentRoomId
-              const uploadCount = Number(ws.upload_count ?? 1)
-              const runCount = Number(ws.run_count ?? 0)
-
-              return (
-                <Link
-                  key={ws.id}
-                  href={`/rooms/${ws.id}`}
-                  prefetch={true}
-                  className={`group relative flex flex-col justify-between min-h-[170px] p-5 border bg-card cursor-pointer outline-none transition-colors hover:border-foreground/30 focus-visible:ring-1 focus-visible:ring-ring ${isActive ? "border-foreground/40" : "border-border"
-                    }`}
-                >
-                  <div>
-                    {/* Top row */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Database className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <h3 className="text-xs font-medium text-foreground truncate">
-                          {ws.name}
-                        </h3>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {isActive ? (
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 bg-accent text-accent-foreground border border-border">
-                            Active
-                          </span>
-                        ) : null}
-
-                        {/* Trash Icon Button stops propagation to avoid opening room */}
-                        {onDeleteWorkspace && (
-                          <button
-                            type="button"
-                            aria-label={`Delete ${ws.name}`}
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              setWorkspaceToDelete({ id: ws.id, name: ws.name })
-                            }}
-                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 text-muted-foreground hover:text-destructive max-sm:opacity-100"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Meta row */}
-                    <div className="flex items-center gap-2 mt-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <FileSpreadsheet className="h-3.5 w-3.5" />
-                        <span>
-                          {uploadCount} {uploadCount === 1 ? "dataset" : "datasets"}
-                        </span>
-                      </span>
-                      <span>·</span>
-                      <span>
-                        {runCount} {runCount === 1 ? "chat" : "chats"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between pt-3 border-t border-border/40 text-[11px] text-muted-foreground mt-4">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      <span className="font-mono tabular-nums">{ws.created_at ? ws.created_at.slice(0, 10) : "Recent"}</span>
-                    </span>
-                    <span className="flex items-center gap-1 font-medium text-foreground group-hover:translate-x-0.5 transition-transform">
-                      <span>Open</span>
-                      <ArrowRight className="h-3 w-3" />
-                    </span>
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        ) : null}
       </main>
 
-      {/* Confirm Delete Dialog */}
-      <ConfirmDialog
-        isOpen={!!workspaceToDelete}
-        onClose={() => setWorkspaceToDelete(null)}
-        onConfirm={async () => {
-          if (workspaceToDelete && onDeleteWorkspace) {
-            await onDeleteWorkspace(workspaceToDelete.id)
-            setWorkspaceToDelete(null)
-          }
-        }}
-        title={`Delete "${workspaceToDelete?.name}"?`}
-        description="All datasets and chats in this data room will be permanently removed."
-        confirmText="Delete"
+      {/* Create Data Room Modal */}
+      <CreateWorkspaceModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreate={handleCreateRoom}
+      />
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
       />
     </div>
   )

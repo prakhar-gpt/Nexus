@@ -16,7 +16,11 @@ import { useSession } from "@/lib/auth/provider"
 import { useChatStore } from "@/lib/chat-store"
 import { clearResourceCache } from "@/lib/use-resource"
 
-export function UserProfileFooter() {
+export function UserProfileFooter({
+  onOpenAuthModal,
+}: {
+  onOpenAuthModal?: () => void
+} = {}) {
   const router = useRouter()
   const { session, signOut } = useSession()
   const { clearAll } = useChatStore()
@@ -102,6 +106,15 @@ export function UserProfileFooter() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+      ) : onOpenAuthModal ? (
+        <button
+          type="button"
+          onClick={onOpenAuthModal}
+          className="flex w-full items-center gap-2 p-2 text-xs font-medium text-foreground hover:bg-sidebar-accent transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <LogIn className="h-3.5 w-3.5 text-muted-foreground" />
+          <span>Sign in</span>
+        </button>
       ) : (
         <Link
           href="/login"

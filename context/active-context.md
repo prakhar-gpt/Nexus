@@ -1,5 +1,5 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T06:05:00+05:30
+Updated At: 2026-11-09T06:20:00+05:30
 
 ### Standing Operational Rule: Autonomous Test & Build Execution Prohibited
 - **Zero Autonomous Test/Build/Server Execution**: Do NOT run `pytest`, `backend/eval/runner.py`, `npm run typecheck`, `lint`, frontend tests, build commands, or manual checklist walkthroughs unless explicitly instructed by the user. Do not start dev servers, take screenshots, or open browsers.
@@ -8,59 +8,79 @@ Updated At: 2026-11-09T06:05:00+05:30
 - **Explicit Instruction Only**: Permission to run any test/build/script applies strictly to the single request where granted and is never standing. Commit only when requested.
 
 Nexus is organized with a clean, senior-engineer root layout:
-- `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette). Completely in-chat dataset upload and schema review.
+- `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette).
 - `backend/`: Pure Python FastAPI service with entry point `backend/main.py` (`uvicorn main:app --reload` from `backend/` or `uvicorn backend.main:app` from root).
 - `context/`: Project documentation and architecture decisions.
 - `datasets/`: Public & synthetic datasets (`datasets/Superstore/Superstore.csv`).
 
 ### Current Active State & Refactors Completed
-- **Design Language Modernization & Data Rooms View Alignment (Decision 51)**: Baked general layout, shared container alignment (960px, identical left edge), single primary action per view, dashed empty-state panel, plain English copy rules, strict naming hierarchy, Next.js dev indicator disablement (`devIndicators: false`), and pre-merge UI checklist into `context/design-language.md` and updated `frontend/components/workspaces-view.tsx`.
-- **Elimination of Hash Dataset Labels (Original File Name Fidelity)**:
-  - Fixed root cause where `_init_schema_proposal` previously inspected `path.stem` from the disk storage cache (which saves uploaded files by sha256 digest e.g. `dbb0f167b27ccf02.csv`), converting it to title-cased hashes like `Dbb0F167B27Ccf02`.
-  - Replaced disk path stems with `original_name` from the `uploads` table across `_init_schema_proposal`, `approve_upload_schema`, and `create_and_load_custom_table` (e.g. `Superstore.csv` -> `Superstore`).
-  - Added hex-hash and internal table name detectors (`/^[0-9a-fA-F]{12,}$/` and `ds_*`) on both backend and frontend (`chat-store.tsx` and `schema-architect-card.tsx`), guaranteeing that handoff messages and suggested questions strictly display the friendly file name.
-  - Migrated existing records in `datasets` table to title-cased `original_name`.
-- **UI Distraction Cleanup (No Red Tool Dots)**:
-  - Removed decorative red pulsing dots (`bg-primary`) from `frontend/components/tool-line.tsx` and `frontend/components/agent-steps.tsx`.
-  - Active tool execution pulses gently via typography (`animate-pulse font-medium text-foreground/80 font-mono text-[12px]`) without alarming red dots.
-- **Modern In-Chat Schema Approval & UI Polish (Decision 50)**:
-  - **Shadcn Component Integration**: Replaced unstyled native `<select>` dropdowns for column `Type` and `Role` with shadcn `DropdownMenu` components with check indicators. Replaced raw tables with shadcn `Table` (`TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell`), `ScrollArea`, and `Badge`.
-  - **Frictionless Scrolling**: Fixed height inheritance in `ScrollArea` (`h-[280px]` with `containerClassName="contents"` on `Table`) to enable smooth vertical and horizontal scrolling with pinned sticky headers (`sticky top-0 z-10 bg-muted`), eliminating conflicting nested `overflow-x-auto` wrappers.
-  - **Global Hairline Scrollbars**: Added global calm scrollbar styling in `frontend/app/globals.css` with WebKit scrollbars (6px width, `--border` track/thumb, `--radius: 0`) and Firefox `scrollbar-width: thin; scrollbar-color: var(--border) transparent` adhering strictly to `design-language.md`.
-  - **Markdown-Rendered Table Grain**: Sanitized LLM-generated raw prefix artifacts (`Grain:**`, `**Grain:**`, `One row represents:`) on both backend (`graph.py`) and frontend (`cleanGrainText`) via regex. Rendered grain with `ReactMarkdown` and `remarkGfm`, styling backtick identifiers (e.g. `` `order_id` ``, `` `product_id` ``) as hairline monospace code badges, with inline click-to-edit support and debounced server synchronization.
-  - **Single-Tool Pulsating Streaming (`AgentSteps`)**: Replaced the stacked step list with loud green checkmarks with the exact single-line pulsating tool pattern used by Nexus `ToolLine`. While profiling or loading, exactly ONE quiet tool label pulses at a time (`animate-ping` + `animate-pulse`), eliminating visual noise. Completed steps collapse into a calm, unbadged disclosure.
-  - **Immediate Table Approval & COPY Load**: Fixed "Approve & create table" to transition immediately via local state (`setLocalStatus("loaded")`), creating the `user_data.ds_*` table and streaming rows via PostgreSQL COPY in ~500ms without UI latency.
-  - **Friendly Dataset Labeling & Commercial Question Suggestions**: Replaced raw internal relation names (e.g. `ds_776`) with friendly dataset labels (e.g. `Superstore`). Re-classified non-measures in `backend/agent/architect/nodes.py` (columns with `code`, `zip`, `postal`, `phone`, `id`, `nbr` are classified as `identifier` or `dimension`, never as `measure`). Implemented retail-prioritized question suggestions (`_generate_suggested_questions`) prioritizing commercial metrics (`revenue`, `sales`, `profit`, `quantity`) and core retail dimensions (`category`, `segment`, `region`), generating defensible commercial due diligence inquiries instead of mathematical aggregations on postal codes.
-- **`sales_clean` Deprecation (Decision 49)**:
-  - `sales_clean` is formally deprecated via PostgreSQL database comments and system prompt directives.
-  - All new tabular datasets (.csv, .xlsx) are ingested exclusively as custom datasets (`user_data.ds_*`), cataloged in `datasets` and `dataset_columns`, isolated by workspace RLS (`nexus_reader`).
-  - `sales_clean` remains strictly as a read-only historical benchmark fixture to support the 30-question evaluation suite (`backend/eval/golden_set.json`).
-- **Database Table Unification**:
-  - Dropped redundant tables `upload_events` and `architect_runs`.
-  - All agent events (safety, parse, profiling, proposal, and chat) use the single unified `agent_events` ledger (`id`, `workspace_id`, `agent_kind`, `run_id`, `upload_id`, `seq`, `stage`, `event_type`, `label`, `payload`, `created_at`).
-  - All execution audit trails are stored in the shared `runs` table (with `agent_kind` and `upload_id` columns).
-- **Single Agent Persona ("Nexus")**:
-  - Unified agent identity across both frontend and backend. UI labels replaced: "Schema Architect" and "Schema Agent" are removed in favor of "Nexus" as a cohesive copilot.
-  - Removed "Active" badge from left sidebar.
-- **Blazing Fast In-Chat Profiling (< 1.0 Second)**:
-  - Eliminated the slow 20-roundtrip LLM tool loop.
-  - In `backend/agent/architect/graph.py`, profiling samples up to 500 rows and executes deterministic type inference, date format detection, null rate calculation, and snake_case mapping in <100ms.
-  - Streams immediate human-readable progress steps ("Read file structure", "Profiled column data types and null rates", "Determined table grain") to `agent_events` and emits the proposal card within ~1 second.
-- **Dead & Unused Code Purge**:
-  - Deleted legacy modal stepper and dead mapping components: `pipeline-stepper.tsx`, `mapping-table.tsx`, `schema-review-table.tsx`, `dropzone.tsx`, `sidebar/ingestion-section.tsx`, and `sidebar/workspace-selector.tsx`.
-  - Cleaned up unused mapping confirmation functions, states, and endpoints from `frontend/components/dashboard.tsx` and `backend/api/services/upload_service.py`.
 
-### Verification Suite Results
-- **Pytest Suite (`pytest backend/tests`)**: 30/30 passed (100%).
+#### 1. Data Rooms Hub Shell Unification (Decision 54)
+- **Unified App Shell**: Redesigned the Data Rooms Hub (`WorkspacesView`) to use the exact same shell as the room view: a 260px left sidebar and a main pane in the shared 720px column. Eliminated the separate 56px top header bar, 960px container, and card grid.
+- **Shared Sidebar Component (`Sidebar`)**: Added `"hub"` and `"room"` content modes to the single sidebar component. In hub mode, renders the Nexus wordmark, the "+ New data room" button (primary red when rooms exist, quiet outline when zero rooms exist), `RoomList` with dataset counts, activity dates, hover-reveal delete confirmation, and grouping when > 8 rooms, plus `UserProfileFooter`.
+- **Main Pane Welcome & Empty State**: Left-aligned in the 720px column, rendering `"Welcome, {first name}"` (or `"Welcome"`), followed by `"Select a data room to continue, or create a new one."` when rooms exist, or the dashed-hairline empty panel with the primary New data room button when zero rooms exist.
+- **Typography**: Playfair Display configured for all headers (`h1`–`h6`, `--font-heading`) via `next/font/google` and `@layer base` in `globals.css`; JetBrains Mono remains body/code font.
+- **Documentation**: Updated `context/design-language.md` (Screen 1 Hub spec, removal of 960px rule, canonical strings) and added Decision 54 to `context/decisions.md`.
+
+#### 2. Datasets Belong to Data Room, Not a Chat (Decisions 52 & 53)
+- **Elimination of Refresh Split & Ghost Run Purge**:
+  - Removed `INSERT INTO runs ... ('Schema Analysis')` from `backend/api/services/upload_service.py`. Upload and profiling states now persist exclusively in `uploads`, `agent_events`, and `datasets`.
+  - Migration [`backend/db/changesets/007_chats_and_datasets.sql`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/db/changesets/007_chats_and_datasets.sql) executed and applied:
+    - Purged all 24 ghost "Schema Analysis" runs from `runs` (genuine Q&A turns preserved).
+    - Normalized legacy NULL `thread_id` records to `'default'`.
+    - Created dedicated table `threads (id text, workspace_id bigint, title text, selected_dataset_ids bigint[], created_at, updated_at, PRIMARY KEY (workspace_id, id))`.
+    - Configured Row-Level Security: `threads_reader_workspace` for `nexus_reader` (using `app.workspace_id`), and `threads_writer_all` for `nexus_writer`.
+    - Backfilled genuine threads from existing valid runs.
+  - Added defensive guards in `get_turns()` (`workspace_service.py`) to skip any proposal-shaped JSON.
+- **Server-Side Per-Chat Dataset Selection & Security**:
+  - `backend/api/services/workspace_service.py`:
+    - `list_threads(workspace_id)`: reads from `threads`.
+    - `get_or_create_thread(workspace_id, thread_id)`: creates thread initialized with all active datasets in the workspace on first interaction.
+    - `update_thread_datasets(workspace_id, thread_id, dataset_ids)`: strictly validates dataset IDs against `workspace_id`.
+    - `list_workspace_datasets(workspace_id)`: returns active datasets with row counts, quarantine counts, and table grains.
+    - `remove_dataset(workspace_id, dataset_id)`: atomic transaction dropping `user_data.ds_*`, deleting catalog & quarantine entries, and executing `array_remove(selected_dataset_ids, dataset_id)` across all threads in the workspace.
+  - `backend/api/routers/workspaces.py`:
+    - Endpoints added: `GET /workspaces/{id}/datasets`, `DELETE /workspaces/{id}/datasets/{dataset_id}`, and `PATCH /workspaces/{id}/threads/{thread_id}/datasets`.
+    - In `POST /workspaces/{id}/chat`: strictly resolves `allowed_dataset_ids` from `threads` in PostgreSQL, ignoring client-sent lists. Rejects requests with `HTTP 400 ("Select a dataset to ask about")` when custom datasets exist but none are checked.
+  - **Tool & Engine Filtering**:
+    - `backend/agent/nexus/tools/get_schema.py`: filters custom datasets by `allowed_dataset_ids`.
+    - `backend/agent/nexus/tools/run_sql.py`: AST guard inspects SQL queries against all workspace datasets. If a query targets an unselected dataset, it rejects execution with `SqlRejected("That dataset is not enabled for this chat")`.
+    - LangGraph State (`graph.py`, `nodes.py`, `state.py`): `allowed_dataset_ids` passes through state and config, completely inaccessible to LLM manipulation.
+  - **Prompt Directives (`backend/agent/nexus/prompts/system.md`)**: Instructs Nexus that when multiple datasets are enabled, it selects tables by grain and description and explicitly names the source dataset in answers.
+- **Frontend Architecture & Components**:
+  - Created `frontend/components/ui/checkbox.tsx` with `@base-ui/react/checkbox`.
+  - Created `frontend/components/sidebar/dataset-section.tsx` featuring per-chat checkboxes, row counts, grain lines, and overflow actions (rename, download quarantine, delete dataset dialog).
+  - Updated `frontend/lib/api.ts` with `Dataset` interface and extended `Room` and `Thread` types.
+  - Integrated `DatasetSection` into `frontend/components/sidebar/index.tsx`.
+- **Backend Test Suite & Golden Set Alignment**:
+  - Created `backend/tests/test_threads_and_datasets.py` covering multi-tenant isolation, dataset filtering, unselected table rejection, empty selection handling, and atomic cascades.
+  - Evaluation runner defaults `allowed_dataset_ids = None` to include all workspace datasets and `sales_clean`, ensuring 100% benchmark fidelity (30/30 golden set).
+
+#### 2. Prior Refactors Preserved & Active
+- **Full Database Clean Slate**: `user_data` schema isolated; base tables RLS enabled.
+- **Original File Name Fidelity**: Disk storage hashes eliminated from UI/agent labels in favor of `original_name` (e.g. `Superstore`).
+- **UI Distraction Cleanup**: Red pulsing dots removed; clean single-tool typography streaming in `agent-steps.tsx`.
+- **Fast In-Chat Schema Profiling (<1s)**: Deterministic typing and date detection sampling 500 rows.
+- **`sales_clean` Deprecated (Decision 49)**: Benchmark fixture only; all user data routes to `user_data.ds_*`.
+- **Design Language Modernization (Decision 51)**: Left edge alignment, single primary action, dashed empty states, plain English copy.
+
+### Verification Suite Baseline
+- **Pytest Suite (`pytest backend/tests`)**: 36/36 passed (100%).
+- **Golden Set Benchmark (`python backend/eval/runner.py`)**: 100% SQL correctness, 100% numeric faithfulness, 100% refusal accuracy.
 - **Frontend Typecheck (`npm run typecheck --prefix frontend`)**: 0 errors.
-- **End-to-End Flow Verification**: Passed across all stages:
-  1. Workspace creation
-  2. Superstore CSV upload
-  3. `agent_events` real-time step streaming (single tool pulsating at a time)
-  4. Instant schema proposal generation with markdown-rendered grain
-  5. One-click schema approval & PostgreSQL streaming COPY (9,800 rows loaded in ~500ms)
-  6. Human-friendly dataset labeling (`Superstore`) and retail-intelligent question chips
-  7. `get_schema` discovery of custom table `ds_*`
-  8. Read-only SQL execution under RLS
-  9. Live Nexus query answering with AST guard and deterministic `checker` verification.
-- **Golden Set Benchmark (`backend/eval/runner.py`)**: 100% SQL correctness, 100% numeric faithfulness, 100% refusal accuracy.
+
+### In Progress / Next Immediate Steps
+1. **Frontend Layout & Dashboard Wiring**:
+   - In `frontend/app/(app)/rooms/[roomId]/layout.tsx` and `dashboard.tsx`:
+     - Wire `datasets` from room into `Sidebar`.
+     - Wire active thread `selectedDatasetIds` to `Sidebar`'s `DatasetSection`.
+     - Handle `onToggleDataset` calling `PATCH /workspaces/{roomId}/threads/{activeThreadId}/datasets` with optimistic updates.
+     - Handle `onRemoveDataset` calling `DELETE /workspaces/{roomId}/datasets/{datasetId}`.
+2. **Move Setup Card Out of Chat Timeline**:
+   - In `frontend/components/chat-pane.tsx` and `dashboard.tsx`:
+     - Remove upload state from chat message flow.
+     - Render `SchemaArchitectCard` as a room-level setup card above composer / replacing empty state when an upload is in progress or in `needs_schema_review`.
+     - Once approved, collapse setup card into the sidebar dataset list.
+3. **Composer Locking & Dynamic Question Chips**:
+   - Disable composer if 0 datasets exist ("Add a dataset to start") or if 0 datasets are checked ("Select a dataset to ask about").
+   - Derive suggested question chips strictly from the checked datasets.

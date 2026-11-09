@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { JetBrains_Mono } from "next/font/google"
+import { JetBrains_Mono, Playfair_Display } from "next/font/google"
 import "./globals.css"
 import { ThemeScript } from "@/components/theme-script"
 import { Toaster } from "@/components/ui/toaster"
@@ -16,6 +16,12 @@ const jetbrains = JetBrains_Mono({
   variable: "--font-sans",
 })
 
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-heading",
+  weight: ["400", "500", "600", "700"],
+})
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,7 +31,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased font-sans", jetbrains.variable)}
+      className={cn("antialiased font-sans", jetbrains.variable, playfair.variable)}
     >
       <head>
         <ThemeScript />

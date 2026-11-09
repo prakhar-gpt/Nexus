@@ -128,6 +128,7 @@ export default function RoomShellLayout({
         {/* Desktop Sidebar: 260px fixed, never remounts across threads */}
         <aside className="hidden md:block h-full shrink-0">
           <Sidebar
+            mode="room"
             roomId={roomId}
             roomName={room?.name ?? "Data Room"}
             threads={room?.threads || []}
@@ -162,6 +163,7 @@ export default function RoomShellLayout({
           <div className="fixed inset-0 z-50 flex md:hidden bg-black/40 backdrop-blur-[2px]">
             <div className="h-full w-[260px] bg-sidebar shadow-none">
               <Sidebar
+                mode="room"
                 roomId={roomId}
                 roomName={room?.name ?? "Data Room"}
                 threads={room?.threads || []}

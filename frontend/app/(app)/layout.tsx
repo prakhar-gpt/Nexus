@@ -27,17 +27,20 @@ function AuthGuardInner({ children }: { children: React.ReactNode }) {
   // Layer 2 guard: render full-height skeleton while checking session to avoid any flash of protected content
   if (isLoading || !session) {
     return (
-      <div className="flex h-screen w-full flex-col bg-background animate-pulse">
-        <header className="h-14 border-b border-border px-6 flex items-center justify-between">
-          <div className="h-4 w-28 bg-muted" />
-          <div className="h-8 w-24 bg-muted" />
-        </header>
-        <main className="max-w-[960px] mx-auto w-full px-6 py-10 flex flex-col gap-6 flex-1">
-          <div className="h-8 w-44 bg-muted" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <div className="h-40 bg-muted/40 border border-border" />
-            <div className="h-40 bg-muted/40 border border-border" />
-            <div className="h-40 bg-muted/40 border border-border" />
+      <div className="flex h-svh w-full flex-col bg-background text-foreground md:flex-row overflow-hidden animate-pulse">
+        <aside className="hidden md:block h-full w-[260px] border-r border-sidebar-border bg-sidebar p-3 shrink-0">
+          <div className="h-4 w-20 bg-muted mb-4" />
+          <div className="h-8 w-full bg-muted mb-6" />
+          <div className="space-y-2">
+            <div className="h-8 w-full bg-muted/60" />
+            <div className="h-8 w-full bg-muted/40" />
+            <div className="h-8 w-full bg-muted/30" />
+          </div>
+        </aside>
+        <main className="flex-1 flex flex-col justify-between pt-16 sm:pt-20 pb-4 max-w-[720px] mx-auto w-full px-4 sm:px-6">
+          <div className="space-y-3">
+            <div className="h-8 w-44 bg-muted" />
+            <div className="h-4 w-72 bg-muted/60" />
           </div>
         </main>
       </div>
@@ -55,11 +58,14 @@ export default function AppLayout({
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full flex-col bg-background animate-pulse">
-          <header className="h-14 border-b border-border px-6 flex items-center justify-between">
-            <div className="h-4 w-28 bg-muted" />
-            <div className="h-8 w-24 bg-muted" />
-          </header>
+        <div className="flex h-svh w-full flex-col bg-background text-foreground md:flex-row overflow-hidden animate-pulse">
+          <aside className="hidden md:block h-full w-[260px] border-r border-sidebar-border bg-sidebar p-3 shrink-0">
+            <div className="h-4 w-20 bg-muted mb-4" />
+            <div className="h-8 w-full bg-muted mb-6" />
+          </aside>
+          <main className="flex-1 max-w-[720px] mx-auto w-full px-4 sm:px-6 pt-16 sm:pt-20">
+            <div className="h-8 w-44 bg-muted" />
+          </main>
         </div>
       }
     >
