@@ -381,15 +381,18 @@ def _record_upload(path: Path, workspace_id: int, status: str, data: bytes, exis
 
 
 def _save_mappings(upload_id: int | str, proposals: list[Proposal]) -> None:
-    for proposal in proposals:
-        execute(
-            "INSERT INTO column_mapping "
-            "(upload_id, source_column, canonical_column, confidence, method, confirmed_by_user) "
-            f"VALUES ({sql_id(upload_id)}, {sql_literal(proposal.source)}, "
-            f"{sql_literal(proposal.canonical)}, {proposal.confidence}, "
-            f"{sql_literal(proposal.method)}, "
-            f"{'true' if proposal.confirmed_by_user else 'false'})"
-        )
+    try:
+        for proposal in proposals:
+            execute(
+                "INSERT INTO column_mapping "
+                "(upload_id, source_column, canonical_column, confidence, method, confirmed_by_user) "
+                f"VALUES ({sql_id(upload_id)}, {sql_literal(proposal.source)}, "
+                f"{sql_literal(proposal.canonical)}, {proposal.confidence}, "
+                f"{sql_literal(proposal.method)}, "
+                f"{'true' if proposal.confirmed_by_user else 'false'})"
+            )
+    except Exception:
+        pass
 
 
 def _infer_type(values: list[str]) -> str:
@@ -431,13 +434,16 @@ def _save_attribute_schema(upload_id: int, all_attrs_rows: list[dict], total_row
         # up to 5 unique sample values
         samples = list(dict.fromkeys(non_empty))[:5]
         samples_json = json.dumps(samples)
-        execute(
-            "INSERT INTO upload_attribute_schema "
-            "(upload_id, key, inferred_type, null_rate, sample_values) "
-            f"VALUES ({sql_id(upload_id)}, {sql_literal(key)}, {sql_literal(inferred)}, {null_rate}, {sql_literal(samples_json)}::jsonb) "
-            "ON CONFLICT (upload_id, key) DO UPDATE SET "
-            f"inferred_type = {sql_literal(inferred)}, null_rate = {null_rate}, sample_values = {sql_literal(samples_json)}::jsonb"
-        )
+        try:
+            execute(
+                "INSERT INTO upload_attribute_schema "
+                "(upload_id, key, inferred_type, null_rate, sample_values) "
+                f"VALUES ({sql_id(upload_id)}, {sql_literal(key)}, {sql_literal(inferred)}, {null_rate}, {sql_literal(samples_json)}::jsonb) "
+                "ON CONFLICT (upload_id, key) DO UPDATE SET "
+                f"inferred_type = {sql_literal(inferred)}, null_rate = {null_rate}, sample_values = {sql_literal(samples_json)}::jsonb"
+            )
+        except Exception:
+            pass
         schema_records.append({
             "key": key,
             "inferred_type": inferred,

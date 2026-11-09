@@ -195,12 +195,12 @@ def main() -> None:
         sys.exit(f"Missing dataset: {CSV_PATH}")
     ensure_database()
     sha256, size = file_fingerprint()
-    # Always reload workspace 1 to ensure attributes are populated
+    # Always reload workspace 1 to ensure clean seed
     psql(DATABASE, "-c", "UPDATE workspaces SET name = 'Superstore' WHERE id = 1;")
     psql(DATABASE, "-c", "DELETE FROM sales_clean WHERE workspace_id = 1;")
-    psql(DATABASE, "-c", "DELETE FROM column_mapping WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'column_mapping') THEN DELETE FROM column_mapping WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1); END IF; END $$;")
     psql(DATABASE, "-c", "DELETE FROM quarantine WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
-    psql(DATABASE, "-c", "DELETE FROM upload_attribute_schema WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'upload_attribute_schema') THEN DELETE FROM upload_attribute_schema WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1); END IF; END $$;")
     psql(DATABASE, "-c", "DELETE FROM dataset_columns WHERE dataset_id IN (SELECT id FROM datasets WHERE workspace_id = 1);")
     psql(DATABASE, "-c", "DELETE FROM datasets WHERE workspace_id = 1;")
     psql(DATABASE, "-c", "DELETE FROM uploads WHERE workspace_id = 1;")
@@ -213,20 +213,25 @@ def main() -> None:
         count = write_load_csv(staged, workspace_id, upload_id)
         copy_csv(staged)
 
-    # Populate upload_attribute_schema for workspace 1
+    # Populate upload_attribute_schema if present
     schema_sql = f"""
-    INSERT INTO upload_attribute_schema (upload_id, key, inferred_type, null_rate, sample_values)
-    VALUES
-      ({upload_id}, 'city', 'text', 0, '["Henderson", "Los Angeles"]'::jsonb),
-      ({upload_id}, 'country', 'text', 0, '["United States"]'::jsonb),
-      ({upload_id}, 'postal_code', 'text', 0, '["42420", "90036"]'::jsonb),
-      ({upload_id}, 'product_name', 'text', 0, '["Bush Somerset Bookcase"]'::jsonb),
-      ({upload_id}, 'ship_date', 'date', 0, '["11/11/2017", "16/06/2016"]'::jsonb),
-      ({upload_id}, 'ship_mode', 'text', 0, '["Second Class", "Standard Class"]'::jsonb),
-      ({upload_id}, 'state', 'text', 0, '["Kentucky", "California"]'::jsonb)
-    ON CONFLICT (upload_id, key) DO UPDATE SET
-      inferred_type = EXCLUDED.inferred_type,
-      sample_values = EXCLUDED.sample_values;
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'upload_attribute_schema') THEN
+        INSERT INTO upload_attribute_schema (upload_id, key, inferred_type, null_rate, sample_values)
+        VALUES
+          ({upload_id}, 'city', 'text', 0, '["Henderson", "Los Angeles"]'::jsonb),
+          ({upload_id}, 'country', 'text', 0, '["United States"]'::jsonb),
+          ({upload_id}, 'postal_code', 'text', 0, '["42420", "90036"]'::jsonb),
+          ({upload_id}, 'product_name', 'text', 0, '["Bush Somerset Bookcase"]'::jsonb),
+          ({upload_id}, 'ship_date', 'date', 0, '["11/11/2017", "16/06/2016"]'::jsonb),
+          ({upload_id}, 'ship_mode', 'text', 0, '["Second Class", "Standard Class"]'::jsonb),
+          ({upload_id}, 'state', 'text', 0, '["Kentucky", "California"]'::jsonb)
+        ON CONFLICT (upload_id, key) DO UPDATE SET
+          inferred_type = EXCLUDED.inferred_type,
+          sample_values = EXCLUDED.sample_values;
+      END IF;
+    END $$;
     """
     psql(DATABASE, "-c", schema_sql)
 

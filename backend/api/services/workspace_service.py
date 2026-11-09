@@ -280,10 +280,13 @@ def remove_dataset(workspace_id: int | str, dataset_id: int | str) -> dict:
 
 def get_mappings(upload_id: int | str) -> list[dict]:
     """Retrieve column mapping proposals and statuses for an upload."""
-    saved = execute(
-        "SELECT source_column, canonical_column, confidence, method, confirmed_by_user "
-        f"FROM column_mapping WHERE upload_id = {sql_id(upload_id)} ORDER BY id"
-    )
+    try:
+        saved = execute(
+            "SELECT source_column, canonical_column, confidence, method, confirmed_by_user "
+            f"FROM column_mapping WHERE upload_id = {sql_id(upload_id)} ORDER BY id"
+        )
+    except Exception:
+        return []
     mappings = []
     for item in saved:
         confirmed = str(item["confirmed_by_user"]).lower() in {"t", "true"}

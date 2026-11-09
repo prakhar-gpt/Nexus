@@ -15,7 +15,12 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Current Active State & Refactors Completed
 
-#### 1. Users Table, Workspace Membership & Universal UUID Implementation (Decision 57)
+#### 1. Database Table Purge & Retirement of Legacy Tables (Decision 58)
+- **Purged Unused Tables (Changeset 009)**: Successfully dropped `column_mapping`, `upload_attribute_schema`, and `eval_results` from PostgreSQL `nexus_db`.
+- **Preserved `quarantine`**: Confirmed active in user data quality workflow (tracks invalid CSV/XLSX rows, displays quarantined counts in room header/dataset list, and powers CSV download endpoint).
+- **Preserved `sales_clean`**: Confirmed active as a zero-storage compatibility VIEW over `user_data.ds_superstore`, powering the 30-question evaluation benchmark suite (`backend/eval/golden_set.json`) and core pytest suites.
+
+#### 2. Users Table, Workspace Membership & Universal UUID Implementation (Decision 57)
 - **Users Table & Workspace Ownership**: Implemented `users` (`id uuid PRIMARY KEY DEFAULT gen_random_uuid()`, `email`, `name`, `role`, timestamps) and `workspace_members` join table (`workspace_id uuid`, `user_id uuid`, `role`, `joined_at`). Added `/users`, `/users/me`, and `/auth/login` endpoints.
 - **Universal UUID Primary & Foreign Keys (Changeset 008)**: Migrated primary keys and foreign keys to `uuid DEFAULT gen_random_uuid()` across `workspaces`, `uploads`, `datasets`, `dataset_columns`, `threads`, `runs`, `agent_events`, `feedback`, `eval_results`, `quarantine`, `column_mapping`, `upload_attribute_schema`, `sales_clean`, and dynamically generated tables (`user_data.ds_*`).
 - **Data Room Creation**: `create_workspace` generates UUIDs (`uuid.uuid4()`), accepts optional client UUIDs, associates workspace membership with the user, and provides backward-compatible fallback for unmigrated databases.
