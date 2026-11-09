@@ -3,6 +3,7 @@ import { JetBrains_Mono, Playfair_Display } from "next/font/google"
 import "./globals.css"
 import { ThemeScript } from "@/components/theme-script"
 import { Toaster } from "@/components/ui/toaster"
+import { KeepAlive } from "@/components/keep-alive"
 import { AuthProvider } from "@/lib/auth/provider"
 import { cn } from "@/lib/utils"
 
@@ -40,6 +41,7 @@ export default function RootLayout({
         <ThemeScript />
       </head>
       <body className="min-h-screen bg-background text-foreground">
+        <KeepAlive />
         <AuthProvider>{children}</AuthProvider>
         <Toaster />
       </body>

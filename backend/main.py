@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Ensure backend root is on sys.path
@@ -63,6 +63,12 @@ app.include_router(users_router)
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.api_route("/ping", methods=["GET", "POST", "HEAD"])
+async def ping_endpoint(request: Request) -> dict[str, str]:
+    """Lightweight keep-alive ping endpoint to prevent cold start spin-down."""
+    return {"status": "ok", "ping": "pong"}
 
 __all__ = [
     "app",

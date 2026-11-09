@@ -22,8 +22,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if request.method in SAFE_METHODS:
             return await call_next(request)
 
-        # Exempt health check endpoints if any
-        if request.url.path in ("/health", "/api/health"):
+        # Exempt health check and keepalive endpoints if any
+        if request.url.path in ("/health", "/api/health", "/ping", "/api/ping"):
             return await call_next(request)
 
         # 1. Validate Origin header if present against allowed CORS origins or Vercel deployments
