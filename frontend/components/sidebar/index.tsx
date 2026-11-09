@@ -151,9 +151,9 @@ function SidebarComponent({
               </Link>
             )}
 
-            <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
+            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
               Nexus
-            </span>
+            </h1>
           </div>
         )}
 
