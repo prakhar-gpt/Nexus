@@ -14,12 +14,12 @@ from ingest.reader import (
     TableRejected,
     find_header,
     inspect,
-    make_inert,
     parse_date,
     parse_number,
     read_rows,
     stored_name,
 )
+from utils import make_inert
 from ingest.schema_validation import (
     check_column_parse_success,
     validate_schema_proposal,

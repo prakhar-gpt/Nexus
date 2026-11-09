@@ -2,29 +2,17 @@
 
 from __future__ import annotations
 
-import json
+import re
 import time
-from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
 from langchain_core.messages import HumanMessage
-from langgraph.graph import END, START, StateGraph
 
 from agent.architect.models import SchemaProposal
-from agent.architect.nodes import (
-    architect_agent_node,
-    architect_tools_node,
-    fallback_proposal_from_df,
-    route_architect_next_step,
-)
-from agent.architect.state import ArchitectState
-from agent.architect.tools import get_architect_tools_for_df
+from agent.architect.nodes import fallback_proposal_from_df
 from agent.model import chat_model
 from ingest.schema_validation import validate_schema_proposal
-
-PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
-ARCHITECT_SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
 def run_schema_architect(
@@ -115,7 +103,6 @@ def run_schema_architect(
         if lines:
             first_line = lines[0]
             # Strip any leading 'Grain:**' or '**Grain:**' prefix
-            import re
             cleaned_line = re.sub(r"^(?:\*{0,2}\s*grain\s*:?\s*\*{0,2}\s*:?\s*)", "", first_line, flags=re.IGNORECASE).strip()
             if "one row" in cleaned_line.lower():
                 proposal.grain = cleaned_line[:140]
@@ -123,7 +110,6 @@ def run_schema_architect(
         # Graceful fallback to deterministic proposal
         pass
 
-    import re
     proposal.grain = re.sub(r"^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*", "", proposal.grain, flags=re.IGNORECASE).strip()
 
     # Auto-sanitize any reserved system column names

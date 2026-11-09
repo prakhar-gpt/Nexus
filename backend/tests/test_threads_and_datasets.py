@@ -17,7 +17,7 @@ from api.services.workspace_service import (
     remove_dataset,
     update_thread_datasets,
 )
-from ingest.store import execute, sql_id, sql_literal
+from ingest.store import execute, sql_id
 
 
 @pytest.fixture

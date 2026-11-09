@@ -6,7 +6,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from agent.architect.models import ColumnProposal, SchemaProposal
 from agent.architect.tools import (
     execute_check_uniqueness,
     execute_detect_date_format,
@@ -16,7 +15,6 @@ from agent.architect.tools import (
     execute_test_parse,
     get_architect_tools_for_df,
 )
-from agent.nexus.tools import TOOLS as ANALYST_TOOLS
 from agent.nexus.tools.run_sql import SqlRejected, guard_sql
 from ingest.schema_validation import (
     check_column_parse_success,
@@ -182,7 +180,6 @@ def test_ast_guard_allows_custom_table_and_rejects_joins():
     assert "sales_clean" in guard_sql("SELECT count(*) FROM sales_clean")
 
     # Multi-table query rejected
-    from agent.nexus.tools.run_sql import get_allowed_tables
     # Emulate allowed ds_1 table
     with pytest.raises(SqlRejected, match="Multi-table queries and joins are not supported"):
         guard_sql(
@@ -197,7 +194,7 @@ def test_ast_guard_allows_custom_table_and_rejects_joins():
 
 def test_custom_table_lifecycle_and_rls():
     """Integration test: custom table created, rows loaded, isolated by RLS, and queried."""
-    from ingest.store import execute, sql_id, sql_literal
+    from ingest.store import execute, sql_id
     from agent.nexus.tools.run_sql import execute_sql
     from ingest.custom_table import build_create_table_ddl
 

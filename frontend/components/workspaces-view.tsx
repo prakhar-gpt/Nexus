@@ -105,7 +105,7 @@ export function WorkspacesView({
 
       {/* Mobile Header under 768px */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 md:hidden">
-        <h1 className="text-sm font-semibold tracking-tight text-foreground select-none">
+        <h1 className="text-lg font-bold tracking-tight text-foreground select-none">
           Nexus
         </h1>
 

@@ -13,7 +13,6 @@ import pandas as pd
 from fastapi import BackgroundTasks, HTTPException, Response
 from sqlalchemy import func, select
 
-from api.services.event_stream import stream_upload_events
 from api.services.schema_questions import generate_suggested_questions
 from api.services.workspace_service import get_or_create_thread, get_workspace_meta
 from db.models import AgentEvent, Dataset, Quarantine, Run, Thread, Upload
@@ -408,7 +407,7 @@ def get_upload_schema(upload_id: str) -> dict:
     if not proposal:
         raise HTTPException(status_code=404, detail="No schema proposal found for this upload")
 
-    v_result = validate_schema_proposal(proposal)
+    v_result = validate_schema_proposal(proposal, headers)
 
     preview_rows = []
     for line_num, cells in raw_rows:
@@ -474,11 +473,12 @@ def approve_upload_schema(upload_id: str, thread_id: str | None = None) -> dict:
     if not proposal:
         raise HTTPException(status_code=400, detail="No schema proposal to approve")
 
-    v_result = validate_schema_proposal(proposal)
-    if not v_result.valid:
+    v_result = validate_schema_proposal(proposal, headers)
+    if not v_result.is_valid:
+        error_msgs = [e.message for e in v_result.errors]
         raise HTTPException(
             status_code=422,
-            detail=f"Schema proposal has validation errors: {'; '.join(v_result.errors)}",
+            detail=f"Schema proposal has validation errors: {'; '.join(error_msgs)}",
         )
 
     header_hash = compute_headers_hash(headers)

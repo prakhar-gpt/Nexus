@@ -47,6 +47,14 @@ class ValidationResult(BaseModel):
     errors: list[ValidationIssue] = Field(default_factory=list)
     warnings: list[ValidationIssue] = Field(default_factory=list)
 
+    @property
+    def valid(self) -> bool:
+        return self.is_valid
+
+    @property
+    def error_messages(self) -> list[str]:
+        return [e.message for e in self.errors]
+
 
 def parse_value_as_type(
     val: str,
@@ -134,12 +142,12 @@ def check_column_parse_success(
 
 def validate_schema_proposal(
     proposal: dict[str, Any],
-    source_columns: list[str],
+    source_columns: list[str] | None = None,
     column_data: dict[str, list[str]] | None = None,
 ) -> ValidationResult:
     """Deterministic validation of proposal or user-edited schema.
 
-    - Every source column appears exactly once, or is explicitly excluded.
+    - Every source column appears exactly once, or is explicitly excluded (when source_columns provided).
     - column_name is valid snake_case identifier, <= 63 chars, not reserved.
     - type and role are in allowed lists.
     - Column count <= 64.
@@ -170,7 +178,7 @@ def validate_schema_proposal(
     if len(cols) > 64:
         errors.append(ValidationIssue(level="error", field="columns", message="Column count exceeds the maximum limit of 64."))
 
-    source_set = set(source_columns)
+    source_set = set(source_columns) if source_columns is not None else None
     seen_sources: set[str] = set()
     seen_targets: set[str] = set()
 
@@ -189,26 +197,48 @@ def validate_schema_proposal(
         date_format = col.get("date_format")
 
         # Source name check
-        if not source_name or source_name not in source_set:
-            errors.append(
-                ValidationIssue(
-                    level="error",
-                    field=f"columns[{idx}].source_name",
-                    column_name=target_name,
-                    message=f"Source column '{source_name}' does not exist in uploaded file.",
+        if source_set is not None:
+            if not source_name or source_name not in source_set:
+                errors.append(
+                    ValidationIssue(
+                        level="error",
+                        field=f"columns[{idx}].source_name",
+                        column_name=target_name,
+                        message=f"Source column '{source_name}' does not exist in uploaded file.",
+                    )
                 )
-            )
-        elif source_name in seen_sources:
-            errors.append(
-                ValidationIssue(
-                    level="error",
-                    field=f"columns[{idx}].source_name",
-                    column_name=target_name,
-                    message=f"Duplicate mapping for source column '{source_name}'.",
+            elif source_name in seen_sources:
+                errors.append(
+                    ValidationIssue(
+                        level="error",
+                        field=f"columns[{idx}].source_name",
+                        column_name=target_name,
+                        message=f"Duplicate mapping for source column '{source_name}'.",
+                    )
                 )
-            )
+            else:
+                seen_sources.add(source_name)
         else:
-            seen_sources.add(source_name)
+            if not source_name:
+                errors.append(
+                    ValidationIssue(
+                        level="error",
+                        field=f"columns[{idx}].source_name",
+                        column_name=target_name,
+                        message="Source column name cannot be empty.",
+                    )
+                )
+            elif source_name in seen_sources:
+                errors.append(
+                    ValidationIssue(
+                        level="error",
+                        field=f"columns[{idx}].source_name",
+                        column_name=target_name,
+                        message=f"Duplicate mapping for source column '{source_name}'.",
+                    )
+                )
+            else:
+                seen_sources.add(source_name)
 
         if is_excluded:
             continue
@@ -318,15 +348,16 @@ def validate_schema_proposal(
         errors.append(ValidationIssue(level="error", field="columns", message="At least one column must be included (not excluded)."))
 
     # Check for missing source columns
-    unmapped = source_set - seen_sources
-    if unmapped:
-        errors.append(
-            ValidationIssue(
-                level="error",
-                field="columns",
-                message=f"Missing source columns from schema: {sorted(unmapped)}. Each source column must appear or be explicitly marked excluded.",
+    if source_set is not None:
+        unmapped = source_set - seen_sources
+        if unmapped:
+            errors.append(
+                ValidationIssue(
+                    level="error",
+                    field="columns",
+                    message=f"Missing source columns from schema: {sorted(unmapped)}. Each source column must appear or be explicitly marked excluded.",
+                )
             )
-        )
 
     # Pass through user warnings from proposal
     raw_warnings = proposal.get("warnings") or []

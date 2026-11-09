@@ -128,7 +128,7 @@ function SidebarComponent({
         {/* 1. Top row */}
         {mode === "hub" ? (
           <div className="flex items-center justify-between pb-1">
-            <h1 className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
               Nexus
             </h1>
           </div>
@@ -153,7 +153,7 @@ function SidebarComponent({
               </Link>
             )}
 
-            <h1 className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+            <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">
               Nexus
             </h1>
           </div>

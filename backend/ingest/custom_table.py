@@ -8,25 +8,18 @@ import json
 import re
 from datetime import datetime
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
-
-import pandas as pd
 
 from sqlalchemy import select
 
-from agent.db import DATABASE
 from db.models import Dataset, DatasetColumn, Upload
 from db.session import session_scope
-from ingest.reader import parse_date, parse_number
 from ingest.schema_validation import (
     COLUMN_NAME_PATTERN,
     POSTGRES_RESERVED,
     SYSTEM_RESERVED_COLUMNS,
-    ValidationResult,
-    validate_schema_proposal,
 )
-from ingest.store import execute, get_writer_connection, sql_id, sql_literal
+from ingest.store import execute, get_writer_connection
 from utils import esc_tsv, to_uuid
 
 TYPE_TO_PG = {

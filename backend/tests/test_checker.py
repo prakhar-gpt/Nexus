@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent.nexus.checker import check_answer, extract_numbers
+from agent.nexus.checker import check_answer
 
 
 def test_thousands_and_currency():

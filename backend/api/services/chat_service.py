@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-import json
 import traceback
-import uuid
 from fastapi import HTTPException, Response
 
 from db.models import Feedback, Run, Thread

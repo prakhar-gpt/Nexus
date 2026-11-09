@@ -8,3 +8,6 @@ venv/
 dist/
 build/
 datasets/uploads/
+context/
+GEMINI.md
+AGENTS.md

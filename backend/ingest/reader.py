@@ -11,8 +11,6 @@ import zipfile
 
 from openpyxl import load_workbook
 
-from utils import make_inert
-
 MAX_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 MAX_COLUMNS = 64

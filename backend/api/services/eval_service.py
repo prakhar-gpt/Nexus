@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from eval.runner import THRESHOLDS, evaluate
-from ingest.store import execute, sql_literal
 
 
 def list_eval_runs() -> dict:

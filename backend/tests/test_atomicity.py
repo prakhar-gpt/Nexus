@@ -4,7 +4,6 @@ import io
 import json
 import threading
 import time
-import pytest
 
 from ingest.store import get_writer_connection, execute, sql_id
 from agent.nexus.tools import run_sql

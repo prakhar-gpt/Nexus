@@ -17,7 +17,7 @@ from agent.nexus.nodes import (
     route_next_step,
     tools_node,
 )
-from agent.nexus.state import AgentState, HISTORY_TURNS, MAX_TOOL_STEPS
+from agent.nexus.state import AgentState, HISTORY_TURNS
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()

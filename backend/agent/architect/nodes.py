@@ -8,11 +8,9 @@ from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from agent.architect.models import ColumnProposal, SchemaProposal
 from agent.architect.state import ArchitectState, MAX_ARCHITECT_STEPS
-from agent.architect.tools.check_uniqueness import execute_check_uniqueness
 from agent.architect.tools.detect_date_format import execute_detect_date_format
 from agent.architect.tools.list_columns import execute_list_columns
 from agent.architect.tools.profile_column import execute_profile_column
-from agent.architect.tools.sample_rows import execute_sample_rows
 from agent.architect.tools.test_parse import execute_test_parse
 
 
