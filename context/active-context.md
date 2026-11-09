@@ -46,6 +46,7 @@ Nexus is organized with a clean, senior-engineer root layout:
   - Mitigated `get_health` in [`backend/api/services/workspace_service.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/api/services/workspace_service.py): removed `HEALTH_SQL` and dynamically computes row counts and quarantine counts across the workspace's active datasets.
   - Updated [`backend/agent/nexus/prompts/system.md`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/prompts/system.md) so the agent reasons over dynamic tables and schemas rather than hardcoded `sales_clean` columns.
   - Cleaned `main.py` by removing deprecated `HEALTH_SQL` exports.
+- **Committed**: Refactor committed at `69748dc` ("refactor(backend): modularize services, eliminate sales_clean legacy code, and complete SQLAlchemy ORM migration") with 35 files changed, 1325 insertions, 2094 deletions (net -769 lines).
 - **Zero Static Compilation & Import Errors**: All core backend modules import cleanly with zero syntax or runtime import errors.
 
 #### 1. Performance Optimization & UX Polish (Streaming, Bundle & Latency)
