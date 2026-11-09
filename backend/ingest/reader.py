@@ -11,7 +11,7 @@ import zipfile
 
 from openpyxl import load_workbook
 
-from ingest.mapping import propose_columns
+from utils import make_inert
 
 MAX_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
@@ -141,16 +141,6 @@ def _sheet_rows(sheet) -> list[tuple[int, list[str]]]:
     return rows
 
 
-def header_hits(rows: list[tuple[int, list[str]]]) -> int:
-    header_line, _ = find_header(rows)
-    if header_line is None:
-        return 0
-    for line_number, cells in rows:
-        if line_number == header_line:
-            return sum(1 for cell in cells if _is_header_cell(cell))
-    return 0
-
-
 def find_header(rows: list[tuple[int, list[str]]]) -> tuple[int | None, list[str]]:
     """Locate the row index that best matches canonical column headers."""
     best_line = None
@@ -172,13 +162,12 @@ def find_header(rows: list[tuple[int, list[str]]]) -> tuple[int | None, list[str
 
 
 def _is_header_cell(cell: str) -> bool:
-    if not cell:
+    s = (cell or "").strip()
+    if not s or len(s) < 2:
         return False
-    proposals = propose_columns([cell])
-    proposal = proposals[0]
-    return proposal.canonical is not None and (
-        not proposal.needs_confirmation or proposal.confidence >= 50
-    )
+    if parse_number(s) is not None or parse_date(s) is not None:
+        return False
+    return any(c.isalpha() for c in s)
 
 
 def parse_date(value: str):
@@ -214,15 +203,4 @@ def parse_number(value: str) -> Decimal | None:
     except InvalidOperation:
         return None
     return -number if negative else number
-
-
-def make_inert(value: str) -> str:
-    """Escape CSV formula injection triggers (=, +, -, @) with a leading quote."""
-    if not value:
-        return value
-    if value.startswith("'"):
-        return value
-    if value[0] in _FORMULA_PREFIXES:
-        return "'" + value
-    return value
 

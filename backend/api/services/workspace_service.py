@@ -9,36 +9,17 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy import distinct, func, select, text
 
-from agent.nexus.tools import SqlRejected, run_sql
 from db.models import Dataset, DatasetColumn, Quarantine, Run, Thread, Upload, Workspace, WorkspaceMember
 from db.session import session_scope
+from utils import clean_grain, parse_dataset_ids, to_uuid
 
-HEALTH_SQL = (
-    "SELECT count(*) AS rows, min(order_date)::text AS first_order, "
-    "max(order_date)::text AS last_order, "
-    "coalesce(round(sum(revenue), 2)::text, '') AS revenue "
-    "FROM sales_clean"
-)
-
-
-def _to_uuid(val: Any) -> uuid.UUID:
-    """Coerce string, int, or UUID into a valid uuid.UUID."""
-    if isinstance(val, uuid.UUID):
-        return val
-    try:
-        return uuid.UUID(str(val))
-    except (ValueError, AttributeError):
-        # Hex-pad integers for legacy ID compatibility
-        try:
-            return uuid.UUID(int=int(val))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail=f"Invalid UUID: {val}")
+HEALTH_SQL = ""
 
 
 def get_workspace_meta(workspace_id: int | str) -> dict | None:
     """Return basic workspace record or None if absent or archived."""
     try:
-        ws_uuid = _to_uuid(workspace_id)
+        ws_uuid = to_uuid(workspace_id)
     except HTTPException:
         return None
     with session_scope() as session:
@@ -88,8 +69,8 @@ def create_workspace(name: str, workspace_id: str | None = None, owner_id: str |
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="name is required")
-    target_uuid = _to_uuid(workspace_id) if workspace_id else uuid.uuid4()
-    owner_uuid = _to_uuid(owner_id or "00000000-0000-0000-0000-000000000001")
+    target_uuid = to_uuid(workspace_id) if workspace_id else uuid.uuid4()
+    owner_uuid = to_uuid(owner_id or "00000000-0000-0000-0000-000000000001")
 
     with session_scope() as session:
         ws = Workspace(id=target_uuid, name=clean_name, owner_id=owner_uuid)
@@ -102,7 +83,7 @@ def create_workspace(name: str, workspace_id: str | None = None, owner_id: str |
 
 def delete_workspace(workspace_id: int | str) -> dict:
     """Soft-delete / archive a workspace."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     with session_scope() as session:
         ws = session.get(Workspace, ws_uuid)
         if not ws or ws.name.startswith("[archived]"):
@@ -111,21 +92,9 @@ def delete_workspace(workspace_id: int | str) -> dict:
     return {"ok": True, "id": str(workspace_id)}
 
 
-def _parse_dataset_ids(raw: any) -> list[str]:
-    """Parse text[], uuid[], list or string into clean list of string IDs."""
-    if isinstance(raw, str):
-        clean_s = raw.strip("{}").strip()
-        if not clean_s:
-            return []
-        return [x.strip().strip('"') for x in clean_s.split(",") if x.strip()]
-    if isinstance(raw, list):
-        return [str(x) for x in raw]
-    return []
-
-
 def list_threads(workspace_id: int | str) -> list[dict]:
     """List active conversation threads for a workspace from the threads table."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     with session_scope() as session:
         stmt = (
             select(
@@ -158,7 +127,7 @@ def list_threads(workspace_id: int | str) -> list[dict]:
                     "title": title,
                     "created_at": r.created_at.isoformat() if r.created_at else "",
                     "turn_count": int(r.turn_count or 0),
-                    "selected_dataset_ids": _parse_dataset_ids(r.selected_dataset_ids),
+                    "selected_dataset_ids": parse_dataset_ids(r.selected_dataset_ids),
                 }
             )
         return threads
@@ -166,7 +135,7 @@ def list_threads(workspace_id: int | str) -> list[dict]:
 
 def get_or_create_thread(workspace_id: int | str, thread_id: str) -> dict:
     """Get thread record or create it server-side on first interaction with all current workspace datasets."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     clean_thread = (thread_id or "default").strip()
 
     with session_scope() as session:
@@ -176,7 +145,7 @@ def get_or_create_thread(workspace_id: int | str, thread_id: str) -> dict:
                 "id": thread.id,
                 "workspace_id": str(thread.workspace_id),
                 "title": thread.title,
-                "selected_dataset_ids": _parse_dataset_ids(thread.selected_dataset_ids),
+                "selected_dataset_ids": parse_dataset_ids(thread.selected_dataset_ids),
             }
 
         # First interaction: initialize with all active datasets for this workspace
@@ -203,7 +172,7 @@ def get_or_create_thread(workspace_id: int | str, thread_id: str) -> dict:
 
 def update_thread_datasets(workspace_id: int | str, thread_id: str, dataset_ids: list[str | int]) -> dict:
     """Update selected dataset IDs for a specific chat thread, strictly validating workspace ownership."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     clean_thread = (thread_id or "default").strip()
     get_or_create_thread(workspace_id, clean_thread)
 
@@ -216,7 +185,7 @@ def update_thread_datasets(workspace_id: int | str, thread_id: str, dataset_ids:
         clean_uuids = []
         for i in dataset_ids:
             try:
-                clean_uuids.append(_to_uuid(i))
+                clean_uuids.append(to_uuid(i))
             except HTTPException:
                 continue
 
@@ -234,7 +203,7 @@ def update_thread_datasets(workspace_id: int | str, thread_id: str, dataset_ids:
 
 def delete_thread(workspace_id: int | str, thread_id: str) -> dict:
     """Delete a conversation thread from threads table and flag runs."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     clean_thread = (thread_id or "default").strip()
 
     with session_scope() as session:
@@ -258,7 +227,7 @@ def delete_thread(workspace_id: int | str, thread_id: str) -> dict:
 
 def list_workspace_datasets(workspace_id: int | str) -> list[dict]:
     """Retrieve all approved datasets for a workspace with row count, quarantine count, grain, and table label."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     with session_scope() as session:
         q_count_subq = (
             select(func.count(Quarantine.id))
@@ -282,20 +251,13 @@ def list_workspace_datasets(workspace_id: int | str) -> list[dict]:
         rows = session.execute(stmt).all()
         datasets = []
         for r in rows:
-            clean_grain = (r.grain or "").strip()
-            clean_grain = re.sub(
-                r"^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*",
-                "",
-                clean_grain,
-                flags=re.I,
-            ).strip()
             datasets.append(
                 {
                     "id": str(r.id),
                     "upload_id": str(r.upload_id) if r.upload_id else None,
                     "table_name": r.table_name,
                     "table_label": r.table_label,
-                    "grain": clean_grain,
+                    "grain": clean_grain(r.grain),
                     "row_count": int(r.row_count or 0),
                     "quarantine_count": int(r.quarantine_count or 0),
                     "created_at": r.created_at.isoformat() if r.created_at else "",
@@ -306,8 +268,8 @@ def list_workspace_datasets(workspace_id: int | str) -> list[dict]:
 
 def rename_dataset(workspace_id: int | str, dataset_id: int | str, new_label: str) -> dict:
     """Rename a dataset's friendly table label."""
-    ws_uuid = _to_uuid(workspace_id)
-    ds_uuid = _to_uuid(dataset_id)
+    ws_uuid = to_uuid(workspace_id)
+    ds_uuid = to_uuid(dataset_id)
     clean_label = new_label.strip()
 
     with session_scope() as session:
@@ -322,8 +284,8 @@ def rename_dataset(workspace_id: int | str, dataset_id: int | str, new_label: st
 
 def remove_dataset(workspace_id: int | str, dataset_id: int | str) -> dict:
     """Remove a dataset in one atomic transaction: table, catalog rows, quarantine rows, and threads array_remove."""
-    ws_uuid = _to_uuid(workspace_id)
-    ds_uuid = _to_uuid(dataset_id)
+    ws_uuid = to_uuid(workspace_id)
+    ds_uuid = to_uuid(dataset_id)
 
     with session_scope() as session:
         ds = session.execute(
@@ -367,41 +329,34 @@ def get_mappings(upload_id: int | str) -> list[dict]:
 
 
 def get_health(workspace_id: int | str) -> dict:
-    """Compute table health stats and count quarantined rows for a workspace."""
-    ws_uuid = _to_uuid(workspace_id)
-    try:
-        rows = run_sql(HEALTH_SQL, workspace_id)
-    except SqlRejected:
-        rows = []
-    health = rows[0] if rows else {}
-
-    health_rows = health.get("rows") or "0"
+    """Compute table health stats and count quarantined rows dynamically for a workspace."""
+    ws_uuid = to_uuid(workspace_id)
     with session_scope() as session:
-        if health_rows == "0":
-            total_ds_rows = session.execute(
-                select(func.coalesce(func.sum(Dataset.row_count), 0)).where(Dataset.workspace_id == ws_uuid)
-            ).scalar() or 0
-            if total_ds_rows > 0:
-                health_rows = str(total_ds_rows)
+        datasets = session.execute(
+            select(Dataset).where(Dataset.workspace_id == ws_uuid)
+        ).scalars().all()
 
-        counted = session.execute(
+        total_ds_rows = sum(d.row_count or 0 for d in datasets)
+
+        counted_quarantine = session.execute(
             select(func.count(Quarantine.id))
             .join(Upload, Upload.id == Quarantine.upload_id)
             .where(Upload.workspace_id == ws_uuid)
         ).scalar() or 0
 
     return {
-        "rows": health_rows,
-        "first_order": health.get("first_order") or "",
-        "last_order": health.get("last_order") or "",
-        "revenue": health.get("revenue") or "",
-        "quarantine": str(counted),
+        "rows": str(total_ds_rows),
+        "first_order": "",
+        "last_order": "",
+        "revenue": "",
+        "quarantine": str(counted_quarantine),
+        "datasets_count": len(datasets),
     }
 
 
 def get_turns(workspace_id: int | str, thread_id: str | None = None) -> list[dict]:
     """Fetch conversation turns for a workspace, optionally filtered by thread_id, using SQLAlchemy ORM."""
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
     with session_scope() as session:
         stmt = (
             select(Run)
@@ -448,7 +403,7 @@ def get_workspace_detail(workspace_id: int | str, thread_id: str | None = None) 
     room = get_workspace_meta(workspace_id)
     if room is None:
         raise HTTPException(status_code=404, detail="workspace not found")
-    ws_uuid = _to_uuid(workspace_id)
+    ws_uuid = to_uuid(workspace_id)
 
     with session_scope() as session:
         upload_rows = session.execute(

@@ -14,18 +14,6 @@ from agent.db import DATABASE, READER_USER, DatabaseError, psql, reader_password
 ROW_LIMIT = 200
 TIMEOUT_MS = 5000
 
-MEASURE_COLUMNS = frozenset(
-    {
-        "quantity",
-        "unit_price",
-        "discount_pct",
-        "cost",
-        "profit",
-        "channel",
-        "revenue",
-    }
-)
-
 
 class SqlRejected(ValueError):
     """Raised when a SQL query is rejected by syntax, security, or math-guard rules."""
@@ -38,7 +26,7 @@ class SqlRejected(ValueError):
 
 @tool("run_sql")
 def run_sql_tool(sql: str) -> str:
-    """Run one read-only SELECT against sales_clean for data extraction and basic aggregations (GROUP BY, SUM, COUNT, AVG, MIN, MAX).
+    """Run one read-only SELECT against approved workspace tables for data extraction and basic aggregations (GROUP BY, SUM, COUNT, AVG, MIN, MAX).
     Pass only the SQL text.
     STRICTLY FORBIDDEN: Do NOT calculate differences, percentages, growth rates, or ratios in SQL. Use run_python for all math."""
 
@@ -114,23 +102,28 @@ def _check_ast(cleaned_sql: str) -> None:
 
 
 def get_allowed_tables(workspace_id: int | str | None = None, allowed_dataset_ids: list[str | int] | None = None) -> set[str]:
-    """Fetch allowed query tables: sales_clean + registered workspace tables in datasets catalog."""
-    allowed = {"sales_clean"}
+    """Fetch allowed query tables dynamically from datasets catalog (+ sales_clean fallback)."""
+    allowed = set()
     if workspace_id is not None:
         try:
-            from ingest.store import execute as store_execute, sql_id
-            sql = f"SELECT id, table_name FROM datasets WHERE workspace_id = {sql_id(workspace_id)}"
-            if allowed_dataset_ids is not None:
-                if not allowed_dataset_ids:
-                    return allowed  # only sales_clean if no custom datasets checked
-                id_str = ",".join(sql_id(i) for i in allowed_dataset_ids)
-                sql += f" AND id IN ({id_str})"
-            rows = store_execute(sql)
-            for r in rows:
-                if r.get("table_name"):
-                    allowed.add(r["table_name"].lower())
+            from sqlalchemy import select
+            from db.models import Dataset
+            from db.session import session_scope
+            from utils import to_uuid
+
+            ws_uuid = to_uuid(workspace_id)
+            with session_scope() as session:
+                stmt = select(Dataset.id, Dataset.table_name).where(Dataset.workspace_id == ws_uuid)
+                if allowed_dataset_ids is not None:
+                    allowed_uuids = [to_uuid(i) for i in allowed_dataset_ids]
+                    stmt = stmt.where(Dataset.id.in_(allowed_uuids))
+                for ds_id, t_name in session.execute(stmt).all():
+                    if t_name:
+                        allowed.add(t_name.lower())
         except Exception:
             pass
+    if not allowed or workspace_id is None:
+        allowed.add("sales_clean")
     return allowed
 
 
@@ -247,12 +240,13 @@ def execute_query(sql: str, workspace_id: int | str, allowed_dataset_ids: list[s
     return "\n".join(lines), rows, text
 
 
-def populated_count(workspace_id: int | str, column: str) -> int:
-    """Helper returning count of populated measure values."""
-    if column not in MEASURE_COLUMNS:
-        raise SqlRejected(f"{column} is not a measure column.")
+def populated_count(workspace_id: int | str, column: str, table_name: str = "sales_clean") -> int:
+    """Helper returning count of populated values for a column."""
+    clean_col = column.strip().lower()
+    if not clean_col.isidentifier():
+        raise SqlRejected(f"Invalid column name: {column}")
     rows = execute_sql(
-        f"SELECT count({column}) AS populated FROM sales_clean",
+        f"SELECT count({clean_col}) AS populated FROM {table_name}",
         workspace_id,
     )
     if not rows:

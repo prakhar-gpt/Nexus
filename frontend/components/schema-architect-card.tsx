@@ -236,6 +236,14 @@ interface ColRowProps {
 const TYPE_OPTIONS: ColumnProposal["type"][] = ["text", "integer", "numeric", "date", "boolean"]
 const ROLE_OPTIONS: ColumnProposal["role"][] = ["identifier", "measure", "dimension", "date", "other"]
 
+const ROLE_DESCRIPTIONS: Record<ColumnProposal["role"], string> = {
+  measure: "Numeric metric (e.g. Sales, Profit) to aggregate (SUM/AVG)",
+  dimension: "Category (e.g. Region, Segment) to group and filter by",
+  identifier: "Unique key or ID (e.g. Order ID, Customer ID) for joins",
+  date: "Timestamp or date for trends and cohort analysis",
+  other: "Free-form text, notes, or non-analytical attributes",
+}
+
 function ColRow({ col, idx, onChange }: ColRowProps) {
   const [expanded, setExpanded] = useState(false)
   const isExcluded = Boolean(col.excluded)
@@ -310,19 +318,25 @@ function ColRow({ col, idx, onChange }: ColRowProps) {
               disabled={isExcluded}
               className="inline-flex items-center justify-between h-6 px-2 text-[11px] font-mono border border-border bg-background hover:bg-muted/40 transition-colors focus:outline-none focus:border-foreground disabled:opacity-40 w-28 cursor-pointer"
               aria-label="Column role"
+              title={ROLE_DESCRIPTIONS[col.role]}
             >
               <span>{col.role}</span>
               <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 ml-1" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-32 font-mono text-[11px] bg-popover border border-border p-1 shadow-sm">
+            <DropdownMenuContent align="start" className="min-w-64 font-mono text-[11px] bg-popover border border-border p-1 shadow-md">
               {ROLE_OPTIONS.map((r) => (
                 <DropdownMenuItem
                   key={r}
                   onClick={() => onChange(idx, { role: r })}
-                  className="flex items-center justify-between cursor-pointer py-1 px-2 text-[11px] hover:bg-accent"
+                  className="flex flex-col items-start cursor-pointer py-1.5 px-2 text-[11px] hover:bg-accent focus:bg-accent"
                 >
-                  <span>{r}</span>
-                  {col.role === r && <Check className="h-3 w-3 text-foreground" />}
+                  <div className="flex items-center justify-between w-full">
+                    <span className="font-semibold">{r}</span>
+                    {col.role === r && <Check className="h-3 w-3 text-foreground" />}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground font-sans mt-0.5 leading-tight">
+                    {ROLE_DESCRIPTIONS[r]}
+                  </span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -716,7 +730,7 @@ export function SchemaArchitectCard({
                     <TableHead className="p-2 w-10 text-center font-medium" title="Include">Inc</TableHead>
                     <TableHead className="p-2 font-medium">Target name</TableHead>
                     <TableHead className="p-2 font-medium">Type</TableHead>
-                    <TableHead className="p-2 font-medium">Role</TableHead>
+                    <TableHead className="p-2 font-medium" title="Role: Measure (metric to aggregate), Dimension (category to group by), Identifier (unique ID), Date (timestamp)">Role</TableHead>
                     <TableHead className="p-2 text-right font-medium">Parse</TableHead>
                     <TableHead className="p-2 w-8" aria-label="Details"></TableHead>
                   </TableRow>

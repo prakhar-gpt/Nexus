@@ -27,26 +27,29 @@ _chunk_text = chunk_text
 
 
 def load_conversation_history(workspace_id: int | str, thread_id: str | None = None) -> list:
-    """Load the most recent turns from the runs table for cold start thread hydration."""
-    from ingest.store import StoreError, execute, sql_id, sql_literal
-    where_clauses = [f"workspace_id = {sql_id(workspace_id)}"]
-    if thread_id:
-        clean_thread = thread_id.strip()
-        where_clauses.append(f"coalesce(checker_result->>'thread_id', 'default') = {sql_literal(clean_thread)}")
-    where_sql = " AND ".join(where_clauses)
+    """Load the most recent turns from the runs table for cold start thread hydration via SQLAlchemy."""
+    from sqlalchemy import func, select
+    from db.models import Run
+    from db.session import session_scope
+    from utils import to_uuid
 
     try:
-        rows = execute(
-            "SELECT question, answer FROM runs "
-            f"WHERE {where_sql} "
-            f"ORDER BY id DESC LIMIT {HISTORY_TURNS}"
-        )
-    except StoreError:
+        ws_uuid = to_uuid(workspace_id)
+        with session_scope() as session:
+            stmt = select(Run.question, Run.answer).where(Run.workspace_id == ws_uuid)
+            if thread_id:
+                clean_thread = thread_id.strip()
+                stmt = stmt.where(
+                    func.coalesce(Run.checker_result["thread_id"].astext, "default") == clean_thread
+                )
+            rows = session.execute(stmt.order_by(Run.id.desc()).limit(HISTORY_TURNS)).all()
+    except Exception:
         return []
+
     messages = []
-    for row in reversed(rows):
-        question = (row.get("question") or "").strip()
-        answer = (row.get("answer") or "").strip()
+    for r_q, r_a in reversed(rows):
+        question = (r_q or "").strip()
+        answer = (r_a or "").strip()
         if question:
             messages.append(HumanMessage(content=question))
         if answer:

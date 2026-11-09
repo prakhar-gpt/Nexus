@@ -15,6 +15,49 @@ Nexus is organized with a clean, senior-engineer root layout:
 
 ### Current Active State & Refactors Completed
 
+#### 1. Backend Lean Refactoring, Shared Utilities & Monolith Elimination (Decision 60)
+- **Centralized Shared Utilities (`backend/utils.py`)**: Extracted and centralized core helpers across backend modules:
+  - `to_uuid(val)`: Coerces strings, ints, or UUIDs into validated `uuid.UUID`.
+  - `parse_dataset_ids(raw)`: Safely parses Postgres text arrays, list representations, and sets into clean string IDs.
+  - `clean_grain(raw)`: Strips prose prefixes (`"grain"`, `"table grain"`, `"one row represents"`) via regex.
+  - `sanitize_identifier(name)`: Converts raw user/CSV headers into safe snake_case PostgreSQL identifiers.
+  - `make_inert(val)`: Sanitizes leading formula injection characters (`=`, `+`, `-`, `@`).
+  - `esc_tsv(val)`: PostgreSQL streaming COPY TSV escape helper.
+  - `format_sse(event, payload)`: Formats standard Server-Sent Event payloads.
+- **Decomposed Monoliths into Clean Services**:
+  - `backend/api/services/event_stream.py`: Modularized SSE keepalive and event streaming logic.
+  - `backend/api/services/schema_questions.py`: Extracted heuristic suggested question generation.
+  - `backend/api/services/upload_service.py`: Slashed from 1,078 to ~700 lines; converted all CRUD to SQLAlchemy ORM sessions.
+  - `backend/api/services/workspace_service.py`: Streamlined to clean SQLAlchemy queries.
+  - `backend/api/services/chat_service.py`: Streamlined to 180 lines, eliminating duplicate SSE formatting and using `utils.py`.
+- **Ingestion Pipeline Streamlined (`backend/ingest/pipeline.py`)**:
+  - Removed dead legacy functions (`confirm_mappings`, `_load_confirmed_mappings`, `_save_mappings`, `_save_attribute_schema`) referencing dropped tables.
+  - Consolidated `esc_tsv` and `make_inert` into `backend/utils.py`.
+  - Cleaned package gateway `backend/ingest/__init__.py`.
+- **Deleted `mapping.py` and Removed `rapidfuzz` (Decision 61)**:
+  - Completely purged [`backend/ingest/mapping.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/ingest/mapping.py) and dropped `rapidfuzz` from [`backend/requirements.txt`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/requirements.txt).
+  - Purged the legacy fixed 14-column `sales_clean` loader and `staging_sales` copy loops from `backend/ingest/pipeline.py` (slashed from 543 down to 157 lines).
+  - All spreadsheet uploads now route 100% dynamically to the Schema Architect Agent, creating clean `user_data.ds_*` custom tables.
+  - Eliminated loose application SQL strings in [`backend/ingest/custom_table.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/ingest/custom_table.py), [`backend/api/routers/workspaces.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/api/routers/workspaces.py), [`backend/agent/nexus/graph.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/graph.py), and [`backend/agent/nexus/tools/get_schema.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/tools/get_schema.py), migrating catalog registrations and metadata queries to SQLAlchemy ORM (`Dataset`, `DatasetColumn`, `Upload`, `Run`).
+  - Resolved circular import between `db.session` and `ingest.store` by removing cross-package store dependencies from `db/session.py`.
+- **Full Mitigation of `sales_clean` Hardcoded Columns (Decision 62)**:
+  - Eliminated the hardcoded `SCHEMA_SQL` and 14 retail column counts from [`backend/agent/nexus/tools/get_schema.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/tools/get_schema.py). It now dynamically queries `Dataset` and `DatasetColumn` catalogs for approved custom tables and column roles.
+  - Eliminated hardcoded `MEASURE_COLUMNS` from [`backend/agent/nexus/tools/run_sql.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/tools/run_sql.py) and made `get_allowed_tables` dynamically query workspace dataset permissions using SQLAlchemy ORM.
+  - Mitigated `get_health` in [`backend/api/services/workspace_service.py`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/api/services/workspace_service.py): removed `HEALTH_SQL` and dynamically computes row counts and quarantine counts across the workspace's active datasets.
+  - Updated [`backend/agent/nexus/prompts/system.md`](file:///c:/Users/praxc/OneDrive/Desktop/Projects/Nexus/backend/agent/nexus/prompts/system.md) so the agent reasons over dynamic tables and schemas rather than hardcoded `sales_clean` columns.
+  - Cleaned `main.py` by removing deprecated `HEALTH_SQL` exports.
+- **Zero Static Compilation & Import Errors**: All core backend modules import cleanly with zero syntax or runtime import errors.
+
+#### 1. Performance Optimization & UX Polish (Streaming, Bundle & Latency)
+- **Zero-Lag Query Transition**: In `NewChatRoomPage`, rendered `ChatPane` immediately when `threadState.messages.length > 0` and routed to thread URL synchronously, eliminating the 5-10s delay where users stared at empty suggestions before tokens streamed.
+- **Batched Streaming Commits**: Buffered live SSE tokens in `chat-store.tsx` via `requestAnimationFrame` (~30-60 updates/sec max) and flushed synchronously on step/done/error, eliminating render storms per token.
+- **Strict Message Memoization**: Preserved message object references in `ChatPane` by passing `isFirstInRun` as an independent prop instead of creating inline object literals `{ ...message, isFirstInRun }`, and memoized `RenderedMarkdown` to prevent markdown re-parsing on completed turns.
+- **Dynamic Lazy Loading**: Converted `SchemaArchitectCard` and `QueryPanel` to `next/dynamic` imports (`ssr: false`), keeping initial room route bundles lean.
+- **Sidebar Polish & Empty States**: Integrated shadcn `Spinner` loader while room name is loading; hidden "New chat" button and empty "Chats" sections when no datasets/threads exist.
+- **Analytical Role Clarity**: Added inline descriptions and tooltips in schema proposal table header and dropdowns for `measure`, `dimension`, `identifier`, and `date`.
+- **Thread Title Real-Time Sync**: Updated `Thread.title` both optimistically in `chat-store.tsx` and persistently in `chat_service.py` (`save_run`) so new conversations immediately reflect the question asked instead of staying "New Conversation".
+- **Backend Performance Indexes**: Added Changeset `010_perf_indexes.sql` indexing `(workspace_id, (checker_result->>'thread_id'))`, `quarantine(upload_id)`, and `datasets(workspace_id)`.
+
 #### 1. Hybrid Database Architecture — SQLAlchemy ORM for Domain CRUD (Decision 59)
 - **SQLAlchemy Engine, Session & Models**: Created `backend/db/session.py` (`SessionLocal`, connection pooling, `session_scope()`) and `backend/db/models.py` with declarative models for `User`, `WorkspaceMember`, `Workspace`, `Upload`, `Dataset`, `DatasetColumn`, `Thread`, `Run`, `Feedback`, `AgentEvent`, and `Quarantine`.
 - **Domain Services Refactored**: Refactored `workspace_service.py`, `upload_service.py`, `chat_service.py`, and `api/routers/users.py` from raw string SQL interpolation to parameterized SQLAlchemy ORM queries, eliminating manual escaping and providing strongly-typed attribute access.

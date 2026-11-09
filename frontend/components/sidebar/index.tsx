@@ -4,6 +4,7 @@ import React, { useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Plus } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { type Dataset, type Thread, type WorkspaceSummary } from "@/lib/api"
 import type { RoomStatus } from "@/lib/room-status"
 import { ThreadList } from "./thread-list"
@@ -16,6 +17,7 @@ export interface SidebarProps {
   // Room mode props
   roomId?: string | number
   roomName?: string
+  isLoading?: boolean
   threads?: Thread[]
   datasets?: Dataset[]
   pendingUploads?: PendingUploadItem[]
@@ -55,6 +57,7 @@ function SidebarComponent({
   mode = "room",
   roomId = "1",
   roomName = "Data Room",
+  isLoading = false,
   threads = [],
   datasets = [],
   pendingUploads = [],
@@ -160,10 +163,17 @@ function SidebarComponent({
         {mode === "room" && (
           <>
             <div className="flex flex-col gap-1 bg-sidebar-accent/50 p-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-sidebar-foreground truncate max-w-[150px]">
-                  {roomName}
-                </span>
+              <div className="flex items-center justify-between min-h-[20px]">
+                {isLoading || !roomName ? (
+                  <div className="flex items-center gap-2 py-0.5">
+                    <Spinner className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground font-mono">Loading room…</span>
+                  </div>
+                ) : (
+                  <span className="text-xs font-medium text-sidebar-foreground truncate max-w-[150px]">
+                    {roomName}
+                  </span>
+                )}
 
                 {isIngesting ? (
                   <div className="flex items-center gap-1.5">
@@ -221,53 +231,55 @@ function SidebarComponent({
               </kbd>
             </Link>
           )
-        ) : onNewThread ? (
-          <button
-            type="button"
-            disabled={isUploadRunning || isReviewPending}
-            onClick={onNewThread}
-            className={`flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground transition-colors font-normal ${
-              isUploadRunning || isReviewPending
-                ? "opacity-40 cursor-not-allowed pointer-events-none"
-                : "hover:bg-sidebar-accent"
-            }`}
-            title={isUploadRunning || isReviewPending ? "Finish or approve upload before starting a new chat" : undefined}
-          >
-            <div className="flex items-center gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              <span>New chat</span>
+        ) : datasets.length > 0 ? (
+          onNewThread ? (
+            <button
+              type="button"
+              disabled={isUploadRunning || isReviewPending}
+              onClick={onNewThread}
+              className={`flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground transition-colors font-normal ${
+                isUploadRunning || isReviewPending
+                  ? "opacity-40 cursor-not-allowed pointer-events-none"
+                  : "hover:bg-sidebar-accent"
+              }`}
+              title={isUploadRunning || isReviewPending ? "Finish or approve upload before starting a new chat" : undefined}
+            >
+              <div className="flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                <span>New chat</span>
+              </div>
+              <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
+                ⌘K
+              </kbd>
+            </button>
+          ) : isUploadRunning || isReviewPending ? (
+            <div
+              className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground opacity-40 cursor-not-allowed select-none font-normal"
+              title="Finish or approve upload before starting a new chat"
+            >
+              <div className="flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                <span>New chat</span>
+              </div>
+              <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
+                ⌘K
+              </kbd>
             </div>
-            <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
-              ⌘K
-            </kbd>
-          </button>
-        ) : isUploadRunning || isReviewPending ? (
-          <div
-            className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground opacity-40 cursor-not-allowed select-none font-normal"
-            title="Finish or approve upload before starting a new chat"
-          >
-            <div className="flex items-center gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              <span>New chat</span>
-            </div>
-            <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
-              ⌘K
-            </kbd>
-          </div>
-        ) : (
-          <Link
-            href={`/rooms/${roomId}`}
-            className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors font-normal"
-          >
-            <div className="flex items-center gap-1.5">
-              <Plus className="h-3.5 w-3.5" />
-              <span>New chat</span>
-            </div>
-            <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
-              ⌘K
-            </kbd>
-          </Link>
-        )}
+          ) : (
+            <Link
+              href={`/rooms/${roomId}`}
+              className="flex w-full items-center justify-between border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-xs text-sidebar-foreground hover:bg-sidebar-accent transition-colors font-normal"
+            >
+              <div className="flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                <span>New chat</span>
+              </div>
+              <kbd className="font-mono text-[10px] text-muted-foreground border border-sidebar-border px-1">
+                ⌘K
+              </kbd>
+            </Link>
+          )
+        ) : null}
 
         {/* 4. List: RoomList (hub mode) or ThreadList (room mode) */}
         {mode === "hub" ? (
@@ -280,7 +292,7 @@ function SidebarComponent({
             onSelectWorkspace={onSelectWorkspace}
             onDeleteWorkspace={onDeleteWorkspace}
           />
-        ) : (
+        ) : datasets.length > 0 && threads.length > 0 ? (
           <ThreadList
             roomId={roomId}
             threads={threads}
@@ -288,7 +300,7 @@ function SidebarComponent({
             onSelectThread={onSelectThread}
             onDeleteThread={onDeleteThread}
           />
-        )}
+        ) : null}
       </div>
 
       {/* 5. Pinned bottom: User Profile Footer */}

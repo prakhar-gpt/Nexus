@@ -65,8 +65,8 @@ function ThreadListComponent({
         key={th.id}
         title={formattedDate}
         className={`group relative flex items-center justify-between px-2.5 py-1.5 text-xs transition-colors ${isActive
-            ? "bg-sidebar-accent text-sidebar-foreground border-l-2 border-foreground font-medium"
-            : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 border-l-2 border-transparent"
+          ? "bg-sidebar-accent text-sidebar-foreground border-l-2 border-foreground font-medium"
+          : "text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 border-l-2 border-transparent"
           }`}
       >
         {onSelectThread ? (
@@ -113,14 +113,12 @@ function ThreadListComponent({
     )
   }
 
-  let content = null
   if (threads.length === 0) {
-    content = (
-      <p className="px-2 py-3 text-xs text-muted-foreground select-none">
-        No chats yet
-      </p>
-    )
-  } else if (!shouldGroup) {
+    return null
+  }
+
+  let content: React.ReactNode = null
+  if (!shouldGroup) {
     content = (
       <div className="flex flex-col gap-0.5">
         {threads.map((th) => renderThreadItem(th))}

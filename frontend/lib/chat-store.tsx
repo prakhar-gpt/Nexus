@@ -221,12 +221,52 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       })
       notifyKey(key)
 
+      // Optimistically update thread title in room metadata if it's currently "New Conversation" or untitled
+      const threadTitle = text.length > 35 ? text.slice(0, 32) + "…" : text
+      mutateResource(`room:${roomId}`, (curr: any) => {
+        if (!curr) return curr
+        return {
+          ...curr,
+          threads: (curr.threads || []).map((t: any) =>
+            t.id === threadId && (!t.title || t.title === "New Conversation")
+              ? { ...t, title: threadTitle }
+              : t
+          ),
+        }
+      })
+
       const controller = new AbortController()
       abortControllers.set(key, controller)
 
       let finished = false
       let streamText = ""
       let notifiedFirstToken = false
+      let rafId: number | null = null
+      let pendingStreamText: string | null = null
+
+      const flushTokens = () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId)
+          rafId = null
+        }
+        if (pendingStreamText !== null) {
+          updateAssistant({ text: pendingStreamText, activity: [] })
+          pendingStreamText = null
+        }
+      }
+
+      const scheduleTokenUpdate = (newText: string) => {
+        pendingStreamText = newText
+        if (rafId === null) {
+          rafId = requestAnimationFrame(() => {
+            rafId = null
+            if (pendingStreamText !== null) {
+              updateAssistant({ text: pendingStreamText, activity: [] })
+              pendingStreamText = null
+            }
+          })
+        }
+      }
 
       const updateAssistant = (patch: Partial<ChatMessage>) => {
         const curr = threadStates.get(key)
@@ -274,21 +314,24 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
             const chunk = String(data.text ?? "")
             if (chunk) {
               streamText += chunk
-              updateAssistant({ text: streamText, activity: [] })
+              scheduleTokenUpdate(streamText)
               if (!notifiedFirstToken) {
                 notifiedFirstToken = true
                 onFirstToken?.(threadId)
               }
             }
           } else if (event === "step") {
+            flushTokens()
             const step = data as unknown as TraceStep
             updateAssistant({ activity: [step] })
           } else if (event === "sql") {
+            flushTokens()
             updateAssistant({
               sql: (data.query as string) || null,
               rowCount: Number(data.row_count ?? 0),
             })
           } else if (event === "source") {
+            flushTokens()
             updateAssistant({
               sources: [
                 {
@@ -298,12 +341,14 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               ],
             })
           } else if (event === "check") {
+            flushTokens()
             updateAssistant({
               badge: badgeFor(data),
               untraced: (data.untraced as string[]) || undefined,
               missingMeasure: (data.missing_measure as string) || undefined,
             })
           } else if (event === "done") {
+            flushTokens()
             finished = true
             updateAssistant({
               text: (data.answer as string) || streamText,
@@ -316,6 +361,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
               onFirstToken?.(threadId)
             }
           } else if (event === "error") {
+            flushTokens()
             const serverMsg =
               (data?.error as string) ||
               (data?.message as string) ||
@@ -329,6 +375,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           }
         })
       } catch (err: any) {
+        flushTokens()
         if (err.name === "AbortError") {
           updateAssistant({
             badge: "stopped",
@@ -343,6 +390,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           })
         }
       } finally {
+        flushTokens()
         abortControllers.delete(key)
         const curr = threadStates.get(key)
         if (curr) {

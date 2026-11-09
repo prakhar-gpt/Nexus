@@ -16,7 +16,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parent
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
-from api.routers import eval_router, runs_router, uploads_router, users_router, workspaces_router
+from api.routers import runs_router, uploads_router, users_router, workspaces_router
 from api.services.chat_service import format_sse as _sse, save_run as _save_run
 from api.services.upload_service import PROGRESS
 from api.services.workspace_service import (
@@ -44,7 +44,6 @@ app.add_middleware(
 app.include_router(workspaces_router)
 app.include_router(uploads_router)
 app.include_router(runs_router)
-app.include_router(eval_router)
 app.include_router(users_router)
 
 __all__ = [

@@ -86,20 +86,18 @@ export default function NewChatRoomPage({
       }
     })
 
-    // Start stream; on first token, replace URL without flicker or remount
-    await ask(roomId, currentThreadId, text, (targetId) => {
-      router.replace(`/rooms/${roomId}/c/${targetId}`)
-    })
+    // Immediately navigate to the thread route so the conversation window paints instantly with 0ms delay
+    router.replace(`/rooms/${roomId}/c/${currentThreadId}`)
+
+    // Start stream
+    await ask(roomId, currentThreadId, text)
   }
 
   const isReady = status.type === "ready"
   const primaryDataset = room?.datasets && room.datasets.length > 0 ? room.datasets[0] : null
-  const cleanGrain = primaryDataset?.grain
-    ? primaryDataset.grain.replace(/^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*/i, "").trim()
-    : null
 
-  // If there is an active upload or review in progress, keep the user on the upload/review stage
-  if (pendingUpload || threadState.messages.some((m) => m.uploadData)) {
+  // If there is an active upload, review in progress, or any messages in thread, show ChatPane immediately
+  if (pendingUpload || threadState.messages.length > 0) {
     return (
       <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <ChatPane
@@ -111,7 +109,7 @@ export default function NewChatRoomPage({
           onAsk={handleAsk}
           onAbort={() => abortStream(roomId, currentThreadId)}
           onFeedback={async () => false}
-          onToast={() => {}}
+          onToast={() => { }}
           onUploadFile={handleUpload}
           onApproveSchema={(uploadId) => approveSchema(roomId, currentThreadId, uploadId)}
           onRejectSchema={(uploadId) => rejectSchema(roomId, currentThreadId, uploadId)}
@@ -127,23 +125,6 @@ export default function NewChatRoomPage({
         <div className="mx-auto flex h-full w-full max-w-[720px] flex-col justify-center py-12">
           {isReady ? (
             <>
-              {primaryDataset ? (
-                <div className="mb-6 border border-border bg-card/60 p-4">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                      Loaded dataset
-                    </span>
-                    <span className="text-xs font-semibold text-foreground">
-                      {primaryDataset.table_label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground font-mono leading-relaxed">
-                    {cleanGrain ? `One row = ${cleanGrain} · ` : ""}
-                    {Number(primaryDataset.row_count).toLocaleString()} rows loaded and ready for analysis.
-                  </p>
-                </div>
-              ) : null}
-
               <h1 className="text-[32px] font-medium tracking-tight text-foreground select-none">
                 What should we look at?
               </h1>

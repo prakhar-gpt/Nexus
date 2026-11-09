@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import {
   ChevronDown,
   ChevronUp,
@@ -10,8 +11,12 @@ import {
   ThumbsUp,
 } from "lucide-react"
 import { StatusBadge, type AnswerBadge } from "./status-badge"
-import { QueryPanel } from "./query-panel"
 import type { TraceStep } from "@/lib/api"
+
+const QueryPanel = dynamic(
+  () => import("./query-panel").then((mod) => mod.QueryPanel),
+  { ssr: false }
+)
 
 interface AuditBarProps {
   badge?: AnswerBadge

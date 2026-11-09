@@ -5,8 +5,10 @@ import React, {
   useRef,
   useState,
   useCallback,
+  useMemo,
   memo,
 } from "react"
+import dynamic from "next/dynamic"
 import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw, Sparkles, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkBreaks from "remark-breaks"
@@ -15,7 +17,12 @@ import remarkGfm from "remark-gfm"
 import { ToolLine } from "@/components/tool-line"
 import { AuditBar } from "@/components/audit-bar"
 import { Composer, type ComposerHandle } from "@/components/composer"
-import { SchemaArchitectCard, HandoffMessage } from "@/components/schema-architect-card"
+import { HandoffMessage } from "@/components/schema-architect-card"
+
+const SchemaArchitectCard = dynamic(
+  () => import("@/components/schema-architect-card").then((m) => m.SchemaArchitectCard),
+  { ssr: false }
+)
 import type { AnswerBadge } from "@/components/status-badge"
 import type { HandoffData, TraceStep, UploadMessageData } from "@/lib/api"
 
@@ -95,9 +102,10 @@ export function ChatPane({
   const [fileError, setFileError] = useState<string | null>(null)
   const isNearBottomRef = useRef(true)
 
-  const lastUserQuestion = [...messages]
-    .reverse()
-    .find((m) => m.role === "user")?.text
+  const lastUserQuestion = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "user")?.text,
+    [messages]
+  )
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current
@@ -120,11 +128,14 @@ export function ChatPane({
   useEffect(() => {
     const el = scrollContainerRef.current
     if (!el) return
-    if (isNearBottomRef.current) {
-      el.scrollTop = el.scrollHeight
-    } else if (busy) {
-      setShowScrollBottom(true)
-    }
+    const id = requestAnimationFrame(() => {
+      if (isNearBottomRef.current) {
+        el.scrollTop = el.scrollHeight
+      } else if (busy) {
+        setShowScrollBottom(true)
+      }
+    })
+    return () => cancelAnimationFrame(id)
   }, [messages, busy])
 
   function handleFileDrop(file: File) {
@@ -271,19 +282,21 @@ export function ChatPane({
                 (index === 0 || messages[index - 1]?.role === "user")
 
               return (
-                <MessageItem
-                  key={message.id}
-                  message={{ ...message, isFirstInRun }}
-                  isStreaming={busy && index === messages.length - 1}
-                  onRetry={onRetry}
-                  onFeedback={onFeedback}
-                  onToast={onToast}
-                  onApproveSchema={onApproveSchema}
-                  onRejectSchema={onRejectSchema}
-                  onAsk={onAsk}
-                  chatBusy={busy}
-                  uploadPending={uploadPending}
-                />
+                <div key={message.id} className="w-full [content-visibility:auto] [contain-intrinsic-size:auto_100px]">
+                  <MessageItem
+                    message={message}
+                    isFirstInRun={isFirstInRun}
+                    isStreaming={busy && index === messages.length - 1}
+                    onRetry={onRetry}
+                    onFeedback={onFeedback}
+                    onToast={onToast}
+                    onApproveSchema={onApproveSchema}
+                    onRejectSchema={onRejectSchema}
+                    onAsk={onAsk}
+                    chatBusy={busy}
+                    uploadPending={uploadPending}
+                  />
+                </div>
               )
             })}
           </div>
@@ -322,6 +335,7 @@ export function ChatPane({
 
 interface MessageItemProps {
   message: ChatMessage
+  isFirstInRun?: boolean
   isStreaming: boolean
   onRetry?: (messageId: string) => void
   onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
@@ -335,6 +349,7 @@ interface MessageItemProps {
 
 const MessageItem = memo(function MessageItem({
   message,
+  isFirstInRun,
   isStreaming,
   onRetry,
   onFeedback,
@@ -385,7 +400,7 @@ const MessageItem = memo(function MessageItem({
 
   return (
     <div className="w-full text-[16px] leading-[1.65] text-foreground">
-      {message.isFirstInRun ? (
+      {isFirstInRun ? (
         <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-1.5 select-none">
           Nexus
         </span>
@@ -468,7 +483,7 @@ const MessageItem = memo(function MessageItem({
   )
 })
 
-function RenderedMarkdown({ text }: { text: string }) {
+const RenderedMarkdown = memo(function RenderedMarkdown({ text }: { text: string }) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -560,4 +575,4 @@ function RenderedMarkdown({ text }: { text: string }) {
       {text}
     </ReactMarkdown>
   )
-}
+})

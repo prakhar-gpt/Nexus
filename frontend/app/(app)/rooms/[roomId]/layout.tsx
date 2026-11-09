@@ -292,7 +292,8 @@ export default function RoomShellLayout({
           <Sidebar
             mode="room"
             roomId={roomId}
-            roomName={room?.name ?? "Data Room"}
+            roomName={room?.name}
+            isLoading={isLoading}
             threads={roomThreads}
             datasets={datasets}
             pendingUploads={pendingUploads}
@@ -337,7 +338,8 @@ export default function RoomShellLayout({
               <Sidebar
                 mode="room"
                 roomId={roomId}
-                roomName={room?.name ?? "Data Room"}
+                roomName={room?.name}
+                isLoading={isLoading}
                 threads={roomThreads}
                 datasets={datasets}
                 pendingUploads={pendingUploads}

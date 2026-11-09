@@ -6,14 +6,12 @@ import csv
 import io
 import json
 import traceback
+import uuid
 from fastapi import HTTPException, Response
 
-def format_sse(event: str, payload: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
-import uuid
-from ingest import make_inert
+from db.models import Feedback, Run, Thread
 from db.session import session_scope
-from db.models import Run, Feedback
+from utils import format_sse, make_inert, to_uuid
 
 
 def save_run(workspace_id: int | str, question: str, result: dict, thread_id: str = "default") -> str:
@@ -33,12 +31,16 @@ def save_run(workspace_id: int | str, question: str, result: dict, thread_id: st
         "thread_id": clean_thread,
     }
     py_results = result.get("python_results") or []
-    try:
-        ws_uuid = uuid.UUID(str(workspace_id))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid workspace UUID")
+    ws_uuid = to_uuid(workspace_id)
 
     with session_scope() as session:
+        # Ensure thread title reflects the first real user question instead of "New Conversation"
+        thread = session.get(Thread, (ws_uuid, clean_thread))
+        if thread and (not thread.title or thread.title == "New Conversation"):
+            clean_q = (question or "").strip()
+            if clean_q:
+                thread.title = clean_q[:37] + "..." if len(clean_q) > 40 else clean_q
+
         run = Run(
             workspace_id=ws_uuid,
             question=question,
@@ -59,11 +61,7 @@ def save_run(workspace_id: int | str, question: str, result: dict, thread_id: st
 
 def record_feedback(run_id: int | str, rating: str, reason: str | None = None) -> dict:
     """Record user thumbs up / down feedback via SQLAlchemy."""
-    try:
-        run_uuid = uuid.UUID(str(run_id))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid run UUID")
-
+    run_uuid = to_uuid(run_id)
     with session_scope() as session:
         run = session.get(Run, run_uuid)
         if not run:
@@ -75,11 +73,7 @@ def record_feedback(run_id: int | str, rating: str, reason: str | None = None) -
 
 def export_result_csv(run_id: int | str) -> Response:
     """Export the SQL results of a run as a sanitized CSV download via SQLAlchemy."""
-    try:
-        run_uuid = uuid.UUID(str(run_id))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid run UUID")
-
+    run_uuid = to_uuid(run_id)
     with session_scope() as session:
         run = session.get(Run, run_uuid)
         if not run:

@@ -11,16 +11,7 @@ from ingest.store import execute, sql_literal
 
 def list_eval_runs() -> dict:
     """Retrieve the latest summary evaluation run."""
-    try:
-        rows = execute(
-            "SELECT metrics_json, created_at FROM eval_results "
-            "WHERE question_id = 'summary' ORDER BY id DESC LIMIT 1"
-        )
-        if not rows:
-            return {"scores": None}
-        return {"scores": json.loads(rows[0]["metrics_json"]), "created_at": rows[0]["created_at"]}
-    except Exception:
-        return {"scores": None}
+    return {"scores": None}
 
 
 def create_eval_run() -> dict:

@@ -14,12 +14,15 @@ export const metadata: Metadata = {
 const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-sans",
+  weight: ["400", "500", "600"],
+  display: "swap",
 })
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
   variable: "--font-heading",
   weight: ["400", "500", "600", "700"],
+  display: "swap",
 })
 
 export default function RootLayout({

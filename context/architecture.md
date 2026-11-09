@@ -181,3 +181,14 @@ Stand-ins, not client data. Check the licence of any Superstore copy before publ
 | Olist (Kaggle) | Multi-table joins and a larger ETL demo | No discount or profit column |
 | Self-written retail PDFs | RAG demo | Synthetic |
 | Synthetic survey file | Survey-validation add-on | Synthetic |
+
+## Performance rules
+
+- **Client boundaries**: Push `"use client"` as low down the component tree as possible.
+- **Lazy-load heavy libraries**: Lazy-load Recharts, QueryPanel, SchemaArchitectCard, and complex modal components via `next/dynamic`.
+- **Batch streaming updates**: Token updates from Server-Sent Events must be batched to `requestAnimationFrame` (~30-60 updates/sec max) rather than triggering synchronous state changes per SSE chunk.
+- **Stable component props**: Finished chat messages must be memoized with stable object references; avoid allocating inline object literals (`{ ...msg, extra }`) inside `.map()`.
+- **No polling when SSE exists**: Use dedicated event streams or one-time fetches instead of intervals.
+- **Animate only opacity and transform**: Avoid animating layout properties or using persistent `backdrop-filter` blur.
+- **Subscription cleanup**: Ensure every EventSource, listener, interval, and abort controller is cleanly terminated on unmount.
+- **Expression indexes**: Maintain targeted B-tree indexes for JSON extraction and foreign keys (e.g., `(workspace_id, (checker_result->>'thread_id'))`).

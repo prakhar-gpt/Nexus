@@ -7,7 +7,11 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Uplo
 from fastapi.responses import StreamingResponse
 
 from pydantic import BaseModel, Field
-from ingest.store import sql_id
+from sqlalchemy import select
+
+from db.models import Dataset
+from db.session import session_scope
+from utils import to_uuid
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -159,7 +163,11 @@ def chat_endpoint(workspace_id: str, body: ChatRequest):
     allowed_dataset_ids = thread.get("selected_dataset_ids") or []
 
     # Block send if zero datasets are checked (when custom datasets exist in workspace)
-    has_custom = bool(execute(f"SELECT 1 FROM datasets WHERE workspace_id = {sql_id(workspace_id)} LIMIT 1"))
+    with session_scope() as session:
+        has_custom = session.execute(
+            select(Dataset.id).where(Dataset.workspace_id == to_uuid(workspace_id)).limit(1)
+        ).scalar_one_or_none() is not None
+
     if has_custom and len(allowed_dataset_ids) == 0:
         raise HTTPException(status_code=400, detail="Select a dataset to ask about")
 

@@ -13,7 +13,11 @@ from typing import Any
 
 import pandas as pd
 
+from sqlalchemy import select
+
 from agent.db import DATABASE
+from db.models import Dataset, DatasetColumn, Upload
+from db.session import session_scope
 from ingest.reader import parse_date, parse_number
 from ingest.schema_validation import (
     COLUMN_NAME_PATTERN,
@@ -23,6 +27,7 @@ from ingest.schema_validation import (
     validate_schema_proposal,
 )
 from ingest.store import execute, get_writer_connection, sql_id, sql_literal
+from utils import esc_tsv, to_uuid
 
 TYPE_TO_PG = {
     "text": "text",
@@ -44,13 +49,16 @@ def compute_headers_hash(headers: list[str]) -> str:
 def get_cached_proposal(workspace_id: int | str, header_hash: str) -> dict[str, Any] | None:
     """Lookup previously approved schema for identical normalized header set in workspace."""
     try:
-        rows = execute(
-            f"SELECT proposal_json FROM datasets "
-            f"WHERE workspace_id = {sql_id(workspace_id)} AND header_hash = {sql_literal(header_hash)} "
-            f"ORDER BY approved_at DESC LIMIT 1"
-        )
-        if rows and rows[0].get("proposal_json"):
-            return json.loads(rows[0]["proposal_json"])
+        ws_uuid = to_uuid(workspace_id)
+        with session_scope() as session:
+            proposal = session.execute(
+                select(Dataset.proposal_json)
+                .where(Dataset.workspace_id == ws_uuid, Dataset.header_hash == header_hash)
+                .order_by(Dataset.approved_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if proposal:
+                return proposal if isinstance(proposal, dict) else json.loads(proposal)
     except Exception:
         pass
     return None
@@ -136,45 +144,67 @@ def create_and_load_custom_table(
     ddl = build_create_table_ddl(table_name, active_cols)
     execute(ddl)
 
-    # 2. Register dataset in datasets and dataset_columns catalogs
-    execute(
-        f"DELETE FROM datasets WHERE upload_id = {sql_id(upload_id)};\n"
-        f"INSERT INTO datasets (workspace_id, upload_id, table_name, table_label, grain, grain_key_columns, header_hash, approved_by, proposal_json) "
-        f"VALUES ({sql_id(workspace_id)}, {sql_id(upload_id)}, {sql_literal(table_name)}, {sql_literal(table_label)}, "
-        f"{sql_literal(grain)}, {sql_literal(json.dumps(grain_key_columns))}::jsonb, {sql_literal(header_hash)}, "
-        f"{sql_literal(approved_by)}, {sql_literal(json.dumps(proposal_json or {}))}::jsonb);\n"
-        f"UPDATE uploads SET custom_table_name = {sql_literal(table_name)} WHERE id = {sql_id(upload_id)};"
-    )
+    # 2. Register dataset in datasets and dataset_columns catalogs using SQLAlchemy ORM
+    up_uuid = to_uuid(upload_id)
+    ws_uuid = to_uuid(workspace_id)
 
-    dataset_rows = execute(f"SELECT id FROM datasets WHERE upload_id = {sql_id(upload_id)} LIMIT 1")
-    dataset_id = str(dataset_rows[0]["id"])
+    with session_scope() as session:
+        # Remove any existing dataset for this upload
+        existing = session.execute(
+            select(Dataset).where(Dataset.upload_id == up_uuid)
+        ).scalar_one_or_none()
+        if existing:
+            session.delete(existing)
+            session.flush()
 
-    # Register columns with safe fallbacks and conflict handling
-    for col in active_cols:
-        c_name = str(col.get("column_name") or "").strip().lower()
-        if not c_name:
-            continue
-        s_name = str(col.get("source_name") or c_name).strip()
-        c_type = str(col.get("type") or "text").strip().lower()
-        c_role = str(col.get("role") or "dimension").strip().lower()
-        c_desc = str(col.get("description") or "").strip()
-        c_unit = col.get("unit") if col.get("unit") is not None else None
-        c_nullable = "true" if col.get("nullable", True) else "false"
-        try:
-            c_null_rate = float(col.get("null_rate") or 0.0)
-        except (ValueError, TypeError):
-            c_null_rate = 0.0
-
-        execute(
-            f"INSERT INTO dataset_columns (dataset_id, column_name, source_name, type, role, description, unit, nullable, null_rate) "
-            f"VALUES ({sql_id(dataset_id)}, {sql_literal(c_name)}, {sql_literal(s_name)}, "
-            f"{sql_literal(c_type)}, {sql_literal(c_role)}, {sql_literal(c_desc)}, "
-            f"{sql_literal(c_unit)}, {c_nullable}, {c_null_rate}) "
-            f"ON CONFLICT (dataset_id, column_name) DO UPDATE SET "
-            f"source_name = EXCLUDED.source_name, type = EXCLUDED.type, role = EXCLUDED.role, "
-            f"description = EXCLUDED.description, unit = EXCLUDED.unit, nullable = EXCLUDED.nullable, "
-            f"null_rate = EXCLUDED.null_rate"
+        ds = Dataset(
+            workspace_id=ws_uuid,
+            upload_id=up_uuid,
+            table_name=table_name,
+            table_label=table_label,
+            grain=grain,
+            grain_key_columns=grain_key_columns,
+            header_hash=header_hash,
+            approved_by=approved_by,
+            proposal_json=proposal_json or {},
         )
+        session.add(ds)
+        session.flush()
+
+        up = session.get(Upload, up_uuid)
+        if up:
+            up.custom_table_name = table_name
+
+        dataset_id = ds.id
+
+        # Register columns
+        for col in active_cols:
+            c_name = str(col.get("column_name") or "").strip().lower()
+            if not c_name:
+                continue
+            s_name = str(col.get("source_name") or c_name).strip()
+            c_type = str(col.get("type") or "text").strip().lower()
+            c_role = str(col.get("role") or "dimension").strip().lower()
+            c_desc = str(col.get("description") or "").strip()
+            c_unit = col.get("unit")
+            c_nullable = bool(col.get("nullable", True))
+            try:
+                c_null_rate = float(col.get("null_rate") or 0.0)
+            except (ValueError, TypeError):
+                c_null_rate = 0.0
+
+            col_obj = DatasetColumn(
+                dataset_id=dataset_id,
+                column_name=c_name,
+                source_name=s_name,
+                type=c_type,
+                role=c_role,
+                description=c_desc,
+                unit=c_unit,
+                nullable=c_nullable,
+                null_rate=c_null_rate,
+            )
+            session.add(col_obj)
 
     # 3. Clean and parse rows for COPY
     hdr_idx = next((i for i, r in enumerate(raw_rows) if r[0] == header_line), 0)
@@ -190,12 +220,6 @@ def create_and_load_custom_table(
     quarantined = 0
     data_buf = io.StringIO()
     quar_buf = io.StringIO()
-
-    def _esc_tsv(v) -> str:
-        if v is None or v == "":
-            return r"\N"
-        s = str(v)
-        return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
 
     for line_number, cells in raw_rows:
         if line_number <= header_line:
@@ -217,7 +241,7 @@ def create_and_load_custom_table(
                 continue
 
             if c_type == "text":
-                row_vals.append(_esc_tsv(cell_val))
+                row_vals.append(esc_tsv(cell_val))
             elif c_type == "integer":
                 try:
                     num = int(cell_val.replace(",", "").split(".")[0])
@@ -263,7 +287,7 @@ def create_and_load_custom_table(
                     break
 
         if is_bad:
-            quar_buf.write(f"{upload_id}\t{line_number}\t{_esc_tsv(bad_reason)}\t{_esc_tsv(json.dumps(raw_dict))}\n")
+            quar_buf.write(f"{upload_id}\t{line_number}\t{esc_tsv(bad_reason)}\t{esc_tsv(json.dumps(raw_dict))}\n")
             quarantined += 1
             continue
 
@@ -304,6 +328,10 @@ def create_and_load_custom_table(
                     TRUNCATE staging_quarantine;
                 """)
 
-    # Update row count in catalog
-    execute(f"UPDATE datasets SET row_count = {loaded} WHERE id = {sql_id(dataset_id)}")
+    # Update row count in catalog via SQLAlchemy ORM
+    with session_scope() as session:
+        ds = session.get(Dataset, dataset_id)
+        if ds:
+            ds.row_count = loaded
+
     return loaded, quarantined, table_name
