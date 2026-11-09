@@ -146,6 +146,30 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
   return response
 }
 
+/**
+ * Creates an authenticated EventSource instance.
+ * Automatically prepends API_URL if a relative path is provided,
+ * enables withCredentials, and appends the Bearer token as a query parameter
+ * if present in localStorage to support cross-origin mobile clients.
+ */
+export function createEventSource(pathOrUrl: string, init?: EventSourceInit): EventSource {
+  const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
+  const base = pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")
+    ? pathOrUrl
+    : `${API_URL}${pathOrUrl.startsWith("/") ? "" : "/"}${pathOrUrl}`
+
+  let finalUrl = base
+  if (token) {
+    const separator = base.includes("?") ? "&" : "?"
+    finalUrl = `${base}${separator}token=${encodeURIComponent(token)}`
+  }
+
+  return new EventSource(finalUrl, {
+    withCredentials: true,
+    ...init,
+  })
+}
+
 export async function readSse(
   response: Response,
   onEvent: (event: string, data: Record<string, unknown>) => void,

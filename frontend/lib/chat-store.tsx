@@ -5,6 +5,7 @@ import { mutateResource } from "./use-resource"
 import {
   API_URL,
   apiFetch,
+  createEventSource,
   readSse,
   registerUnauthorizedCleanup,
   type TraceStep,
@@ -521,12 +522,8 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
           status: body.status === "needs_schema_review" ? "needs_schema_review" : "profiling",
         }))
 
-        // Listen to live SSE upload events with credentials for authenticated session cookies
-        const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
-        const eventsUrl = token
-          ? `${API_URL}/uploads/${uploadId}/events?token=${encodeURIComponent(token)}`
-          : `${API_URL}/uploads/${uploadId}/events`
-        const source = new EventSource(eventsUrl, { withCredentials: true })
+        // Listen to live SSE upload events with centralized auth and token fallback
+        const source = createEventSource(`/uploads/${uploadId}/events`)
 
         const handleSseMessage = async (evt: MessageEvent) => {
           if (!evt.data) return
@@ -927,11 +924,7 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
       notifyKey(key)
 
       if (upload.status !== "needs_schema_review" && upload.status !== "loaded" && upload.status !== "rejected") {
-        const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
-        const eventsUrl = token
-          ? `${API_URL}/uploads/${upload.id}/events?token=${encodeURIComponent(token)}`
-          : `${API_URL}/uploads/${upload.id}/events`
-        const source = new EventSource(eventsUrl, { withCredentials: true })
+        const source = createEventSource(`/uploads/${upload.id}/events`)
         source.onmessage = async (evt: MessageEvent) => {
           if (!evt.data) return
           let payload: any = {}

@@ -10,6 +10,7 @@ import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
 import {
   API_URL,
   apiFetch,
+  createEventSource,
   readSse,
   type ArchitectStep,
   type HandoffData,
@@ -743,11 +744,7 @@ export function Dashboard() {
   }
 
   function listenToUpload(uploadId: number, messageId?: string) {
-    const token = typeof window !== "undefined" ? localStorage.getItem("nexus_token") : null
-    const eventsUrl = token
-      ? `${API_URL}/uploads/${uploadId}/events?token=${encodeURIComponent(token)}`
-      : `${API_URL}/uploads/${uploadId}/events`
-    const source = new EventSource(eventsUrl, { withCredentials: true })
+    const source = createEventSource(`/uploads/${uploadId}/events`)
     source.onmessage = async (event) => {
       const payload = readEvent<{
         // legacy stage events
