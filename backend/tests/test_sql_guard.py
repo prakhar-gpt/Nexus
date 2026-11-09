@@ -1,5 +1,5 @@
 import pytest
-from agent.tools import guard_sql, SqlRejected
+from agent.nexus.tools import guard_sql, SqlRejected
 
 
 def test_guard_sql_allows_plain_queries():

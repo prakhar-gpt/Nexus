@@ -1,0 +1,5 @@
+customer_code,full_name,tier,signup_date,active
+CUST-001,Johnathan Doe,Gold,2023-05-12,true
+CUST-002,Maria Garcia,Platinum,2022-11-20,true
+CUST-003,Samir Patel,Silver,2024-01-15,false
+

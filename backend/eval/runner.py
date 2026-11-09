@@ -12,15 +12,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from agent.checker import (  # noqa: E402
+from agent.nexus.checker import (  # noqa: E402
     check_answer,
     draft_from_rows,
     extract_numbers,
     refusal_text,
 )
-from agent.tools import populated_count, run_sql  # noqa: E402
-from agent.tools import SqlRejected, guard_sql  # noqa: E402
-from agent.tools import execute_sandboxed  # noqa: E402
+from agent.nexus.tools import populated_count, run_sql  # noqa: E402
+from agent.nexus.tools import SqlRejected, guard_sql  # noqa: E402
+from agent.nexus.tools import execute_sandboxed  # noqa: E402
 from ingest import ingest  # noqa: E402
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden_set.json"

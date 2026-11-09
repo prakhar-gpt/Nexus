@@ -107,10 +107,14 @@ def main() -> int:
     upload_id = uploaded.json().get("upload_id")
     events = client.get(f"/uploads/{upload_id}/events")
     check(
-        "payroll rejected",
-        uploaded.status_code == 200 and "missing" in events.text and "event: done" in events.text,
+        "payroll uploaded and profiled",
+        uploaded.status_code == 200 and "needs_schema_review" in events.text and "event: done" in events.text,
         events.text[-400:],
     )
+    schema_info = client.get(f"/uploads/{upload_id}/schema")
+    check("schema fetched", schema_info.status_code == 200 and schema_info.json().get("proposal") is not None)
+    rejected = client.post(f"/uploads/{upload_id}/schema/reject")
+    check("schema rejected", rejected.status_code == 200 and rejected.json().get("status") == "rejected")
 
     messy = client.post(
         f"/workspaces/{room}/uploads",
@@ -118,17 +122,11 @@ def main() -> int:
     )
     messy_id = messy.json()["upload_id"]
     messy_events = client.get(f"/uploads/{messy_id}/events").text
-    check("messy waits", "needs_confirmation" in messy_events, messy_events[-400:])
-    done_payload = json.loads(messy_events.split("event: done\ndata: ", 1)[1].strip())
-    decisions = {
-        item["source"]: item["canonical"]
-        for item in done_payload["mappings"]
-        if item["needs_confirmation"] and item["canonical"]
-    }
-    confirmed = client.put(f"/uploads/{messy_id}/mapping", json={"decisions": decisions})
+    check("messy profiled", "needs_schema_review" in messy_events, messy_events[-400:])
+    confirmed = client.post(f"/uploads/{messy_id}/schema/approve")
     check(
         "messy confirmed",
-        confirmed.status_code == 200 and confirmed.json()["status"] == "accepted",
+        confirmed.status_code == 200 and confirmed.json().get("status") in {"loaded", "accepted"} and confirmed.json().get("loaded_rows", 0) > 0,
         str(confirmed.json()),
     )
 

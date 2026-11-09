@@ -22,11 +22,21 @@ class MappingUpdate(BaseModel):
 
 
 @router.get("/uploads/{upload_id}/events")
-async def upload_events_endpoint(upload_id: int):
-    """Stream real-time ingestion events for an uploaded file."""
+async def upload_events_endpoint(
+    upload_id: int,
+    since: int = 0,
+    last_event_id: int | None = None,
+):
+    """Stream real-time ingestion events for an uploaded file with sequence replay."""
+    since_seq = last_event_id if last_event_id is not None else since
     return StreamingResponse(
-        stream_upload_events(upload_id),
+        stream_upload_events(upload_id, since_seq=since_seq),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -44,6 +54,73 @@ def update_mapping_endpoint(upload_id: int, body: MappingUpdate):
 
 
 @router.get("/uploads/{upload_id}/quarantine")
-def get_upload_quarantine_endpoint(upload_id: int):
-    """Fetch quarantined rows and reason breakdown for an upload."""
-    return get_upload_health_summary(upload_id)
+@router.get("/uploads/{upload_id}/health")
+def get_upload_quarantine_endpoint(upload_id: int, download: str | None = None):
+    """Fetch quarantined rows and reason breakdown for an upload, or stream CSV download."""
+    return get_upload_health_summary(upload_id, download=download)
+
+
+# ---------------------------------------------------------------------------
+# Schema Architect Endpoints
+# ---------------------------------------------------------------------------
+
+class SchemaProposalUpdate(BaseModel):
+    table_label: str
+    grain: str
+    grain_key_columns: list[str] = []
+    columns: list[dict]
+    warnings: list[str] = []
+    analysis_hints: list[str] = []
+
+
+class SchemaRegenerateRequest(BaseModel):
+    hint: str | None = None
+
+
+@router.get("/uploads/{upload_id}/schema")
+def get_schema_endpoint(upload_id: int):
+    """Fetch Schema Architect proposal, deterministic validation result, and 10-row preview."""
+    from api.services.upload_service import get_upload_schema
+    return get_upload_schema(upload_id)
+
+
+@router.post("/uploads/{upload_id}/schema/initiate")
+def initiate_schema_endpoint(upload_id: int):
+    """Trigger Schema Architect manually (e.g. from 'Or load as custom table instead')."""
+    from api.services.upload_service import initiate_upload_schema
+    return initiate_upload_schema(upload_id)
+
+
+@router.put("/uploads/{upload_id}/schema")
+def update_schema_endpoint(upload_id: int, body: SchemaProposalUpdate):
+    """Save user edits to schema proposal and re-run deterministic validation."""
+    from api.services.upload_service import update_upload_schema
+    return update_upload_schema(upload_id, body.model_dump())
+
+
+@router.post("/uploads/{upload_id}/schema/approve")
+def approve_schema_endpoint(upload_id: int):
+    """Approve schema and execute deterministic table creation and COPY row load."""
+    from api.services.upload_service import approve_upload_schema
+    return approve_upload_schema(upload_id)
+
+
+@router.post("/uploads/{upload_id}/schema/reject")
+def reject_schema_endpoint(upload_id: int):
+    """Reject schema proposal. Upload is marked rejected and no table is created."""
+    from api.services.upload_service import reject_upload_schema
+    return reject_upload_schema(upload_id)
+
+
+@router.post("/uploads/{upload_id}/schema/regenerate")
+def regenerate_schema_endpoint(upload_id: int, body: SchemaRegenerateRequest = SchemaRegenerateRequest()):
+    """Re-run the Schema Architect with an optional user context hint (capped at 3 runs)."""
+    from api.services.upload_service import regenerate_upload_schema
+    return regenerate_upload_schema(upload_id, user_hint=body.hint)
+
+
+@router.get("/uploads/{upload_id}/status")
+def get_upload_status_endpoint(upload_id: int):
+    """Lightweight status + schema proposal for rehydrating the chat timeline without streaming."""
+    from api.services.upload_service import get_upload_status_for_rehydration
+    return get_upload_status_for_rehydration(upload_id)

@@ -91,6 +91,22 @@ interface ChatStoreContextType {
     question: string,
     onFirstToken?: (targetThreadId: string) => void
   ) => Promise<void>
+  uploadFile: (
+    roomId: string | number,
+    threadId: string,
+    file: File,
+    onNavigate?: (targetThreadId: string) => void
+  ) => Promise<void>
+  approveSchema: (
+    roomId: string | number,
+    threadId: string,
+    uploadId: string
+  ) => Promise<void>
+  rejectSchema: (
+    roomId: string | number,
+    threadId: string,
+    uploadId: string
+  ) => Promise<void>
   abortStream: (roomId: string | number, threadId: string) => void
   recordFeedback: (
     runId: number,
@@ -338,6 +354,379 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
+  const uploadFile = useCallback(
+    async (
+      roomId: string | number,
+      threadId: string,
+      file: File,
+      onNavigate?: (targetThreadId: string) => void
+    ) => {
+      const key = makeKey(roomId, threadId)
+      const userMsgId = crypto.randomUUID()
+      const assistantMsgId = crypto.randomUUID()
+
+      // Format file size nicely
+      const sizeStr = file.size > 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.round(file.size / 1024)} KB`
+
+      // 1. Instantly display user file message & assistant Schema Architect step
+      const userMsg: ChatMessage = {
+        id: userMsgId,
+        role: "user",
+        text: `Uploaded dataset: ${file.name} (${sizeStr})`,
+      }
+
+      const architectMsg: ChatMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        text: "",
+        uploadData: {
+          uploadId: "",
+          fileName: file.name,
+          fileSize: file.size,
+          status: "uploading",
+          stages: [],
+          architectSteps: [
+            {
+              id: "step_received",
+              tool: "check_file",
+              status: "running",
+              label: `Reading ${file.name}…`,
+            },
+          ],
+        },
+      }
+
+      const prev = threadStates.get(key) || DEFAULT_THREAD_STATE
+      threadStates.set(key, {
+        ...prev,
+        busy: true,
+        messages: [...prev.messages, userMsg, architectMsg],
+      })
+      notifyKey(key)
+
+      if (onNavigate) {
+        onNavigate(threadId)
+      }
+
+      const updateUploadData = (updater: (prevData: any) => any) => {
+        const curr = threadStates.get(key)
+        if (!curr) return
+        threadStates.set(key, {
+          ...curr,
+          messages: curr.messages.map((m) =>
+            m.id === assistantMsgId && m.uploadData
+              ? { ...m, uploadData: updater(m.uploadData) }
+              : m
+          ),
+        })
+        notifyKey(key)
+      }
+
+      try {
+        const form = new FormData()
+        form.append("file", file)
+
+        const res = await apiFetch(`${API_URL}/workspaces/${roomId}/uploads`, {
+          method: "POST",
+          body: form,
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          const msg = err?.detail || err?.message || "File rejected by server."
+          updateUploadData((u) => ({
+            ...u,
+            status: "rejected",
+            error: msg,
+            architectSteps: [
+              { id: "err", tool: "check_file", status: "error", label: msg },
+            ],
+          }))
+          return
+        }
+
+        const body = (await res.json()) as { upload_id: number; status: string }
+        const uploadId = body.upload_id
+
+        updateUploadData((u) => ({
+          ...u,
+          uploadId: String(uploadId),
+          status: body.status === "needs_schema_review" ? "needs_schema_review" : "profiling",
+        }))
+
+        // Listen to live SSE upload events
+        const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`)
+
+        const handleSseMessage = async (evt: MessageEvent) => {
+          if (!evt.data) return
+          let payload: any = {}
+          try {
+            payload = JSON.parse(evt.data)
+          } catch {
+            return
+          }
+
+          const evtName = payload.event || (evt as any).type
+
+          // Normal architect / Nexus tool steps
+          if (payload.tool || evtName === "step") {
+            updateUploadData((u) => {
+              const prevSteps = u.architectSteps || []
+              const stepId = payload.id || `step_${payload.tool || payload.seq || Math.random()}`
+              const idx = prevSteps.findIndex((s: any) => s.id === stepId || s.tool === payload.tool)
+              const newStep = {
+                id: stepId,
+                tool: payload.tool || "check_file",
+                status: payload.status || "done",
+                label: payload.label || payload.tool || "Processed step",
+                evidence: payload.evidence,
+                ms: payload.ms,
+              }
+              const nextSteps = idx >= 0
+                ? prevSteps.map((s: any, i: number) => (i === idx ? newStep : s))
+                : [...prevSteps, newStep]
+              return { ...u, architectSteps: nextSteps, status: "profiling" }
+            })
+          }
+
+          // Handoff event
+          if (evtName === "handoff" || payload.event === "handoff") {
+            const handoffData = {
+              tableLabel: payload.table_label || "",
+              tableName: payload.table_name || "",
+              grain: payload.grain || "",
+              rowCount: payload.row_count || 0,
+              quarantinedCount: payload.quarantined_count || 0,
+              suggestedQuestions: payload.suggested_questions || [],
+            }
+            const curr = threadStates.get(key)
+            if (curr) {
+              threadStates.set(key, {
+                ...curr,
+                messages: [
+                  ...curr.messages,
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant",
+                    text: "",
+                    handoffData,
+                  },
+                ],
+              })
+              notifyKey(key)
+            }
+            return
+          }
+
+          // Terminal events or proposal ready
+          if (payload.final || evtName === "done" || evtName === "architect_proposed" || payload.status === "needs_schema_review") {
+            const finalState = payload.final || payload.status
+            if (finalState === "needs_schema_review" || evtName === "architect_proposed" || payload.proposal) {
+              try {
+                const schemaRes = await apiFetch(`${API_URL}/uploads/${uploadId}/schema`)
+                if (schemaRes.ok) {
+                  const sData = await schemaRes.json()
+                  updateUploadData((u) => ({
+                    ...u,
+                    status: "needs_schema_review",
+                    proposal: sData.proposal || payload.proposal,
+                    validation: sData.validation || payload.validation,
+                    preview: sData.preview || payload.preview,
+                  }))
+                }
+              } catch {}
+            } else if (finalState === "loaded") {
+              source.close()
+              updateUploadData((u) => ({
+                ...u,
+                status: "loaded",
+                tableName: payload.table_name,
+                loadedRows: payload.loaded_rows,
+                quarantinedRows: payload.quarantined_rows,
+                quarantineUploadId: String(uploadId),
+              }))
+            } else if (finalState === "rejected") {
+              source.close()
+              updateUploadData((u) => ({
+                ...u,
+                status: "rejected",
+                error: payload.reason || "File rejected.",
+              }))
+            }
+          }
+        }
+
+        source.onmessage = handleSseMessage
+        source.addEventListener("step", handleSseMessage)
+        source.addEventListener("done", handleSseMessage)
+        source.addEventListener("error", handleSseMessage)
+        source.addEventListener("handoff", handleSseMessage)
+        source.addEventListener("architect_proposed", handleSseMessage)
+        source.addEventListener("architect_started", handleSseMessage)
+        source.addEventListener("progress", handleSseMessage)
+
+        source.onerror = () => source.close()
+      } catch (err: any) {
+        updateUploadData((u) => ({
+          ...u,
+          status: "rejected",
+          error: err?.message || "Failed to upload file.",
+        }))
+      } finally {
+        const curr = threadStates.get(key)
+        if (curr) {
+          threadStates.set(key, { ...curr, busy: false })
+          notifyKey(key)
+        }
+      }
+    },
+    []
+  )
+
+  const approveSchema = useCallback(
+    async (roomId: string | number, threadId: string, uploadId: string) => {
+      const key = makeKey(roomId, threadId)
+      const res = await apiFetch(`${API_URL}/uploads/${uploadId}/schema/approve`, {
+        method: "POST",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err?.detail?.message || err?.detail || "Could not approve table creation.")
+      }
+      const data = await res.json()
+
+      // Immediately transition in-chat message to loaded state
+      const curr = threadStates.get(key)
+      if (curr) {
+        const updatedMessages = curr.messages.map((m) => {
+          if (m.uploadData && (m.uploadData.uploadId === uploadId || !m.uploadData.uploadId)) {
+            return {
+              ...m,
+              uploadData: {
+                ...m.uploadData,
+                status: "loaded" as const,
+                tableName: data.table_name,
+                loadedRows: data.loaded_rows,
+                quarantinedRows: data.quarantined_rows || 0,
+                quarantineUploadId: uploadId,
+              },
+            }
+          }
+          return m
+        })
+
+        // Derive friendly dataset label and grain from proposal / file name
+        const uploadMsg = curr.messages.find((m) => m.uploadData)
+        const friendlyLabel =
+          data.table_label ||
+          uploadMsg?.uploadData?.proposal?.table_label ||
+          uploadMsg?.uploadData?.fileName?.replace(/\.[^/.]+$/, "") ||
+          "Dataset"
+
+        const rawGrain = data.grain || uploadMsg?.uploadData?.proposal?.grain || "transaction record"
+        const cleanGrain = rawGrain
+          .replace(/^[\s*#_-]*(?:grain|table grain|one row represents)[\s*#_:-]*/i, "")
+          .trim()
+
+        // Use backend-provided suggestions if available, or generate retail-prioritized suggestions
+        let suggested = data.suggested_questions || []
+        if (!suggested || suggested.length === 0) {
+          const cols = uploadMsg?.uploadData?.proposal?.columns || []
+          const nonMeasures = ["postal", "zip", "code", "phone", "fax", "ssn", "ein", "id", "nbr", "num"]
+          const rawMeasures = cols
+            .filter((c: any) => c.role === "measure" && !c.excluded && !nonMeasures.some((k) => c.column_name.toLowerCase().includes(k)))
+            .map((c: any) => c.column_name)
+
+          const rawDims = cols
+            .filter((c: any) => c.role === "dimension" && !c.excluded)
+            .map((c: any) => c.column_name)
+
+          const rawDates = cols
+            .filter((c: any) => c.role === "date" && !c.excluded)
+            .map((c: any) => c.column_name)
+
+          const PRIORITY_MEASURES = ["revenue", "sales", "profit", "amount", "spend", "cost", "total", "margin", "quantity", "units", "discount"]
+          const PRIORITY_DIMS = ["category", "sub_category", "segment", "region", "channel", "department", "state", "brand", "country"]
+
+          const sortPriority = (items: string[], priorities: string[]) => {
+            return [...items].sort((a, b) => {
+              const aIdx = priorities.findIndex((p) => a.toLowerCase().includes(p))
+              const bIdx = priorities.findIndex((p) => b.toLowerCase().includes(p))
+              if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
+              if (aIdx >= 0) return -1
+              if (bIdx >= 0) return 1
+              return a.localeCompare(b)
+            })
+          }
+
+          const measureCols = sortPriority(rawMeasures, PRIORITY_MEASURES)
+          const dimCols = sortPriority(rawDims, PRIORITY_DIMS)
+
+          suggested = []
+          if (measureCols.length > 0 && dimCols.length > 0) {
+            const m = measureCols[0].replace(/_/g, " ")
+            const d = dimCols[0].replace(/_/g, " ")
+            suggested.push({
+              question: `What is total ${m} by ${d}?`,
+              hint: `Break down ${m} by ${d}`,
+            })
+          }
+          if (measureCols.length > 0 && rawDates.length > 0) {
+            const m = measureCols[0].replace(/_/g, " ")
+            const dt = rawDates[0].replace(/_/g, " ")
+            suggested.push({
+              question: `Show ${m} over time by ${dt}`,
+              hint: `${m} over time`,
+            })
+          } else if (measureCols.length > 0) {
+            const m = measureCols[0].replace(/_/g, " ")
+            suggested.push({
+              question: `What is the overall sum and average of ${m}?`,
+              hint: `Summary statistics for ${m}`,
+            })
+          }
+          suggested.push({
+            question: `How many rows are in ${friendlyLabel}?`,
+            hint: `Count rows in ${friendlyLabel}`,
+          })
+        }
+
+        const handoffMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          text: "",
+          handoffData: {
+            tableName: data.table_name,
+            tableLabel: friendlyLabel,
+            grain: cleanGrain,
+            rowCount: data.loaded_rows,
+            quarantinedCount: data.quarantined_rows || 0,
+            suggestedQuestions: suggested,
+          },
+        }
+
+        threadStates.set(key, {
+          ...curr,
+          messages: [...updatedMessages, handoffMessage],
+        })
+        notifyKey(key)
+      }
+      return data
+    },
+    []
+  )
+
+  const rejectSchema = useCallback(
+    async (roomId: string | number, threadId: string, uploadId: string) => {
+      await apiFetch(`${API_URL}/uploads/${uploadId}/schema/reject`, {
+        method: "POST",
+      })
+    },
+    []
+  )
+
   const recordFeedback = useCallback(
     async (runId: number, rating: "up" | "down", reason?: string): Promise<boolean> => {
       try {
@@ -368,6 +757,9 @@ export function ChatStoreProvider({ children }: { children: React.ReactNode }) {
         setMessages,
         initThreadTurns,
         ask,
+        uploadFile,
+        approveSchema,
+        rejectSchema,
         abortStream,
         recordFeedback,
         clearAll,

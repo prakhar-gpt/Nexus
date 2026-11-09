@@ -117,8 +117,9 @@ def ingest(
     *,
     upload_id: int | None = None,
     progress=None,
+    allow_custom_schema: bool = False,
 ) -> IngestResult:
-    result = _ingest(path, workspace_id, confirm, upload_id, progress)
+    result = _ingest(path, workspace_id, confirm, upload_id, progress, allow_custom_schema=allow_custom_schema)
     if progress is not None:
         progress(
             {
@@ -138,7 +139,7 @@ def ingest(
     return result
 
 
-def _ingest(path, workspace_id: int, confirm, existing_id, progress) -> IngestResult:
+def _ingest(path, workspace_id: int, confirm, existing_id, progress, allow_custom_schema: bool = False) -> IngestResult:
     path = Path(path)
     try:
         data, extension = inspect(path)
@@ -169,6 +170,13 @@ def _ingest(path, workspace_id: int, confirm, existing_id, progress) -> IngestRe
         return IngestResult("rejected", "could not find a header row", saved_id, name)
     _emit(progress, "profiling", "done", columns=len(headers))
 
+    # All user uploads with allow_custom_schema route directly to Schema Architect.
+    # No RapidFuzz column mapping, no needs_confirmation state.
+    if allow_custom_schema:
+        _emit(progress, "schema_architect", "running", detail="Schema Architect is analyzing column shapes…")
+        saved_id, name = _record_upload(path, workspace_id, "needs_schema_review", data, existing_id)
+        return IngestResult("needs_schema_review", None, saved_id, name, header_line)
+
     samples = _collect_samples(rows, header_line, headers)
 
     # Check remembered workspace confirmed mappings
@@ -186,12 +194,20 @@ def _ingest(path, workspace_id: int, confirm, existing_id, progress) -> IngestRe
 
     pending = [item for item in proposals if item.needs_confirmation]
     if pending and confirm is None:
-        if domain_gap(_accepted_columns(proposals, include_pending=True)):
-            reason = domain_gap(_accepted_columns(proposals, include_pending=True))
-            _emit(progress, "mapping", "error", reason=reason)
-            saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
-            _save_mappings(saved_id, proposals)
-            return IngestResult("rejected", reason, saved_id, name, header_line, mappings=proposals)
+        gap = domain_gap(_accepted_columns(proposals, include_pending=True))
+        if gap:
+            if allow_custom_schema:
+                # File is not transaction-shaped for sales_clean. Route to Schema Architect!
+                _emit(progress, "mapping", "needs_schema_review", reason=gap)
+                saved_id, name = _record_upload(path, workspace_id, "needs_schema_review", data, existing_id)
+                _save_mappings(saved_id, proposals)
+                return IngestResult("needs_schema_review", gap, saved_id, name, header_line, mappings=proposals)
+            else:
+                _emit(progress, "mapping", "error", reason=gap)
+                saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+                _save_mappings(saved_id, proposals)
+                return IngestResult("rejected", gap, saved_id, name, header_line, mappings=proposals)
+
         _emit(progress, "mapping", "needs_confirmation", pending=len(pending))
         saved_id, name = _record_upload(path, workspace_id, "needs_confirmation", data, existing_id)
         _save_mappings(saved_id, proposals)
@@ -215,10 +231,16 @@ def _ingest(path, workspace_id: int, confirm, existing_id, progress) -> IngestRe
     columns = _accepted_columns(proposals, include_pending=False)
     gap = domain_gap(columns)
     if gap:
-        _emit(progress, "mapping", "error", reason=gap)
-        saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
-        _save_mappings(saved_id, proposals)
-        return IngestResult("rejected", gap, saved_id, name, header_line, mappings=proposals)
+        if allow_custom_schema:
+            _emit(progress, "mapping", "needs_schema_review", reason=gap)
+            saved_id, name = _record_upload(path, workspace_id, "needs_schema_review", data, existing_id)
+            _save_mappings(saved_id, proposals)
+            return IngestResult("needs_schema_review", gap, saved_id, name, header_line, mappings=proposals)
+        else:
+            _emit(progress, "mapping", "error", reason=gap)
+            saved_id, name = _record_upload(path, workspace_id, "rejected", data, existing_id)
+            _save_mappings(saved_id, proposals)
+            return IngestResult("rejected", gap, saved_id, name, header_line, mappings=proposals)
 
     _emit(progress, "mapping", "done", pending=len(pending))
     saved_id, name = _record_upload(path, workspace_id, "accepted", data, existing_id)
@@ -431,67 +453,6 @@ def _esc_tsv(val) -> str:
     s = str(val)
     return s.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
 
-BATCH_COLUMNS = (
-    "workspace_id",
-    "upload_id",
-    "order_date",
-    "customer_id",
-    "product_id",
-    "quantity",
-    "revenue",
-    "unit_price",
-    "discount_pct",
-    "cost",
-    "profit",
-    "segment",
-    "region",
-    "category",
-    "sub_category",
-    "channel",
-    "attributes",
-)
-
-
-def _insert_sales_batch(upload_id: int, workspace_id: int, batch: list[tuple[dict, dict]]) -> None:
-    if not batch:
-        return
-    col_str = ", ".join(BATCH_COLUMNS)
-    val_clauses = []
-    for cleaned, attrs in batch:
-        vals = [
-            str(int(workspace_id)),
-            str(int(upload_id)),
-            sql_literal(cleaned.get("order_date")),
-            sql_literal(cleaned.get("customer_id")),
-            sql_literal(cleaned.get("product_id")),
-            sql_literal(cleaned.get("quantity")),
-            sql_literal(cleaned.get("revenue")),
-            sql_literal(cleaned.get("unit_price")),
-            sql_literal(cleaned.get("discount_pct")),
-            sql_literal(cleaned.get("cost")),
-            sql_literal(cleaned.get("profit")),
-            sql_literal(cleaned.get("segment")),
-            sql_literal(cleaned.get("region")),
-            sql_literal(cleaned.get("category")),
-            sql_literal(cleaned.get("sub_category")),
-            sql_literal(cleaned.get("channel")),
-            f"{sql_literal(json.dumps(attrs))}::jsonb",
-        ]
-        val_clauses.append(f"({', '.join(vals)})")
-    execute(f"INSERT INTO sales_clean ({col_str}) VALUES {', '.join(val_clauses)}")
-
-
-def _quarantine_batch(upload_id: int, batch: list[tuple[int, str, dict]]) -> None:
-    if not batch:
-        return
-    val_clauses = []
-    for line_number, reason, raw in batch:
-        payload = json.dumps(raw, ensure_ascii=True)
-        val_clauses.append(
-            f"({upload_id}, {int(line_number)}, {sql_literal(reason)}, {sql_literal(payload)}::jsonb)"
-        )
-    execute(f"INSERT INTO quarantine (upload_id, row_number, reason, raw_json) VALUES {', '.join(val_clauses)}")
-
 
 def _load_rows(upload_id, workspace_id, rows, header_line, proposals) -> tuple[int, int, list[dict], dict, list[dict]]:
     by_source = {proposal.source: proposal for proposal in proposals}
@@ -656,25 +617,3 @@ def _clean_row(mapped: dict[str, str]) -> tuple[dict | None, str | None]:
     if "revenue" not in cleaned and "quantity" not in cleaned:
         return None, "missing measure"
     return cleaned, None
-
-
-def _quarantine(upload_id: int, line_number: int, reason: str, raw: dict) -> None:
-    payload = json.dumps(raw, ensure_ascii=True)
-    execute(
-        "INSERT INTO quarantine (upload_id, row_number, reason, raw_json) "
-        f"VALUES ({upload_id}, {int(line_number)}, {sql_literal(reason)}, "
-        f"{sql_literal(payload)}::jsonb)"
-    )
-
-
-def _insert_sale(upload_id: int, workspace_id: int, cleaned: dict, attributes: dict | None = None) -> None:
-    columns = ["workspace_id", "upload_id", *cleaned.keys()]
-    values = [str(int(workspace_id)), str(int(upload_id))]
-    values.extend(sql_literal(cleaned[column]) for column in cleaned)
-    if attributes:
-        columns.append("attributes")
-        values.append(f"{sql_literal(json.dumps(attributes))}::jsonb")
-    execute(
-        f"INSERT INTO sales_clean ({', '.join(columns)}) "
-        f"VALUES ({', '.join(values)})"
-    )

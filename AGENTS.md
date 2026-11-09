@@ -17,13 +17,10 @@ Whenever a new chat session is invoked, you MUST execute this protocol before wr
      - `routers/`: Focused FastAPI routers (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`) with colocated Pydantic models.
      - `services/`: Domain services (`chat_service.py`, `workspace_service.py`, `upload_service.py`, `eval_service.py`).
    - `backend/agent/`:
-     - `tools/`: Exactly 4 modular tools (`get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`), aggregated in `__init__.py`.
-     - `nodes.py`: LangGraph nodes (`agent_node`, `tools_node`, `checker_node`, `route_next_step`) and token extractors.
-     - `graph.py`: LangGraph state machine, checkpointing (`MemorySaver`), and streaming generator (`stream`).
-     - `checker.py`: Deterministic claim-to-evidence number verifier.
-     - `sandbox.py`: Isolated subprocess execution boundary for Python code.
+     - `nexus/`: Primary copilot agent (`graph.py`, `nodes.py`, `checker.py`, `sandbox.py`, `prompts/system.md`, `tools/` with `get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`).
+     - `architect/`: Deterministic high-speed schema profiler and architect agent (`graph.py`, `nodes.py`, `rules.py`, `tools/`).
      - `db.py`: PostgreSQL connection management (`nexus_reader`).
-     - `prompts/system.md`: Hardened system prompt with explicit SQL-then-Python directives.
+     - `model.py`: LLM client instantiation.
    - `backend/ingest/`:
      - `reader.py`: File safety validation, CSV/XLSX extraction, formula sanitization, and cell parsing.
      - `mapping.py`: Canonical column mapping, RapidFuzz matching, retail synonyms, and analytical capabilities (`compute_capabilities`).
@@ -45,7 +42,7 @@ Whenever a new chat session is invoked, you MUST execute this protocol before wr
 
 ## VERIFICATION PROTOCOL
 Before completing any task, always run and verify:
-1. `pytest backend/tests` (Must pass 20/20).
+1. `pytest backend/tests` (Must pass 30/30).
 2. `python backend/eval/runner.py` (Must pass 100% sql correctness, 100% numeric faithfulness, 100% refusal accuracy).
 3. If frontend files were modified: `npm.cmd run typecheck --prefix frontend` (0 errors).
 4. Update `context/active-context.md` and append any architectural decision to `context/decisions.md`.

@@ -7,7 +7,7 @@ import time
 import pytest
 
 from ingest.store import get_writer_connection, execute
-from agent.tools import run_sql
+from agent.nexus.tools import run_sql
 
 
 def test_ingest_atomicity_concurrent_reader():

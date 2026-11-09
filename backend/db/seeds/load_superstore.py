@@ -196,7 +196,13 @@ def main() -> None:
     ensure_database()
     sha256, size = file_fingerprint()
     # Always reload workspace 1 to ensure attributes are populated
+    psql(DATABASE, "-c", "UPDATE workspaces SET name = 'Superstore' WHERE id = 1;")
     psql(DATABASE, "-c", "DELETE FROM sales_clean WHERE workspace_id = 1;")
+    psql(DATABASE, "-c", "DELETE FROM column_mapping WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DELETE FROM quarantine WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DELETE FROM upload_attribute_schema WHERE upload_id IN (SELECT id FROM uploads WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DELETE FROM dataset_columns WHERE dataset_id IN (SELECT id FROM datasets WHERE workspace_id = 1);")
+    psql(DATABASE, "-c", "DELETE FROM datasets WHERE workspace_id = 1;")
     psql(DATABASE, "-c", "DELETE FROM uploads WHERE workspace_id = 1;")
     ids = seed_ids(sha256, size)
     if ids is None:

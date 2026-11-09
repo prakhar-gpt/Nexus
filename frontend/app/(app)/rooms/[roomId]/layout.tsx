@@ -70,11 +70,9 @@ async function fetchRoomData(id: string): Promise<Room> {
 
 export default function RoomShellLayout({
   children,
-  modal,
   params,
 }: {
   children: React.ReactNode
-  modal: React.ReactNode
   params: Promise<{ roomId: string }>
 }) {
   const unwrappedParams = use(params)
@@ -187,9 +185,6 @@ export default function RoomShellLayout({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col h-full overflow-hidden">
           {children}
         </div>
-
-        {/* Parallel modal slot for @modal/(.)dataset */}
-        {modal}
       </div>
     </RoomContext.Provider>
   )

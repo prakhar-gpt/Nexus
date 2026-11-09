@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from fastapi import HTTPException
 
-from agent.tools import SqlRejected, run_sql
+from agent.nexus.tools import SqlRejected, run_sql
 from ingest.store import execute, sql_literal
 
 HEALTH_SQL = (
@@ -141,13 +141,24 @@ def get_health(workspace_id: int) -> dict:
     except SqlRejected:
         rows = []
     health = rows[0] if rows else {}
+    
+    # If legacy sales_clean has no rows, compute total rows from custom datasets
+    health_rows = health.get("rows") or "0"
+    if health_rows == "0":
+        try:
+            ds_count = execute(f"SELECT coalesce(sum(row_count), 0) AS total FROM datasets WHERE workspace_id = {int(workspace_id)}")
+            if ds_count and int(ds_count[0].get("total", 0)) > 0:
+                health_rows = str(ds_count[0]["total"])
+        except Exception:
+            pass
+
     counted = execute(
         "SELECT count(*) AS quarantine FROM quarantine q "
         "JOIN uploads u ON u.id = q.upload_id "
         f"WHERE u.workspace_id = {int(workspace_id)}"
     )
     return {
-        "rows": health.get("rows") or "0",
+        "rows": health_rows,
         "first_order": health.get("first_order") or "",
         "last_order": health.get("last_order") or "",
         "revenue": health.get("revenue") or "",

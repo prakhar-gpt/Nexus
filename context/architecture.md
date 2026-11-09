@@ -37,27 +37,39 @@ Week 1 uses the existing local PostgreSQL 18 and pgAdmin. The database name is `
 
 ## UI
 
-One screen, one route, at `frontend/`. The conversation is the screen. A quiet sidebar holds the data room: the file, a confirmation when a column is uncertain, rows set aside, and the golden-set score. The query, the row count, and the chart stay behind "Show the query" on an answer. There is no third pane and no document chip. Decision 23.
+One screen, one route, at `frontend/`. The conversation is the screen. A quiet sidebar holds the data room: the file, rows set aside, and conversation threads. The query, the row count, and the chart stay behind "Show tool execution" on an answer.
 
-The palette is the one in `frontend/app/globals.css`: a white field, warm stone text, a red primary, and square corners. Dark mode is the same hues inverted. It does not follow the operating system theme. Type is JetBrains Mono. The stack is still Next.js, TypeScript, Tailwind, and the shadcn `base-nova` preset (Decision 19). Recharts loads only when a query is opened.
+The palette is the one in `frontend/app/globals.css`: a white field, warm stone text, a red primary, and square corners (`--radius: 0`). Dark mode is the same hues inverted. Type is JetBrains Mono. The stack is Next.js 16, TypeScript, Tailwind, and shadcn/ui with `@base-ui/react`.
 
-The screen talks to the FastAPI app in `backend/` (`backend/main.py`). Assistant answers are rendered as markdown while the tokens arrive. A streamed token keeps its spaces. A question streams the tools the agent chose as each one starts, then the answer tokens as they are written, then the checker. Opening a data room reloads the last 20 turns from `runs`. A failed upload, a dropped stream, a mapping that does not save, and a rating that does not save each surface as a short error. They do not leave the control looking successful.
+File ingestion occurs completely in-chat:
+1. Dragging a `.csv` or `.xlsx` into the chat creates an in-stream upload card.
+2. The agent displays a single quiet pulsating tool line at a time (`animate-ping` + `animate-pulse`), inspecting file structure and column profiles in <1.0s.
+3. The schema proposal renders inline with:
+   - Markdown-rendered grain description with hairline code chips and inline click-to-edit.
+   - Column approval table using shadcn `ScrollArea`, `Table`, `Badge`, and `DropdownMenu` for type and role adjustments.
+   - 10-row preview with hairline borders.
+4. Clicking "Approve & create table" immediately creates a custom PostgreSQL table (`user_data.ds_*`) and streams rows via binary COPY in ~500ms.
+5. Nexus greets the user using the friendly dataset label (e.g. `Superstore`) with clickable, retail-intelligent question chips prioritizing commercial metrics (revenue, sales, profit) against dimensions (category, segment, region).
+6. Assistant answers stream markdown tokens, tool calls, and AST-guarded SQL under `nexus_reader` RLS, with deterministic verification via `checker.py`.
 
 ## Data model
 
-Nine tables. `workspaces` is the Data Room.
+The persistent database layer is hosted in PostgreSQL (`nexus_db`).
 
-| Table | Key columns | Links |
+| Table | Key columns | Purpose |
 |---|---|---|
-| `workspaces` | `id`, `name`, `created_at` | Root |
-| `uploads` | `id`, `workspace_id`, `original_name`, `stored_name`, `sha256`, `size`, `status`, `created_at` | `workspace_id` → `workspaces` |
-| `column_mapping` | `upload_id`, `source_column`, `canonical_column`, `confidence`, `method` (`fuzzy` or `llm`), `confirmed_by_user` | `upload_id` → `uploads` |
-| `sales_clean` | `workspace_id`, `upload_id`, `order_date`, `customer_id`, `product_id`, `quantity`, `revenue`, `unit_price`, `discount_pct`, `cost`, `profit`, `segment`, `region`, `category`, `sub_category`, `channel` | Both `workspace_id` and `upload_id` |
-| `sales_clean` | `workspace_id`, `upload_id`, ..., `attributes` (JSONB) | Both `workspace_id` and `upload_id` |
-| `upload_attribute_schema` | `upload_id`, `key`, `inferred_type`, `null_rate`, `sample_values` | `upload_id` → `uploads` |
-| `quarantine` | `upload_id`, `row_number`, `reason`, `raw_json` | `upload_id` → `uploads` |
-| `documents` / `chunks` | `doc_id`, `chunk_id`, `text`, `embedding`, `page`, `section`, `metadata` | `chunk_id` under `doc_id` |
-| `runs` | `id`, `workspace_id`, `question`, `plan`, `sql_list`, `answer`, `checker_result`, `latency_ms`, `tokens`, `cost`, `model`, `created_at` | `workspace_id` → `workspaces` |
+| `workspaces` | `id`, `name`, `created_at` | Data room isolation boundary |
+| `uploads` | `id`, `workspace_id`, `original_name`, `stored_name`, `sha256`, `size`, `status`, `schema_proposal`, `custom_table_name` | Staged and registered tabular uploads |
+| `datasets` | `id`, `workspace_id`, `upload_id`, `table_name`, `table_label`, `grain`, `grain_key_columns`, `row_count`, `header_hash` | Approved custom dataset registry |
+| `dataset_columns` | `id`, `dataset_id`, `column_name`, `type`, `role`, `description`, `unit`, `null_rate`, `date_format` | Per-dataset typed column catalog |
+| `user_data.ds_*` | `row_id`, `workspace_id`, `upload_id`, *dynamically typed columns* | Custom dataset tables isolated via PostgreSQL RLS |
+| `agent_events` | `id`, `workspace_id`, `agent_kind`, `run_id`, `upload_id`, `seq`, `stage`, `event_type`, `label`, `payload`, `created_at` | Unified real-time agent step and event ledger |
+| `runs` | `id`, `workspace_id`, `upload_id`, `agent_kind`, `question`, `plan`, `answer`, `checker_result`, `python_results`, `latency_ms`, `model` | Unified execution audit log |
+| `eval_results` | `id`, `run_id`, `question_id`, `metrics` | Golden set test runs |
+| `feedback` | `id`, `run_id`, `rating`, `comment` | User quality ratings |
+| `sales_clean` *(deprecated)* | `workspace_id`, `upload_id`, 15 canonical columns, `attributes` JSONB | Retained exclusively for benchmark evaluation (`golden_set.json`) |
+| `column_mapping` *(deprecated)* | `upload_id`, `source_column`, `canonical_column` | Retained for historical schema migration records |
+| `quarantine` *(deprecated)* | `upload_id`, `row_number`, `reason`, `raw_json` | Retained for historical reject audits |
 | `feedback` | `run_id`, `rating`, `reason` | `run_id` → `runs` |
 | `eval_results` | `eval_run_id`, `question_id`, `passed`, `metrics_json` | Not linked to `runs` in the listed columns |
 
@@ -67,17 +79,16 @@ The spec's column list for `documents` / `chunks` still has no `workspace_id`. `
 
 ## Ingestion
 
-Order: file safety, structure, domain fit, row validation, text safety.
+Order: file safety, structure, schema architect analysis, human schema approval, row validation, COPY stream commit.
 
-1. **File safety — reject.** Allow csv and xlsx. Sniff content. Cap size. Store under a generated name. Reject macro-enabled files. Parse in a sandbox.
+1. **File safety — reject.** Allow csv and xlsx. Sniff content. Cap size (50 MB). Store under a generated name. Reject macro-enabled files. Parse safely.
 2. **Structure — reject or ask.** Non-empty, more than one column, row and column caps, header-row detection, multi-sheet handling.
-3. **Domain fit — reject with what is missing.** After mapping, require a date-like column, revenue or quantity, and an identifier, at adequate confidence.
-4. **Row validation — quarantine.** Date parse, numeric types, negatives, duplicates, impossible discounts. Keep `row_number`, `reason`, and `raw_json`.
-5. **Text safety — sanitise.** Cells are data. On any export, prefix cells that start with `=`, `+`, `-`, or `@`. Never pass cell or document text to the model as instructions.
+3. **Schema Architect — native in-chat participant.** Every uploaded .csv/.xlsx goes directly to the Schema Architect. The agent streams its inspection steps live in chat (`list_columns`, `profile_column`, `test_parse`, `detect_date_format`, `check_uniqueness`, `sample_rows`), proposes table grain and column roles/types, and checks schema memory against previously approved hashes.
+4. **Human Schema Approval.** The user reviews the compact inline proposal card (grain, target name, type, role, include/exclude toggle), edits with server-side validation, and clicks Approve. No table is created without explicit user approval.
+5. **Row validation & COPY load.** Validated rows are loaded into PostgreSQL `user_data.<table_name>` via streaming COPY. Anomalies are quarantined with download reports preserved.
+6. **Handoff to Nexus.** Upon table creation, Schema Architect hands off to Nexus with a deterministic summary and clickable question chips derived from column roles.
 
-Mapping: normalise the header (lowercase, strip, collapse spaces); RapidFuzz against the canonical names (`order_date`, `sales`, `profit`, `discount_pct`, `customer_id`, `product_id`, `quantity`, `unit_price`, and the rest of `sales_clean`); auto-map at 70% or above; below 70%, propose from `backend/kb/column_hints.md` and require confirmation before load. No model key is configured, so that fallback does not call a model. The code lives in `backend/ingest/` (`reader.py`, `mapping.py`, `store.py`, `pipeline.py`). Dates are read as day-month-year when the text is ambiguous. `customer_id` or `product_id` satisfies the identifier rule, and `revenue` or `quantity` satisfies the measure rule.
-
-Six test files and their expected results are in `roadmap.md`.
+*Note on `sales_clean`:* The legacy column-mapping flow and `needs_confirmation` state are completely removed from the upload experience. `sales_clean` is preserved exclusively as seeded benchmark data (e.g. Superstore) until formally retired in a future release.
 
 ## Agent
 

@@ -3,7 +3,6 @@ import type { Mapping, Room } from "./api"
 export type RoomStatus =
   | { type: "empty" }
   | { type: "ingesting"; stage?: string }
-  | { type: "needs_confirmation"; count: number; mappings: Mapping[] }
   | { type: "rejected"; reason: string }
   | { type: "ready" }
 
@@ -44,20 +43,6 @@ export function deriveRoomStatus(room?: Room | null): RoomStatus {
     return {
       type: "ingesting",
       stage: latestUpload.status,
-    }
-  }
-
-  // 5. Check if canonical column mappings require user confirmation
-  const mappings = room.mappings || []
-  const uncertain = mappings.filter(
-    (m) => m.canonical && m.needs_confirmation && !m.confirmed_by_user
-  )
-
-  if (uncertain.length > 0) {
-    return {
-      type: "needs_confirmation",
-      count: uncertain.length,
-      mappings: uncertain,
     }
   }
 

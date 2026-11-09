@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from agent.graph import MAX_TOOL_STEPS, Agent, GRAPH, _chunk_text  # noqa: E402
+from agent.nexus.graph import MAX_TOOL_STEPS, Agent, GRAPH, _chunk_text  # noqa: E402
 
 
 class Scripted:

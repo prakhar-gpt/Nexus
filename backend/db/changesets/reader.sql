@@ -3,7 +3,9 @@
 
 GRANT CONNECT ON DATABASE nexus_db TO nexus_reader;
 GRANT USAGE ON SCHEMA public TO nexus_reader;
+GRANT USAGE ON SCHEMA user_data TO nexus_reader;
 GRANT SELECT ON TABLE sales_clean TO nexus_reader;
+ALTER ROLE nexus_reader SET search_path = user_data, public;
 
 ALTER TABLE sales_clean ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sales_clean FORCE ROW LEVEL SECURITY;

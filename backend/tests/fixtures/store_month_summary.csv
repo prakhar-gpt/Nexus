@@ -1,0 +1,7 @@
+store_id,month,foot_traffic,monthly_revenue,manager_name
+STR001,2024-01-01,15420,89230.50,Alice Smith
+STR001,2024-02-01,14200,81200.00,Alice Smith
+STR002,2024-01-01,22100,145000.75,Bob Jones
+STR002,2024-02-01,23400,152300.20,Bob Jones
+STR003,2024-01-01,9800,54210.00,Charlie Brown
+

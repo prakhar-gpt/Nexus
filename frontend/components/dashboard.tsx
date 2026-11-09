@@ -7,17 +7,20 @@ import { ChatPane, type ChatMessage } from "@/components/chat-pane"
 import { Sidebar } from "@/components/sidebar"
 import { WorkspacesView } from "@/components/workspaces-view"
 import { CreateWorkspaceModal } from "@/components/create-workspace-modal"
-import { DataRoomModal } from "@/components/data-room-modal"
 import { AuthModal } from "@/components/auth-modal"
 import {
   API_URL,
   apiFetch,
   readSse,
+  type ArchitectStep,
+  type HandoffData,
   type Mapping,
   type Room,
+  type SchemaReviewData,
   type Thread,
   type TraceStep,
   type Turn,
+  type UploadMessageData,
   type WorkspaceSummary,
 } from "@/lib/api"
 import type { AnswerBadge } from "@/components/status-badge"
@@ -184,9 +187,7 @@ export function Dashboard() {
   const [liveStatus, setLiveStatus] = useState<string | null>(null)
   const [liveReason, setLiveReason] = useState<string | null>(null)
   const [liveStages, setLiveStages] = useState<{ stage: string; status: string; reason?: string }[]>([])
-  const [liveMappings, setLiveMappings] = useState<Mapping[] | null>(null)
   const [liveUploadId, setLiveUploadId] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
 
   async function loadWorkspaces(preferredId?: number) {
     setWorkspacesLoading(true)
@@ -606,15 +607,46 @@ export function Dashboard() {
 
   async function chooseFile(file: File) {
     if (!room) return
+    setDataRoomModalOpen(false)
+    setCurrentView("chat")
     setLiveName(file.name)
     setLiveStatus("uploading")
     setLiveReason(null)
-    setLiveStages([
-      { stage: "safety", status: "done" },
-      { stage: "structure", status: "active" },
-    ])
-    setLiveMappings(null)
+    setLiveStages([])
     setLiveUploadId(null)
+
+    // Append interactive in-chat message for the upload & Schema Architect run
+    const userMsgId = crypto.randomUUID()
+    const assistantMsgId = crypto.randomUUID()
+
+    setMessages((curr) => [
+      ...curr,
+      {
+        id: userMsgId,
+        role: "user",
+        text: `Uploaded dataset: ${file.name}`,
+      },
+      {
+        id: assistantMsgId,
+        role: "assistant",
+        text: "",
+        uploadData: {
+          uploadId: "",
+          fileName: file.name,
+          fileSize: file.size,
+          status: "uploading",
+          stages: [],
+          architectSteps: [
+            {
+              id: "chk_file",
+              tool: "check_file",
+              status: "running",
+              label: "Checking file safety and structure…",
+            },
+          ],
+        },
+      },
+    ])
 
     const form = new FormData()
     form.append("file", file)
@@ -624,39 +656,199 @@ export function Dashboard() {
         body: form,
       })
       if (!res.ok) {
+        let msg = "The file was rejected by the server."
+        try {
+          const errBody = await res.json()
+          if (errBody?.detail) {
+            msg = typeof errBody.detail === "string" ? errBody.detail : JSON.stringify(errBody.detail)
+          } else if (errBody?.message) {
+            msg = errBody.message
+          }
+        } catch {
+          try {
+            const errText = await res.text()
+            if (errText) msg = errText
+          } catch {}
+        }
         setLiveStatus("rejected")
-        setLiveReason("The file was rejected by the server.")
+        setLiveReason(msg)
+
+        setMessages((curr) =>
+          curr.map((m) =>
+            m.id === assistantMsgId && m.uploadData
+              ? {
+                  ...m,
+                  uploadData: {
+                    ...m.uploadData,
+                    status: "rejected",
+                    error: msg,
+                    architectSteps: [
+                      {
+                        id: "chk_file",
+                        tool: "check_file",
+                        status: "error",
+                        label: msg,
+                      },
+                    ],
+                  },
+                }
+              : m
+          )
+        )
         return
       }
       const body = (await res.json()) as { upload_id: number; status: string }
       setLiveUploadId(String(body.upload_id))
       setLiveStatus(body.status)
-      listenToUpload(body.upload_id)
+
+      setMessages((curr) =>
+        curr.map((m) =>
+          m.id === assistantMsgId && m.uploadData
+            ? {
+                ...m,
+                uploadData: {
+                  ...m.uploadData,
+                  uploadId: String(body.upload_id),
+                  status: body.status === "needs_schema_review" ? "needs_schema_review" : "profiling",
+                },
+              }
+            : m
+        )
+      )
+
+      listenToUpload(body.upload_id, assistantMsgId)
     } catch {
-      // Offline fallback: simulated complete pipeline
-      setTimeout(() => {
-        setLiveStages([
-          { stage: "safety", status: "done" },
-          { stage: "structure", status: "done" },
-          { stage: "mapping", status: "done" },
-          { stage: "load", status: "done" },
-        ])
-        setLiveStatus("loaded")
-        setLiveMappings(SUPERSTORE_MAPPINGS)
-      }, 1000)
+      setLiveStatus("rejected")
+      setMessages((curr) =>
+        curr.map((m) =>
+          m.id === assistantMsgId && m.uploadData
+            ? {
+                ...m,
+                uploadData: {
+                  ...m.uploadData,
+                  status: "rejected",
+                  error: "Network error connecting to backend.",
+                  architectSteps: [
+                    {
+                      id: "chk_file",
+                      tool: "check_file",
+                      status: "error",
+                      label: "Network error connecting to backend.",
+                    },
+                  ],
+                },
+              }
+            : m
+        )
+      )
     }
   }
 
-  function listenToUpload(uploadId: number) {
+  function listenToUpload(uploadId: number, messageId?: string) {
     const source = new EventSource(`${API_URL}/uploads/${uploadId}/events`)
-    source.onmessage = (event) => {
+    source.onmessage = async (event) => {
       const payload = readEvent<{
+        // legacy stage events
         stage?: string
         status?: string
         reason?: string
         final?: string
+        table_name?: string
+        loaded_rows?: number
+        quarantined_rows?: number
+        proposal?: unknown
+        // normalized step events (new)
+        event?: string
+        id?: string
+        tool?: string
+        label?: string
+        evidence?: string
+        ms?: number
+        // load_progress
+        loaded?: number
+        pct?: number
+        // handoff
+        table_label?: string
+        grain?: string
+        row_count?: number
+        quarantined_count?: number
+        suggested_questions?: { question: string; hint: string }[]
       }>(event)
       if (!payload) return
+
+      const evtName = payload.event
+
+      // ── Normalized step event (architect tool) ──
+      if (evtName === "step" && payload.tool) {
+        if (messageId) {
+          setMessages((curr) =>
+            curr.map((m) => {
+              if (m.id !== messageId || !m.uploadData) return m
+              const prevSteps: ArchitectStep[] = m.uploadData.architectSteps ?? []
+              // Update existing step if same tool+id, else append
+              const idx = prevSteps.findIndex((s) => s.id === payload.id)
+              let nextSteps: ArchitectStep[]
+              const newStep: ArchitectStep = {
+                id: payload.id ?? crypto.randomUUID().slice(0, 8),
+                tool: payload.tool!,
+                status: (payload.status ?? "running") as ArchitectStep["status"],
+                label: payload.label ?? payload.tool!,
+                evidence: payload.evidence,
+                ms: payload.ms,
+              }
+              if (idx >= 0) {
+                nextSteps = prevSteps.map((s, i) => (i === idx ? newStep : s))
+              } else {
+                nextSteps = [...prevSteps, newStep]
+              }
+              return {
+                ...m,
+                uploadData: { ...m.uploadData, architectSteps: nextSteps, status: "profiling" },
+              }
+            })
+          )
+        }
+        return
+      }
+
+      // ── Load progress ──
+      if (evtName === "load_progress") {
+        if (messageId && payload.pct != null) {
+          setMessages((curr) =>
+            curr.map((m) =>
+              m.id === messageId && m.uploadData
+                ? { ...m, uploadData: { ...m.uploadData, loadProgressPct: payload.pct } }
+                : m
+            )
+          )
+        }
+        return
+      }
+
+      // ── Handoff ──
+      if (evtName === "handoff") {
+        const handoff: HandoffData = {
+          tableLabel: payload.table_label ?? "",
+          tableName: payload.table_name ?? "",
+          grain: payload.grain ?? "",
+          rowCount: payload.row_count ?? 0,
+          quarantinedCount: payload.quarantined_count ?? 0,
+          suggestedQuestions: payload.suggested_questions ?? [],
+        }
+        // Append a Nexus handoff message after the architect card
+        setMessages((curr) => [
+          ...curr,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant" as const,
+            text: "",
+            handoffData: handoff,
+          },
+        ])
+        return
+      }
+
+      // ── Legacy stage events ──
       if (payload.stage && payload.status) {
         setLiveStages((curr) => [
           ...curr.filter((item) => item.stage !== payload.stage),
@@ -664,58 +856,147 @@ export function Dashboard() {
         ])
       }
       if (payload.reason) setLiveReason(payload.reason)
+
+      // ── Terminal events ──
       if (payload.final) {
         setLiveStatus(payload.final)
         source.close()
-        loadMappings(uploadId)
-        if (room) selectRoom(room.id, activeThreadId)
+
+        if (payload.final === "needs_schema_review") {
+          try {
+            const res = await apiFetch(`${API_URL}/uploads/${uploadId}/schema`)
+            if (res.ok) {
+              const sData = (await res.json()) as SchemaReviewData
+              if (messageId) {
+                setMessages((curr) =>
+                  curr.map((m) =>
+                    m.id === messageId && m.uploadData
+                      ? {
+                          ...m,
+                          uploadData: {
+                            ...m.uploadData,
+                            uploadId: String(uploadId),
+                            status: "needs_schema_review",
+                            proposal: sData.proposal,
+                            validation: sData.validation,
+                            preview: sData.preview,
+                          },
+                        }
+                      : m
+                  )
+                )
+              }
+            }
+          } catch {}
+        } else if (payload.final === "loaded") {
+          if (messageId) {
+            setMessages((curr) =>
+              curr.map((m) =>
+                m.id === messageId && m.uploadData
+                  ? {
+                      ...m,
+                      uploadData: {
+                        ...m.uploadData,
+                        uploadId: String(uploadId),
+                        status: "loaded",
+                        tableName: payload.table_name,
+                        loadedRows: payload.loaded_rows,
+                        quarantinedRows: payload.quarantined_rows,
+                        quarantineUploadId: String(uploadId),
+                      },
+                    }
+                  : m
+              )
+            )
+          }
+          if (room) selectRoom(room.id, activeThreadId)
+        } else if (payload.final === "rejected") {
+          if (messageId) {
+            setMessages((curr) =>
+              curr.map((m) =>
+                m.id === messageId && m.uploadData
+                  ? {
+                      ...m,
+                      uploadData: {
+                        ...m.uploadData,
+                        uploadId: String(uploadId),
+                        status: "rejected",
+                        error: payload.reason || "File rejected.",
+                      },
+                    }
+                  : m
+              )
+            )
+          }
+        }
       }
     }
     source.onerror = () => source.close()
   }
 
-  async function loadMappings(uploadId: number) {
-    try {
-      const res = await apiFetch(`${API_URL}/uploads/${uploadId}/mapping`)
-      if (!res.ok) return
-      const body = (await res.json()) as { mappings: Mapping[] }
-      setLiveMappings(body.mappings)
-    } catch {
-      // Ignored
+  async function handleApproveSchema(uploadId: string) {
+    const res = await apiFetch(`${API_URL}/uploads/${uploadId}/schema/approve`, {
+      method: "POST",
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.detail?.message || "Could not approve table creation.")
     }
+    const data = await res.json()
+
+    setMessages((curr) => [
+      ...curr.map((m) => {
+        if (m.uploadData?.uploadId === uploadId) {
+          return {
+            ...m,
+            uploadData: {
+              ...m.uploadData,
+              status: "loaded" as const,
+              tableName: data.table_name,
+              loadedRows: data.loaded_rows,
+              quarantinedRows: data.quarantined_rows,
+            },
+          }
+        }
+        return m
+      }),
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: `Table **${data.table_label || data.table_name}** has been created with ${Number(data.loaded_rows).toLocaleString()} rows loaded into PostgreSQL. You can now ask questions about this dataset!`,
+        badge: "verified" as const,
+      },
+    ])
+
+    if (room) {
+      await selectRoom(room.id, activeThreadId)
+    }
+    showToast(`Table ${data.table_name} created successfully!`)
   }
 
-  async function confirmMapping(decisions: Record<string, string>): Promise<boolean> {
-    const id = liveUploadId ?? room?.uploads[0]?.id
-    if (!id || !room) return true
-    setConfirming(true)
-    try {
-      const res = await apiFetch(`${API_URL}/uploads/${id}/mapping`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decisions }),
+  async function handleRejectSchema(uploadId: string) {
+    await apiFetch(`${API_URL}/uploads/${uploadId}/schema/reject`, {
+      method: "POST",
+    })
+    setMessages((curr) =>
+      curr.map((m) => {
+        if (m.uploadData?.uploadId === uploadId) {
+          return {
+            ...m,
+            uploadData: {
+              ...m.uploadData,
+              status: "rejected" as const,
+              error: "Schema proposal rejected by user. No database table was created.",
+            },
+          }
+        }
+        return m
       })
-      if (!res.ok) throw new Error()
-      setLiveMappings(null)
-      await selectRoom(room.id, activeThreadId)
-      return true
-    } catch {
-      // Fallback: update mappings locally
-      setRoom((prev) => {
-        if (!prev) return null
-        const updated = prev.mappings.map((m) =>
-          decisions[m.source] ? { ...m, canonical: decisions[m.source], needs_confirmation: false, confirmed_by_user: true } : m
-        )
-        return { ...prev, mappings: updated }
-      })
-      return true
-    } finally {
-      setConfirming(false)
-    }
+    )
+    showToast("Schema proposal rejected.")
   }
 
   const latest = room?.uploads[0]
-  const mappings = liveMappings ?? room?.mappings ?? []
   const busy = messages.some((msg) => msg.badge === "waiting")
 
   const rows =
@@ -727,12 +1008,8 @@ export function Dashboard() {
       ? `${room.health.first_order} to ${room.health.last_order}`
       : null
 
-  // Uncertain columns warning for sidebar dot
-  const uncertainCount = mappings.filter((m) => m.needs_confirmation).length
   const attentionWarning =
-    uncertainCount > 0
-      ? `${uncertainCount} ${uncertainCount === 1 ? "column needs" : "columns need"} confirming`
-      : (room?.quarantine?.length ?? 0) > 0
+    (room?.quarantine?.length ?? 0) > 0
       ? `${room?.quarantine.length} quarantined rows`
       : null
 
@@ -869,26 +1146,11 @@ export function Dashboard() {
           onRetry={handleRetry}
           onFeedback={feedback}
           onToast={showToast}
+          onUploadFile={chooseFile}
+          onApproveSchema={handleApproveSchema}
+          onRejectSchema={handleRejectSchema}
         />
       </div>
-
-      {/* Dataset & Ingestion Modal */}
-      <DataRoomModal
-        isOpen={dataRoomModalOpen}
-        onClose={() => setDataRoomModalOpen(false)}
-        roomName={room?.name ?? "Data Room"}
-        fileName={liveName ?? latest?.original_name ?? null}
-        status={liveStatus ?? latest?.status ?? null}
-        reason={liveReason}
-        stages={liveStages}
-        mappings={mappings}
-        uploadId={liveUploadId ?? latest?.id ?? null}
-        quarantine={room?.quarantine ?? []}
-        confirming={confirming}
-        onFile={chooseFile}
-        onConfirm={confirmMapping}
-        healthSummary={{ rows, dates }}
-      />
 
       {/* Auth Modal */}
       <AuthModal

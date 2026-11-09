@@ -1,12 +1,12 @@
-"""Agent tools package organizing the 4 core tools: get_schema, run_sql, read_kb, run_python."""
+"""Agent tools package organizing the 4 core analyst tools: get_schema, run_sql, read_kb, run_python."""
 
 from __future__ import annotations
 
 import json
-from agent.tools.get_schema import execute_schema, get_schema
-from agent.tools.read_kb import execute_kb, read_kb
-from agent.tools.run_python import clean_code, execute_python, execute_sandboxed, run_python
-from agent.tools.run_sql import SqlRejected, execute_query, execute_sql, guard_sql, populated_count, run_sql, run_sql_tool
+from agent.nexus.tools.get_schema import execute_schema, get_schema
+from agent.nexus.tools.read_kb import execute_kb, read_kb
+from agent.nexus.tools.run_python import clean_code, execute_python, execute_sandboxed, run_python
+from agent.nexus.tools.run_sql import SqlRejected, execute_query, execute_sql, guard_sql, populated_count, run_sql, run_sql_tool
 
 
 def parse_tool_args(call: dict) -> dict:

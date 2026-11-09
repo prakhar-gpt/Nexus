@@ -13,7 +13,7 @@ Whenever a new chat session begins or you receive a new user request:
      - `changesets/`: Versioned migration scripts (`001_initial_schema.sql`, `002_ingest_tables.sql`, `003_week3_tables.sql`, `004_week4_attributes.sql`, `reader.sql`, `writer.sql`).
      - `seeds/`: Initial data loader (`load_superstore.py`).
    - `backend/api/`: Domain routers (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`) with colocated Pydantic models, and domain services.
-   - `backend/agent/`: Exactly 4 modular tools in `tools/` (`get_schema.py`, `run_sql.py`, `read_kb.py`, `run_python.py`), LangGraph state machine in `graph.py`, nodes in `nodes.py`, claim verification in `checker.py`, and subprocess execution in `sandbox.py`.
+   - `backend/agent/`: Subpackaged into `nexus/` (primary copilot agent, 4 modular tools in `tools/`, LangGraph state machine in `graph.py`, `nodes.py`, claim verification in `checker.py`, `sandbox.py`) and `architect/` (deterministic fast schema profiler and architect agent).
    - `backend/ingest/`: 4 cohesive modules (`reader.py`, `mapping.py`, `store.py`, `pipeline.py`).
    - `backend/eval/`: Single-source `golden_set.json` (all 30 questions + ground truth) and `runner.py`.
    - `backend/tests/`: Consolidated pytest suite (`pytest backend/tests`).

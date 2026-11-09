@@ -152,3 +152,97 @@ export async function readSse(
     }
   }
 }
+
+
+export type ColumnProposal = {
+  source_name: string
+  column_name: string
+  type: "text" | "integer" | "numeric" | "date" | "boolean"
+  role: "identifier" | "date" | "measure" | "dimension" | "other"
+  description: string
+  unit: string | null
+  nullable: boolean
+  date_format: string | null
+  parse_success_rate: number
+  confidence: number
+  notes: string | null
+  excluded?: boolean
+}
+
+export type SchemaProposal = {
+  table_label: string
+  grain: string
+  grain_key_columns: string[]
+  columns: ColumnProposal[]
+  warnings: string[]
+  analysis_hints: string[]
+  from_cache?: boolean
+}
+
+export type ValidationIssue = {
+  level: "error" | "warning"
+  field?: string
+  column_name?: string
+  message: string
+}
+
+export type ValidationResult = {
+  is_valid: boolean
+  errors: ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
+export type SchemaReviewData = {
+  upload_id: number
+  workspace_id: number
+  status: string
+  table_name: string
+  proposal: SchemaProposal
+  validation: ValidationResult
+  preview: Record<string, string>[]
+}
+
+export type ArchitectStep = {
+  id: string
+  tool: string
+  status: "running" | "done" | "error"
+  label: string
+  evidence?: string
+  ms?: number
+}
+
+export type HandoffSuggestedQuestion = {
+  question: string
+  hint: string
+}
+
+export type HandoffData = {
+  tableLabel: string
+  tableName: string
+  grain: string
+  rowCount: number
+  quarantinedCount: number
+  suggestedQuestions: HandoffSuggestedQuestion[]
+}
+
+export type UploadMessageData = {
+  uploadId: string
+  fileName: string
+  fileSize?: number
+  status: "uploading" | "profiling" | "needs_schema_review" | "loaded" | "rejected"
+  stages: { stage: string; status: string; reason?: string }[]
+  /** New: normalized live steps list (replaces liveTrace for architect flow) */
+  architectSteps?: ArchitectStep[]
+  /** Legacy trace lines kept for backwards compat during rehydration */
+  liveTrace?: string[]
+  proposal?: SchemaProposal
+  validation?: ValidationResult
+  preview?: Record<string, string>[]
+  tableName?: string
+  loadedRows?: number
+  quarantinedRows?: number
+  quarantineUploadId?: string
+  loadProgressPct?: number
+  error?: string | null
+  handoff?: HandoffData
+}

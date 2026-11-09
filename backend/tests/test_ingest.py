@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from agent.tools import run_sql  # noqa: E402
+from agent.nexus.tools import run_sql  # noqa: E402
 from ingest.pipeline import ingest  # noqa: E402
 from ingest.store import execute  # noqa: E402
 
@@ -58,6 +58,7 @@ def main() -> int:
 
     junk = ingest(FIXTURES / "02_junk_header.csv", room)
     junk_date = execute(
+        f"SET app.workspace_id = '{room}'; "
         "SELECT order_date::text AS order_date FROM sales_clean "
         f"WHERE upload_id = {junk.upload_id}"
     )
@@ -70,6 +71,7 @@ def main() -> int:
     waiting = ingest(FIXTURES / "03_messy.csv", room)
     confirmed = ingest(FIXTURES / "03_messy.csv", room, confirm=accept_all)
     loaded = execute(
+        f"SET app.workspace_id = '{room}'; "
         "SELECT order_date::text AS order_date, revenue::text AS revenue "
         f"FROM sales_clean WHERE upload_id = {confirmed.upload_id}"
     )

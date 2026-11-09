@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 
 from ingest.mapping import propose_columns
 
-MAX_BYTES = 20 * 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
 MAX_COLUMNS = 64
 MAX_ROWS = 200_000
@@ -42,7 +42,7 @@ def inspect(path: Path) -> tuple[bytes, str]:
     if size == 0:
         raise RejectedFile("empty file")
     if size > MAX_BYTES:
-        raise RejectedFile("file exceeds the 20 MB size cap")
+        raise RejectedFile("file exceeds the 50 MB size cap")
     data = path.read_bytes()
     extension = path.suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:

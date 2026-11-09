@@ -7,7 +7,7 @@ import React, {
   useCallback,
   memo,
 } from "react"
-import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw } from "lucide-react"
+import { ArrowDown, ArrowUpRight, AlertCircle, RefreshCw, Sparkles, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkBreaks from "remark-breaks"
 import remarkGfm from "remark-gfm"
@@ -15,8 +15,9 @@ import remarkGfm from "remark-gfm"
 import { ToolLine } from "@/components/tool-line"
 import { AuditBar } from "@/components/audit-bar"
 import { Composer, type ComposerHandle } from "@/components/composer"
+import { SchemaArchitectCard, HandoffMessage } from "@/components/schema-architect-card"
 import type { AnswerBadge } from "@/components/status-badge"
-import type { TraceStep } from "@/lib/api"
+import type { HandoffData, TraceStep, UploadMessageData } from "@/lib/api"
 
 export type { AnswerBadge }
 
@@ -24,6 +25,9 @@ export type ChatMessage = {
   id: string
   role: "user" | "assistant"
   text: string
+  uploadData?: UploadMessageData
+  /** Set on handoff messages (kind = "handoff") */
+  handoffData?: HandoffData
   badge?: AnswerBadge
   sql?: string | null
   rowCount?: number | null
@@ -52,6 +56,7 @@ interface ChatPaneProps {
   draft: string
   messages: ChatMessage[]
   busy: boolean
+  uploadPending?: boolean
   datasetName?: string
   suggestions?: readonly string[]
   onDraft: (value: string) => void
@@ -60,12 +65,16 @@ interface ChatPaneProps {
   onRetry?: (messageId: string) => void
   onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
   onToast: (message: string) => void
+  onUploadFile?: (file: File) => void
+  onApproveSchema?: (uploadId: string) => Promise<void>
+  onRejectSchema?: (uploadId: string) => Promise<void>
 }
 
 export function ChatPane({
   draft,
   messages,
   busy,
+  uploadPending,
   datasetName = "Superstore",
   suggestions = DEFAULT_SUGGESTIONS,
   onDraft,
@@ -74,18 +83,22 @@ export function ChatPane({
   onRetry,
   onFeedback,
   onToast,
+  onUploadFile,
+  onApproveSchema,
+  onRejectSchema,
 }: ChatPaneProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<ComposerHandle>(null)
+  const dropzoneInputRef = useRef<HTMLInputElement>(null)
   const [showScrollBottom, setShowScrollBottom] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
   const isNearBottomRef = useRef(true)
 
-  // Find last user question for ArrowUp recall
   const lastUserQuestion = [...messages]
     .reverse()
     .find((m) => m.role === "user")?.text
 
-  // Check scroll position to decide auto-scroll vs "↓ New content" pill
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current
     if (!el) return
@@ -104,11 +117,9 @@ export function ChatPane({
     setShowScrollBottom(false)
   }, [])
 
-  // Auto-scroll only when user is within 80px from bottom; otherwise show pill
   useEffect(() => {
     const el = scrollContainerRef.current
     if (!el) return
-
     if (isNearBottomRef.current) {
       el.scrollTop = el.scrollHeight
     } else if (busy) {
@@ -116,40 +127,145 @@ export function ChatPane({
     }
   }, [messages, busy])
 
+  function handleFileDrop(file: File) {
+    setFileError(null)
+    const name = file.name.toLowerCase()
+    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
+      setFileError("Only .csv and .xlsx files are accepted.")
+      return
+    }
+    if (onUploadFile) onUploadFile(file)
+  }
+
+  // Hide empty-state suggestions once any file has been uploaded
+  const hasUploads = messages.some((m) => Boolean(m.uploadData))
+
   return (
     <section className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+      {/* Full-pane drag overlay */}
+      {isDragging && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-background/80 border-2 border-dashed border-foreground/40 pointer-events-none"
+          aria-hidden="true"
+        >
+          <span className="font-mono text-sm text-foreground/60 select-none">Drop to upload</span>
+        </div>
+      )}
+
       {/* Scrollable messages area */}
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+        onDragLeave={(e) => {
+          // Only clear if leaving the scroll container itself, not a child
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setIsDragging(false)
+          const f = e.dataTransfer.files?.[0]
+          if (f) handleFileDrop(f)
+        }}
         className="flex-1 overflow-y-auto px-4 py-8"
       >
+        {/* Inline file error */}
+        {fileError && (
+          <div
+            role="alert"
+            className="mx-auto mb-4 w-full max-w-[720px] flex items-center gap-2 text-xs text-destructive border border-destructive/30 bg-destructive/10 p-2"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{fileError}</span>
+            <button
+              type="button"
+              onClick={() => setFileError(null)}
+              className="ml-auto text-destructive hover:opacity-80"
+              aria-label="Dismiss error"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         {messages.length === 0 ? (
-          /* Empty state: Vertically centered heading + 4 suggestions */
+          /* Empty state */
           <div className="mx-auto flex h-full w-full max-w-[720px] flex-col justify-center py-12">
             <h1 className="text-[32px] font-medium tracking-tight text-foreground">
               What should we look at?
             </h1>
 
-            <div className="mt-8 flex flex-col border-y border-border divide-y divide-border">
-              {suggestions.map((question) => (
-                <button
-                  key={question}
-                  type="button"
-                  onClick={() => onAsk(question)}
-                  className="group flex w-full items-center justify-between py-3.5 text-left text-[15px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:bg-accent/40"
-                >
-                  <span className="font-normal">{question}</span>
-                  <ArrowUpRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0 ml-2" />
-                </button>
-              ))}
-            </div>
+            {/* Minimal inline dropzone */}
+            {onUploadFile && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setIsDragging(false)
+                  const f = e.dataTransfer.files?.[0]
+                  if (f) handleFileDrop(f)
+                }}
+                onClick={() => dropzoneInputRef.current?.click()}
+                className={`mt-6 mb-4 border border-dashed p-4 transition-colors cursor-pointer flex items-center justify-between gap-3 ${
+                  isDragging
+                    ? "border-foreground bg-accent/40"
+                    : "border-border hover:border-foreground/60 bg-card/60"
+                }`}
+              >
+                <input
+                  ref={dropzoneInputRef}
+                  type="file"
+                  accept=".csv,.xlsx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) {
+                      handleFileDrop(f)
+                      e.target.value = ""
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center border border-border bg-background text-foreground">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <span className="block font-medium text-xs text-foreground">
+                      Upload a new tabular dataset (.csv, .xlsx)
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      Nexus will profile columns and propose a table schema for your approval
+                    </span>
+                  </div>
+                </div>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground border border-border px-2 py-1 bg-background hover:bg-muted/40 shrink-0">
+                  Select file
+                </span>
+              </div>
+            )}
+
+            {/* Suggestion prompts — hidden once any file uploaded */}
+            {!hasUploads && (
+              <div className="mt-4 flex flex-col border-y border-border divide-y divide-border">
+                {suggestions.map((question) => (
+                  <button
+                    key={question}
+                    type="button"
+                    onClick={() => onAsk(question)}
+                    className="group flex w-full items-center justify-between py-3.5 text-left text-[15px] text-muted-foreground hover:text-foreground transition-colors outline-none focus-visible:bg-accent/40"
+                  >
+                    <span className="font-normal">{question}</span>
+                    <ArrowUpRight className="h-4 w-4 text-muted-foreground/60 group-hover:text-foreground transition-colors shrink-0 ml-2" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          /* Message List in centered 720px column */
+          /* Message List */
           <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 pb-4">
             {messages.map((message, index) => {
-              // Tag the first assistant message in a run
               const isFirstInRun =
                 message.role === "assistant" &&
                 (index === 0 || messages[index - 1]?.role === "user")
@@ -162,6 +278,11 @@ export function ChatPane({
                   onRetry={onRetry}
                   onFeedback={onFeedback}
                   onToast={onToast}
+                  onApproveSchema={onApproveSchema}
+                  onRejectSchema={onRejectSchema}
+                  onAsk={onAsk}
+                  chatBusy={busy}
+                  uploadPending={uploadPending}
                 />
               )
             })}
@@ -169,7 +290,7 @@ export function ChatPane({
         )}
       </div>
 
-      {/* Floating "↓ New content" pill when scrolled up */}
+      {/* Floating "↓ New content" pill */}
       {showScrollBottom && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
           <button
@@ -193,6 +314,7 @@ export function ChatPane({
         onDraft={onDraft}
         onAsk={onAsk}
         onAbort={onAbort}
+        onUploadFile={onUploadFile ? handleFileDrop : undefined}
       />
     </section>
   )
@@ -204,6 +326,11 @@ interface MessageItemProps {
   onRetry?: (messageId: string) => void
   onFeedback: (runId: number, rating: "up" | "down", reason?: string) => Promise<boolean>
   onToast: (message: string) => void
+  onApproveSchema?: (uploadId: string) => Promise<void>
+  onRejectSchema?: (uploadId: string) => Promise<void>
+  onAsk?: (question: string) => void
+  chatBusy?: boolean
+  uploadPending?: boolean
 }
 
 const MessageItem = memo(function MessageItem({
@@ -212,7 +339,36 @@ const MessageItem = memo(function MessageItem({
   onRetry,
   onFeedback,
   onToast,
+  onApproveSchema,
+  onRejectSchema,
+  onAsk,
+  chatBusy,
 }: MessageItemProps) {
+  // Architect message
+  if (message.uploadData) {
+    return (
+      <div className="w-full">
+        <SchemaArchitectCard
+          data={message.uploadData}
+          onApprove={onApproveSchema}
+          onReject={onRejectSchema}
+          onAsk={onAsk}
+          chatBusy={chatBusy}
+        />
+      </div>
+    )
+  }
+
+  // Deterministic Nexus handoff message
+  if (message.handoffData) {
+    return (
+      <div className="w-full">
+        <HandoffMessage handoff={message.handoffData} onAsk={onAsk} />
+      </div>
+    )
+  }
+
+  // User message
   if (message.role === "user") {
     return (
       <div className="flex justify-end w-full">
@@ -223,20 +379,18 @@ const MessageItem = memo(function MessageItem({
     )
   }
 
-  // Assistant Message
+  // Assistant (Nexus) message
   const hasTokens = Boolean(message.text)
   const isComplete = !isStreaming && Boolean(message.badge && message.badge !== "waiting")
 
   return (
     <div className="w-full text-[16px] leading-[1.65] text-foreground">
-      {/* Small "Nexus" label appears above ONLY the first assistant message in a run */}
       {message.isFirstInRun ? (
         <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground block mb-1.5 select-none">
           Nexus
         </span>
       ) : null}
 
-      {/* 1. Tool line (disappears completely when the first token arrives) */}
       {!hasTokens ? (
         <ToolLine
           activity={message.activity}
@@ -244,7 +398,6 @@ const MessageItem = memo(function MessageItem({
         />
       ) : null}
 
-      {/* 2. Answer text with progressive markdown & blinking caret while streaming */}
       {hasTokens ? (
         <div className="prose-nexus text-[16px] leading-[1.65] text-foreground">
           <RenderedMarkdown text={message.text} />
@@ -257,7 +410,6 @@ const MessageItem = memo(function MessageItem({
         </div>
       ) : null}
 
-      {/* Dropped stream notice: "Connection lost. [Retry]" */}
       {message.streamDropped ? (
         <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
           <span>Connection lost.</span>
@@ -273,7 +425,6 @@ const MessageItem = memo(function MessageItem({
         </div>
       ) : null}
 
-      {/* Fatal error event in destructive-tinted row */}
       {message.error ? (
         <div
           role="alert"
@@ -296,7 +447,6 @@ const MessageItem = memo(function MessageItem({
         </div>
       ) : null}
 
-      {/* 3. Checker Audit Bar: fades in under answer after check */}
       {(isComplete || (!isStreaming && (message.sql || (message.rows && message.rows.length > 0) || (message.steps && message.steps.length > 0)))) && (
         <AuditBar
           badge={message.badge}
@@ -346,9 +496,7 @@ function RenderedMarkdown({ text }: { text: string }) {
           </h3>
         ),
         h3: ({ children }) => (
-          <h4 className="mb-1.5 text-sm font-medium text-foreground">
-            {children}
-          </h4>
+          <h4 className="mb-1.5 text-sm font-medium text-foreground">{children}</h4>
         ),
         pre: ({ children }) => (
           <pre className="my-3 overflow-x-auto border border-border bg-muted/30 p-3 font-mono text-[13px] leading-relaxed last:mb-0">

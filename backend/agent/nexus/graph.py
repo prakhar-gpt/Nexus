@@ -10,16 +10,14 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from agent.model import chat_model
-from agent.nodes import (
+from agent.nexus.nodes import (
     agent_node,
     checker_node,
     chunk_text,
-    clean_answer_text,
-    extract_visible_text,
     route_next_step,
     tools_node,
 )
-from agent.state import AgentState, HISTORY_TURNS, MAX_TOOL_STEPS
+from agent.nexus.state import AgentState, HISTORY_TURNS, MAX_TOOL_STEPS
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
 SYSTEM_PROMPT = PROMPT_PATH.read_text(encoding="utf-8").strip()

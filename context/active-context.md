@@ -1,59 +1,51 @@
 Created At: 2026-11-09T00:35:50+05:30
-Updated At: 2026-11-09T01:20:00+05:30
+Updated At: 2026-11-09T05:32:00+05:30
 
 Nexus is organized with a clean, senior-engineer root layout:
-- `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette).
+- `frontend/`: Standalone Next.js 16 app (TypeScript, Tailwind, shadcn/ui, JetBrains Mono, warm stone palette). Completely in-chat dataset upload and schema review.
 - `backend/`: Pure Python FastAPI service with entry point `backend/main.py` (`uvicorn main:app --reload` from `backend/` or `uvicorn backend.main:app` from root).
 - `context/`: Project documentation and architecture decisions.
 - `datasets/`: Public & synthetic datasets (`datasets/Superstore/Superstore.csv`).
 
-### Backend Architecture
-- **Entry Point**: `backend/main.py` sets up CORS, mounts routers, and defines root health checks.
-- **Database (`backend/db/`)**:
-  - `changesets/`: Versioned migration scripts (`001_initial_schema.sql`, `002_ingest_tables.sql`, `003_week3_tables.sql`, `004_week4_attributes.sql`, `reader.sql`, `writer.sql`).
-  - `seeds/`: Initial seed data loader (`load_superstore.py`).
-- **API Domain Routers & Services (`backend/api/`)**:
-  - `routers/` (`workspaces.py`, `uploads.py`, `runs.py`, `eval.py`): Clean HTTP endpoints with Pydantic schemas colocated directly within their domain routers.
-  - `services/` (`chat_service.py`, `workspace_service.py`, `upload_service.py`, `eval_service.py`): Business logic. SSE formatting is inlined cleanly into `chat_service.py`.
-- **Agent Architecture (`backend/agent/`)**:
-  - `tools/`: Exactly the 4 core tools cleanly modularized into dedicated files:
-    - `get_schema.py`: Inspects table schemas, unmapped JSONB attributes, and analytical capabilities.
-    - `run_sql.py`: AST-guarded, read-only SQL under RLS (`nexus_reader`), with `max_preview = 25` rows.
-    - `read_kb.py`: Safe reference markdown reader under `backend/kb/`.
-    - `run_python.py`: Sandboxed Python calculation runner with AST checks and `clean_code()` normalizer to prevent indentation errors from LLM code fences.
-    - `__init__.py`: Exports `TOOLS = [get_schema, run_sql_tool, read_kb, run_python]` and execution dispatches.
-  - `nodes.py`: Consolidated LangGraph loop nodes (`agent_node`, `tools_node`, `checker_node`, `route_next_step`) and visible token extractors (`extract_visible_chunk`, `extract_text_delta`).
-  - `graph.py`: LangGraph state machine, thread-level checkpointing (`MemorySaver`), and streaming generator (`stream`).
-  - `checker.py`: Deterministic numerical verification comparing draft claims against SQL rows, user messages, and Python execution results.
-  - `sandbox.py`: Subprocess execution boundary (no network, 10s timeout, 256MB cap).
-  - `db.py`: PostgreSQL reader/writer connections (`READER_SQL` in `backend/db/changesets/reader.sql`).
-  - `model.py`: LLM provider resolver (Groq, OpenRouter, DeepSeek).
-  - `prompts/system.md`: Hardened system prompt with explicit directives to execute SQL before calling `run_python`.
-- **Ingestion (`backend/ingest/`)**:
-  - `reader.py`: File safety validation, CSV/XLSX extraction, formula sanitization, and type cleaning.
-  - `mapping.py`: Canonical column mapping, RapidFuzz matching, retail synonyms, and analytical capabilities (`compute_capabilities`).
-  - `store.py`: Postgres writer connection and query execution gateway (`execute`, `get_writer_connection`, `sql_literal`).
-  - `pipeline.py`: Ingestion workflow orchestration (staging, validation, quarantine, COPY commit).
-  - `__init__.py`: Package gateway cleanly re-exporting public ingestion interfaces.
-- **Evaluation (`backend/eval/`)**:
-  - `golden_set.json`: Unified single source of truth containing all 30 questions (`sql`, `code`, `missing`, `fixture`) and ground-truth expected outputs.
-  - `runner.py`: Streamlined evaluation runner scoring SQL correctness, numeric faithfulness, and refusal accuracy without redundant external question dicts.
-- **Consolidated Tests (`backend/tests/`)**:
-  - All test suites consolidated into `backend/tests/` (`conftest.py`, `test_api.py`, `test_atomicity.py`, `test_checker.py`, `test_ingest.py`, `test_loop.py`, `test_sql_guard.py`).
+### Current Active State & Refactors Completed
+- **Modern In-Chat Schema Approval & UI Polish (Decision 50)**:
+  - **Shadcn Component Integration**: Replaced unstyled native `<select>` dropdowns for column `Type` and `Role` with shadcn `DropdownMenu` components with check indicators. Replaced raw tables with shadcn `Table` (`TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell`), `ScrollArea`, and `Badge`.
+  - **Frictionless Scrolling**: Fixed height inheritance in `ScrollArea` (`h-[280px]` with `containerClassName="contents"` on `Table`) to enable smooth vertical and horizontal scrolling with pinned sticky headers (`sticky top-0 z-10 bg-muted`), eliminating conflicting nested `overflow-x-auto` wrappers.
+  - **Global Hairline Scrollbars**: Added global calm scrollbar styling in `frontend/app/globals.css` with WebKit scrollbars (6px width, `--border` track/thumb, `--radius: 0`) and Firefox `scrollbar-width: thin; scrollbar-color: var(--border) transparent` adhering strictly to `design-language.md`.
+  - **Markdown-Rendered Table Grain**: Sanitized LLM-generated raw prefix artifacts (`Grain:**`, `**Grain:**`, `One row represents:`) on both backend (`graph.py`) and frontend (`cleanGrainText`) via regex. Rendered grain with `ReactMarkdown` and `remarkGfm`, styling backtick identifiers (e.g. `` `order_id` ``, `` `product_id` ``) as hairline monospace code badges, with inline click-to-edit support and debounced server synchronization.
+  - **Single-Tool Pulsating Streaming (`AgentSteps`)**: Replaced the stacked step list with loud green checkmarks with the exact single-line pulsating tool pattern used by Nexus `ToolLine`. While profiling or loading, exactly ONE quiet tool label pulses at a time (`animate-ping` + `animate-pulse`), eliminating visual noise. Completed steps collapse into a calm, unbadged disclosure.
+  - **Immediate Table Approval & COPY Load**: Fixed "Approve & create table" to transition immediately via local state (`setLocalStatus("loaded")`), creating the `user_data.ds_*` table and streaming rows via PostgreSQL COPY in ~500ms without UI latency.
+  - **Friendly Dataset Labeling & Commercial Question Suggestions**: Replaced raw internal relation names (e.g. `ds_776`) with friendly dataset labels (e.g. `Superstore`). Re-classified non-measures in `backend/agent/architect/nodes.py` (columns with `code`, `zip`, `postal`, `phone`, `id`, `nbr` are classified as `identifier` or `dimension`, never as `measure`). Implemented retail-prioritized question suggestions (`_generate_suggested_questions`) prioritizing commercial metrics (`revenue`, `sales`, `profit`, `quantity`) and core retail dimensions (`category`, `segment`, `region`), generating defensible commercial due diligence inquiries instead of mathematical aggregations on postal codes.
+- **`sales_clean` Deprecation (Decision 49)**:
+  - `sales_clean` is formally deprecated via PostgreSQL database comments and system prompt directives.
+  - All new tabular datasets (.csv, .xlsx) are ingested exclusively as custom datasets (`user_data.ds_*`), cataloged in `datasets` and `dataset_columns`, isolated by workspace RLS (`nexus_reader`).
+  - `sales_clean` remains strictly as a read-only historical benchmark fixture to support the 30-question evaluation suite (`backend/eval/golden_set.json`).
+- **Database Table Unification**:
+  - Dropped redundant tables `upload_events` and `architect_runs`.
+  - All agent events (safety, parse, profiling, proposal, and chat) use the single unified `agent_events` ledger (`id`, `workspace_id`, `agent_kind`, `run_id`, `upload_id`, `seq`, `stage`, `event_type`, `label`, `payload`, `created_at`).
+  - All execution audit trails are stored in the shared `runs` table (with `agent_kind` and `upload_id` columns).
+- **Single Agent Persona ("Nexus")**:
+  - Unified agent identity across both frontend and backend. UI labels replaced: "Schema Architect" and "Schema Agent" are removed in favor of "Nexus" as a cohesive copilot.
+  - Removed "Active" badge from left sidebar.
+- **Blazing Fast In-Chat Profiling (< 1.0 Second)**:
+  - Eliminated the slow 20-roundtrip LLM tool loop.
+  - In `backend/agent/architect/graph.py`, profiling samples up to 500 rows and executes deterministic type inference, date format detection, null rate calculation, and snake_case mapping in <100ms.
+  - Streams immediate human-readable progress steps ("Read file structure", "Profiled column data types and null rates", "Determined table grain") to `agent_events` and emits the proposal card within ~1 second.
+- **Dead & Unused Code Purge**:
+  - Deleted legacy modal stepper and dead mapping components: `pipeline-stepper.tsx`, `mapping-table.tsx`, `schema-review-table.tsx`, `dropzone.tsx`, `sidebar/ingestion-section.tsx`, and `sidebar/workspace-selector.tsx`.
+  - Cleaned up unused mapping confirmation functions, states, and endpoints from `frontend/components/dashboard.tsx` and `backend/api/services/upload_service.py`.
 
-### Verification & Performance
-- **Golden Set Benchmark (`backend/eval/runner.py`)**: 100% SQL correctness, 100% numeric faithfulness, 100% refusal accuracy across all 30 questions.
-- **Pytest Suite (`pytest backend/tests`)**: 20/20 passed (100%).
-- **Multi-Step & Python Tool Stability**:
-  - Eliminated `"That step was rejected"` bugs caused by LLM leading spaces / code fences via `clean_code()` in `backend/agent/tools/run_python.py`.
-  - Preview size increased from 15 to 25 rows in `run_sql.py` to prevent category truncation (e.g. Fasteners at #17) and multi-query token bloat.
-  - Increased `MAX_TOOL_STEPS` to 8 in `backend/agent/state.py`.
-- **Full Chat Audit Trail Persistence & Multi-Tool Execution**:
-  - `save_run` in `backend/api/services/chat_service.py` stores intermediate tool calls (`steps`), inputs, outputs, durations, statuses, queries, and results into `runs.checker_result` and `runs.python_results`.
-  - `get_workspace_turns` in `backend/api/services/workspace_service.py` re-hydrates full tool steps upon room/thread reload.
-  - "Show tool execution" disclosure in `frontend/components/audit-bar.tsx` and `frontend/components/query-panel.tsx` renders every tool call made (input, output, syntax-highlighted code, SQL preview table, and chart) with copy controls.
-
-### Unresolved / Planned for Implementation
-- **CI & Deployment**: GitHub Actions workflow for `python backend/eval/runner.py` and `pytest backend/tests` regression checks on push; Docker Compose packaging.
-- **Knowledge Base / Document Q&A (`search_docs`)**: pgvector semantic retrieval over PDF diligence memos.
-- Superstore extract note: Nulls for `quantity`, `unit_price`, `discount_pct`, `cost`, `profit`, and `channel` are expected; the agent refuses queries on these missing dimensions while deterministic checking verifies the refusal.
+### Verification Suite Results
+- **Pytest Suite (`pytest backend/tests`)**: 30/30 passed (100%).
+- **Frontend Typecheck (`npm run typecheck --prefix frontend`)**: 0 errors.
+- **End-to-End Flow Verification**: Passed across all stages:
+  1. Workspace creation
+  2. Superstore CSV upload
+  3. `agent_events` real-time step streaming (single tool pulsating at a time)
+  4. Instant schema proposal generation with markdown-rendered grain
+  5. One-click schema approval & PostgreSQL streaming COPY (9,800 rows loaded in ~500ms)
+  6. Human-friendly dataset labeling (`Superstore`) and retail-intelligent question chips
+  7. `get_schema` discovery of custom table `ds_*`
+  8. Read-only SQL execution under RLS
+  9. Live Nexus query answering with AST guard and deterministic `checker` verification.
+- **Golden Set Benchmark (`backend/eval/runner.py`)**: 100% SQL correctness, 100% numeric faithfulness, 100% refusal accuracy.

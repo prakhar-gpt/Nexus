@@ -1,0 +1,6 @@
+sku,warehouse_id,on_hand_qty,reorder_point,safety_stock
+SKU-9901,WH-EAST,450,100,50
+SKU-9902,WH-WEST,12,50,20
+SKU-9903,WH-EAST,0,20,10
+SKU-9904,WH-CENTRAL,890,200,100
+

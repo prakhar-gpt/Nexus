@@ -24,6 +24,9 @@ export default function ExistingThreadPage({
     setDraft,
     initThreadTurns,
     ask,
+    uploadFile,
+    approveSchema,
+    rejectSchema,
     abortStream,
     recordFeedback,
   } = useChatStore()
@@ -133,6 +136,9 @@ export default function ExistingThreadPage({
         onAbort={() => abortStream(roomId, threadId)}
         onFeedback={recordFeedback}
         onToast={showToast}
+        onUploadFile={(file) => uploadFile(roomId, threadId, file)}
+        onApproveSchema={(uploadId) => approveSchema(roomId, threadId, uploadId)}
+        onRejectSchema={(uploadId) => rejectSchema(roomId, threadId, uploadId)}
       />
 
       {toastMessage && (

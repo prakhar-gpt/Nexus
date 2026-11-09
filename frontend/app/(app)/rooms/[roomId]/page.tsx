@@ -19,7 +19,7 @@ export default function NewChatRoomPage({
 
   const router = useRouter()
   const { room, status, mutateRoom } = useRoom()
-  const { getThreadState, setDraft, ask, abortStream } = useChatStore()
+  const { getThreadState, setDraft, ask, uploadFile, abortStream } = useChatStore()
 
   // Track the ephemeral thread ID for the new chat
   const ephemeralThreadIdRef = useRef(`thread-${Date.now().toString(36)}`)
@@ -27,6 +27,26 @@ export default function NewChatRoomPage({
 
   const threadState = useThreadState(roomId, currentThreadId)
   const composerRef = useRef<ComposerHandle>(null)
+
+  async function handleUpload(file: File) {
+    // Optimistically register thread in room sidebar
+    const title = `Upload: ${file.name}`
+    mutateRoom((curr: any) => {
+      if (!curr) return curr
+      const existing = curr.threads || []
+      return {
+        ...curr,
+        threads: [
+          { id: currentThreadId, title, created_at: new Date().toISOString(), turn_count: 1 },
+          ...existing,
+        ],
+      }
+    })
+
+    await uploadFile(roomId, currentThreadId, file, (targetId) => {
+      router.replace(`/rooms/${roomId}/c/${targetId}`)
+    })
+  }
 
   async function handleAsk(question: string) {
     const text = question.trim()
@@ -94,6 +114,7 @@ export default function NewChatRoomPage({
         onDraft={(val) => setDraft(roomId, currentThreadId, val)}
         onAsk={handleAsk}
         onAbort={() => abortStream(roomId, currentThreadId)}
+        onUploadFile={handleUpload}
       />
     </section>
   )

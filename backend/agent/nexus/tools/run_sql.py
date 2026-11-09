@@ -113,8 +113,25 @@ def _check_ast(cleaned_sql: str) -> None:
                         )
 
 
-def guard_sql(sql: str) -> str:
-    """Validate that query is a single, safe SELECT query against sales_clean without aggregate arithmetic."""
+def get_allowed_tables(workspace_id: int | None = None) -> set[str]:
+    """Fetch allowed query tables: sales_clean + registered workspace tables in datasets catalog."""
+    allowed = {"sales_clean"}
+    if workspace_id is not None:
+        try:
+            from ingest.store import execute as store_execute
+            rows = store_execute(
+                f"SELECT table_name FROM datasets WHERE workspace_id = {int(workspace_id)}"
+            )
+            for r in rows:
+                if r.get("table_name"):
+                    allowed.add(r["table_name"].lower())
+        except Exception:
+            pass
+    return allowed
+
+
+def guard_sql(sql: str, workspace_id: int | None = None) -> str:
+    """Validate that query is a single, safe SELECT query against allowed tables without aggregate arithmetic or joins."""
     if sql is None or not str(sql).strip():
         raise SqlRejected("SQL is empty.")
     if len(sql) > 8000:
@@ -141,12 +158,20 @@ def guard_sql(sql: str) -> str:
 
     stripped = _EXTRACT_FROM.sub("", masked)
     ctes = {match.group(1).lower() for match in _CTE_NAME.finditer(stripped)}
-    allowed = ctes | {"sales_clean"}
+    allowed_tables = get_allowed_tables(workspace_id)
+    allowed = ctes | allowed_tables
 
+    referenced_tables: list[str] = []
     for match in _RELATION.finditer(stripped):
         relation = match.group(1).lower()
         if relation not in allowed:
-            raise SqlRejected("Only sales_clean may be queried.")
+            raise SqlRejected(f"Table '{relation}' is not accessible or does not exist.")
+        if relation not in ctes:
+            referenced_tables.append(relation)
+
+    # Multi-table queries, joins, and self-joins are forbidden in v1
+    if len(referenced_tables) > 1:
+        raise SqlRejected("Multi-table queries and joins are not supported. Query one table at a time.")
 
     return cleaned
 
@@ -161,10 +186,11 @@ def execute_sql(sql: str, workspace_id: int) -> list[dict[str, str]]:
         raise SqlRejected("workspace_id must be an integer.")
     if workspace_id < 1:
         raise SqlRejected("workspace_id must be positive.")
-    cleaned = guard_sql(sql)
+    cleaned = guard_sql(sql, workspace_id=workspace_id)
     script = f"""
     BEGIN;
     SET LOCAL app.workspace_id = '{workspace_id}';
+    SET LOCAL search_path = user_data, public;
     SET LOCAL statement_timeout = '{TIMEOUT_MS}';
     SET LOCAL transaction_read_only = on;
     SELECT * FROM (

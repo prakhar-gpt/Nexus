@@ -31,7 +31,7 @@ def get_schema() -> str:
 
 def execute_schema(workspace_id: int) -> str:
     """Inspect canonical columns, capabilities, and dynamic attributes for a workspace."""
-    from agent.tools.run_sql import SqlRejected, execute_sql
+    from agent.nexus.tools.run_sql import SqlRejected, execute_sql
 
     try:
         rows = execute_sql(SCHEMA_SQL, workspace_id)
@@ -77,5 +77,45 @@ def execute_schema(workspace_id: int) -> str:
                 else:
                     sql_expr = f"(attributes->>'{k}')"
                 lines.append(f"  - {k} ({t}): exact SQL expression `{sql_expr}`, samples={samples}")
+
+    # List all approved custom datasets for this workspace
+    try:
+        from ingest.store import execute as store_execute
+        dataset_rows = store_execute(
+            f"SELECT id, table_name, table_label, grain, grain_key_columns, row_count "
+            f"FROM datasets WHERE workspace_id = {int(workspace_id)} ORDER BY id"
+        )
+    except Exception:
+        dataset_rows = []
+
+    if dataset_rows:
+        lines.append("\nCustom Datasets (user_data schema, accessible directly without schema prefix):")
+        for ds in dataset_rows:
+            ds_id = ds["id"]
+            t_name = ds["table_name"]
+            t_label = ds["table_label"]
+            grain = ds["grain"]
+            r_count = ds.get("row_count", 0)
+            lines.append(f"- Table `{t_name}`: {t_label} ({r_count} rows)")
+            lines.append(f"  Grain: \"{grain}\"")
+
+            try:
+                col_rows = store_execute(
+                    f"SELECT column_name, type, role, description, unit, null_rate "
+                    f"FROM dataset_columns WHERE dataset_id = {int(ds_id)} ORDER BY id"
+                )
+            except Exception:
+                col_rows = []
+
+            if col_rows:
+                lines.append("  Columns:")
+                for cr in col_rows:
+                    cn = cr["column_name"]
+                    ct = cr["type"]
+                    crole = cr["role"]
+                    cdesc = cr.get("description") or ""
+                    cunit = f", unit={cr['unit']}" if cr.get("unit") else ""
+                    cnr = f", null_rate={cr.get('null_rate', 0)}"
+                    lines.append(f"    * `{cn}` ({ct}, role={crole}{cunit}{cnr}): {cdesc}")
 
     return "\n".join(lines)

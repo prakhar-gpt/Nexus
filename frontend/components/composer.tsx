@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useImperativeHandle, forwardRef } from "react"
-import { ArrowUp, Square } from "lucide-react"
+import { ArrowUp, Square, Paperclip } from "lucide-react"
 
 export interface ComposerHandle {
   focus: () => void
@@ -15,6 +15,7 @@ interface ComposerProps {
   onDraft: (value: string) => void
   onAsk: (question: string) => void
   onAbort?: () => void
+  onUploadFile?: (file: File) => void
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
@@ -26,10 +27,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onDraft,
     onAsk,
     onAbort,
+    onUploadFile,
   },
   ref
 ) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -115,7 +118,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className="min-h-[38px] max-h-[192px] w-full resize-none bg-transparent pr-10 text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground outline-none disabled:opacity-60"
           />
 
-          <div className="absolute right-2.5 bottom-2.5">
+          <div className="absolute right-2.5 bottom-2.5 flex items-center gap-1.5">
+            {onUploadFile && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      onUploadFile(file)
+                      e.target.value = ""
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={busy}
+                  aria-label="Upload dataset"
+                  className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 cursor-pointer"
+                  title="Upload dataset (.csv, .xlsx)"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              </>
+            )}
+
             {busy ? (
               <button
                 type="button"

@@ -63,7 +63,6 @@ export function Sidebar({
   }, [router, roomId, onNewThread])
 
   const isIngesting = status?.type === "ingesting"
-  const needsConfirmation = status?.type === "needs_confirmation"
 
   return (
     <div className="flex h-full w-[260px] flex-col justify-between bg-sidebar p-3 text-sidebar-foreground border-r border-sidebar-border select-none">
@@ -101,49 +100,20 @@ export function Sidebar({
               {roomName}
             </span>
 
-            <div className="flex items-center gap-1.5">
-              {onOpenDataModal ? (
-                <button
-                  type="button"
-                  onClick={onOpenDataModal}
-                  className="text-[11px] text-muted-foreground hover:text-sidebar-foreground underline underline-offset-2 flex items-center gap-1 transition-colors"
-                >
-                  <span>Dataset</span>
-                  {attentionWarning && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-warn shrink-0"
-                      title={attentionWarning}
-                    />
-                  )}
-                </button>
-              ) : (
-                <Link
-                  href={`/rooms/${roomId}/dataset`}
-                  className="text-[11px] text-muted-foreground hover:text-sidebar-foreground underline underline-offset-2 flex items-center gap-1 transition-colors"
-                >
-                  <span>Dataset</span>
-                  {isIngesting && (
-                    <Loader2 className="h-2.5 w-2.5 animate-spin text-foreground" />
-                  )}
-                  {needsConfirmation && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-warn shrink-0"
-                      title={`${status?.count} columns need confirming`}
-                    />
-                  )}
-                </Link>
-              )}
-            </div>
+            {isIngesting ? (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  Analyzing…
+                </span>
+              </div>
+            ) : null}
           </div>
 
-          <p className="font-mono text-[11px] tabular-nums text-muted-foreground truncate">
-            {healthSummary?.rows ?? "0 rows"}
-            {healthSummary?.dates ? ` · ${healthSummary.dates}` : ""}
-          </p>
-
-          <p className="font-mono text-[11px] tabular-nums text-muted-foreground/80">
-            Eval 92%
-          </p>
+          {healthSummary?.dates ? (
+            <p className="font-mono text-[11px] tabular-nums text-muted-foreground truncate">
+              {healthSummary.dates}
+            </p>
+          ) : null}
         </div>
 
         {/* 3. New Chat full-width outlined button with ⌘K hint */}
