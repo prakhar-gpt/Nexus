@@ -31,8 +31,9 @@ _NUMBER = re.compile(
 
 # Year contextual markers: preceded by in, during, since, FY, year, Q1-Q4, or month
 _YEAR_CONTEXT_RE = re.compile(
-    r"(?i)\b(?:in|during|since|fy|year|q[1-4]|january|february|march|april|may|june|july|"
-    r"august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s*$"
+    r"\b(?:in|during|since|fy|year|q[1-4]|january|february|march|april|may|june|july|"
+    r"august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s*$",
+    re.IGNORECASE,
 )
 
 # Date formats: YYYY-MM-DD, MM/DD/YYYY, DD/MM/YYYY
@@ -41,10 +42,11 @@ _EXACT_DATE_RE = re.compile(
 )
 
 _MONTH_DAY_RE = re.compile(
-    r"(?i)\b(?:january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"\b(?:january|february|march|april|may|june|july|august|september|october|november|december|"
     r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+\d{1,2}\b|\b\d{1,2}\s+(?:january|february|"
     r"march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|"
-    r"sep|sept|oct|nov|dec)\b"
+    r"sep|sept|oct|nov|dec)\b",
+    re.IGNORECASE,
 )
 
 
@@ -108,8 +110,8 @@ def is_exempt_number(
         return True
 
     # Ordinals: "1st quarter", "2nd half", "3rd place" (exempt as prose markers)
-    clean_no_punct = re.sub(r"(?i)[,\$£€]", "", s)
-    if re.match(r"(?i)^\d+(?:st|nd|rd|th)$", clean_no_punct):
+    clean_no_punct = re.sub(r"[,\$£€]", "", s, flags=re.IGNORECASE)
+    if re.match(r"^\d+(?:st|nd|rd|th)$", clean_no_punct, re.IGNORECASE):
         # If it's a standalone ordinal marker, e.g. "1st quarter"
         if re.match(r"^\s*(?:quarter|half|month|week|day|year|round|phase|tier|place|rank)", following):
             return True
@@ -119,7 +121,7 @@ def is_exempt_number(
     # Top N: preceded by 'Top ' or 'top '
     if start > 0:
         preceding = full_text[max(0, start - 10) : start]
-        if re.search(r"(?i)\btop\s+$", preceding):
+        if re.search(r"\btop\s+$", preceding, re.IGNORECASE):
             val = normalize_raw_number(raw)
             if val is not None:
                 int_val = int(val)
@@ -147,7 +149,7 @@ def normalize_raw_number(raw: str) -> Decimal | None:
     text = raw.strip()
     for sym in ("$", "\u00a3", "\u20ac"):
         text = text.replace(sym, "")
-    text = re.sub(r"(?i)(?:st|nd|rd|th)$", "", text)
+    text = re.sub(r"(?:st|nd|rd|th)$", "", text, flags=re.IGNORECASE)
     if text.endswith("%"):
         text = text[:-1]
 

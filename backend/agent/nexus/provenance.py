@@ -75,12 +75,13 @@ class ClaimProvenance:
 
 
 _CURRENCY_OR_PERCENT_RE = re.compile(
-    r"[\$£€]|%\s*$|(?i)\b(?:usd|eur|gbp|inr|dollars?|cents?|percent)\b"
+    r"[\$£€]|%\s*$|\b(?:usd|eur|gbp|inr|dollars?|cents?|percent)\b",
+    re.IGNORECASE,
 )
-_IDENTIFIER_COL_RE = re.compile(r"(?i)\b(?:id|code|zip|postal|pin)\b|_(?:id|code|zip|postal|pin)$")
-_COUNT_COL_RE = re.compile(r"(?i)\b(?:count|row_count|total_rows|cnt|populated)\b|_(?:count|cnt)$")
-_DATE_COL_RE = re.compile(r"(?i)\b(?:date|year|month|day|quarter|time|timestamp)\b|_(?:date|time)$")
-_TOTAL_OR_COUNT_WORD_RE = re.compile(r"(?i)\b(?:total|sum|overall|count|top\s+\d+)\b")
+_IDENTIFIER_COL_RE = re.compile(r"\b(?:id|code|zip|postal|pin)\b|_(?:id|code|zip|postal|pin)$", re.IGNORECASE)
+_COUNT_COL_RE = re.compile(r"\b(?:count|row_count|total_rows|cnt|populated)\b|_(?:count|cnt)$", re.IGNORECASE)
+_DATE_COL_RE = re.compile(r"\b(?:date|year|month|day|quarter|time|timestamp)\b|_(?:date|time)$", re.IGNORECASE)
+_TOTAL_OR_COUNT_WORD_RE = re.compile(r"\b(?:total|sum|overall|count|top\s+\d+)\b", re.IGNORECASE)
 
 
 def is_currency_or_percent_claim(raw: str) -> bool:

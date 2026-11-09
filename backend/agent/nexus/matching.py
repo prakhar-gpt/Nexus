@@ -8,15 +8,16 @@ from decimal import Decimal
 
 # Words indicating a loss, decline, or negative direction
 _LOSS_WORD_RE = re.compile(
-    r"(?i)\b(?:loss|lost|decline|declined|drop|dropped|down|negative|deficit|below|decreased?)\b"
+    r"\b(?:loss|lost|decline|declined|drop|dropped|down|negative|deficit|below|decreased?)\b",
+    re.IGNORECASE,
 )
 
 
 def displayed_precision(raw: str) -> int:
     """Return the number of decimal places visible in a raw number string."""
     clean = raw.replace(",", "")
-    clean = re.sub(r"(?i)[kmb%\$\u00a3\u20ac]$", "", clean)
-    clean = re.sub(r"(?i)(?:st|nd|rd|th)$", "", clean)
+    clean = re.sub(r"[kmb%\$\u00a3\u20ac]$", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"(?:st|nd|rd|th)$", "", clean, flags=re.IGNORECASE)
     if "." in clean:
         return len(clean.split(".", 1)[1])
     return 0
@@ -41,7 +42,7 @@ def calculate_tolerance(raw: str, value: Decimal) -> Decimal:
     - Plain integer: 0.5 default; integer rounding rules also apply in match_claim.
     """
     raw_stripped = raw.strip()
-    has_scale = bool(re.search(r"(?i)[kmb]$", raw_stripped.rstrip("%").rstrip("$\u00a3\u20ac")))
+    has_scale = bool(re.search(r"[kmb]$", raw_stripped.rstrip("%").rstrip("$\u00a3\u20ac"), re.IGNORECASE))
     if has_scale:
         prec = displayed_precision(raw_stripped)
         step = (Decimal(10) ** (-prec)) * Decimal(scale_of(raw_stripped))
@@ -67,7 +68,7 @@ def match_target_value(
     tol = calculate_tolerance(raw, value)
     is_pct = raw.strip().endswith("%")
     prec = displayed_precision(raw)
-    is_integer = (prec == 0) and not bool(re.search(r"(?i)[kmb]$", raw.strip()))
+    is_integer = (prec == 0) and not bool(re.search(r"[kmb]$", raw.strip(), re.IGNORECASE))
 
     candidates = [target]
     if target < 0 and is_loss:

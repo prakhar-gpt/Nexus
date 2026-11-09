@@ -138,7 +138,7 @@ def check_answer(
         for q_val, q_raw, q_start, q_end in prompt_numbers:
             if abs(value - q_val) <= Decimal("0.5"):
                 matched_in_prompt = True
-                if is_contextual_year(q_raw, question_clean, q_start, q_end) or re.search(r"(?i)\btop\s+$", question_clean[max(0, q_start - 10) : q_start]):
+                if is_contextual_year(q_raw, question_clean, q_start, q_end) or re.search(r"\btop\s+$", question_clean[max(0, q_start - 10) : q_start], re.IGNORECASE):
                     prompt_is_year_or_top = True
                 break
 
