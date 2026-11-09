@@ -54,7 +54,9 @@ BEGIN
         ALTER TABLE datasets DROP CONSTRAINT IF EXISTS datasets_workspace_id_fkey;
         ALTER TABLE threads DROP CONSTRAINT IF EXISTS threads_workspace_id_fkey;
         ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_workspace_id_fkey;
-        ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_workspace_id_fkey;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
+            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_workspace_id_fkey;
+        END IF;
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'architect_runs') THEN
             ALTER TABLE architect_runs DROP CONSTRAINT IF EXISTS architect_runs_workspace_id_fkey;
         END IF;
@@ -65,7 +67,9 @@ BEGIN
         ALTER TABLE upload_attribute_schema DROP CONSTRAINT IF EXISTS upload_attribute_schema_upload_id_fkey;
         ALTER TABLE datasets DROP CONSTRAINT IF EXISTS datasets_upload_id_fkey;
         ALTER TABLE runs DROP CONSTRAINT IF EXISTS runs_upload_id_fkey;
-        ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_upload_id_fkey;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
+            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_upload_id_fkey;
+        END IF;
         IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'upload_events') THEN
             ALTER TABLE upload_events DROP CONSTRAINT IF EXISTS upload_events_upload_id_fkey;
         END IF;
@@ -78,7 +82,9 @@ BEGIN
 
         -- D. Drop foreign keys referencing runs(id)
         ALTER TABLE feedback DROP CONSTRAINT IF EXISTS feedback_run_id_fkey;
-        ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_run_id_fkey;
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_events') THEN
+            ALTER TABLE agent_events DROP CONSTRAINT IF EXISTS agent_events_run_id_fkey;
+        END IF;
 
         -- 1. Convert workspaces
         ALTER TABLE workspaces ALTER COLUMN id DROP IDENTITY IF EXISTS;
