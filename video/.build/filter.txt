@@ -1,0 +1,17 @@
+[0:v]split=7[s0][s1][s2][s3][s4][s5][s6];
+[s0]trim=start=0.600:end=8.600,setpts=(PTS-STARTPTS)/2,fps=30,crop=1918:928:0:0,drawbox=x=0:y=908:w=270:h=20:color=black:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v0];
+[s1]trim=start=15.400:end=21.000,setpts=(PTS-STARTPTS)/2,fps=30,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v1];
+[s2]trim=start=21.150:end=33.100,setpts=(PTS-STARTPTS)/2,fps=30,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v2];
+[s3]trim=start=33.150:end=47.600,setpts=(PTS-STARTPTS)/3,fps=30,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v3];
+[s4]trim=start=59.200:end=92.950,setpts=(PTS-STARTPTS)/4,fps=30,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v4];
+[s5]trim=start=93.050:end=94.600,setpts=(PTS-STARTPTS)/1,fps=30,tpad=stop_mode=clone:stop_duration=6.000,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v5];
+[s6]trim=start=94.600:end=106.300,setpts=(PTS-STARTPTS)/1,fps=30,tpad=stop_mode=clone:stop_duration=4.000,crop=1918:928:0:0,drawbox=x=18:y=891:w=252:h=16:color=0x28282A:t=fill[gbase];
+[gbase][2:v]overlay=0:0:enable='between(t\,0.350\,2.350)',format=yuv420p,zoompan=z='1+0.6000*(if(lt(on\,26)\,0\,if(lt(on\,44)\,((on-26)/18)*((on-26)/18)*(3-2*(on-26)/18)\,1)))*(1-(if(lt(on\,429)\,0\,if(lt(on\,447)\,((on-429)/18)*((on-429)/18)*(3-2*(on-429)/18)\,1))))':x='min(max(1691.0-in_w/zoom/2\,0)\,in_w-in_w/zoom)':y='min(max(540.0-in_h/zoom/2\,0)\,in_h-in_h/zoom)':d=1:s=1918x928:fps=30,scale=1080:1350:force_original_aspect_ratio=decrease:flags=lanczos,pad=1080:1350:(ow-iw)/2:(oh-ih)/2:color=0x0A0A0A,setsar=1,format=yuv420p[v6];
+[v0][v1]xfade=transition=fade:duration=0.300:offset=3.700[x1];
+[x1][v2]xfade=transition=fade:duration=0.300:offset=6.200[x2];
+[x2][v3]xfade=transition=fade:duration=0.300:offset=11.875[x3];
+[x3][v4]xfade=transition=fade:duration=0.300:offset=16.392[x4];
+[x4][v5]xfade=transition=fade:duration=0.300:offset=24.529[x5];
+[x5][v6]xfade=transition=fade:duration=0.300:offset=31.779[vmix];
+[vmix]fade=t=in:st=0:d=0.500,fade=t=out:st=46.679:d=0.800,subtitles=captions.srt:fontsdir='C\:/Windows/Fonts':force_style='Fontname=Arial\,Bold=1\,FontSize=11\,PrimaryColour=&H00FFFFFF&\,OutlineColour=&H00000000&\,BorderStyle=1\,Outline=1\,Shadow=0\,Alignment=2\,MarginV=46\,MarginL=20\,MarginR=20'[vout];
+[1:a]atrim=0:47.479,asetpts=PTS-STARTPTS,apad,atrim=0:47.479,volume=-18.0dB,afade=t=in:st=0:d=1.000,afade=t=out:st=45.479:d=2.000,aformat=sample_rates=48000:channel_layouts=stereo[aout]

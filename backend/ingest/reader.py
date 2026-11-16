@@ -148,6 +148,17 @@ def _sheet_rows(sheet) -> list[tuple[int, list[str]]]:
     return rows
 
 
+def header_hits(rows: list[tuple[int, list[str]]]) -> int:
+    """Score a sheet by how many header-like cells its header row contains."""
+    header_line, _ = find_header(rows)
+    if header_line is None:
+        return 0
+    for line_number, cells in rows:
+        if line_number == header_line:
+            return sum(1 for cell in cells if _is_header_cell(cell))
+    return 0
+
+
 def find_header(rows: list[tuple[int, list[str]]]) -> tuple[int | None, list[str]]:
     """Locate the row index that best matches canonical column headers."""
     best_line = None

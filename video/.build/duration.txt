@@ -1,0 +1,8 @@
+47.479
+a start=0.000 dur=4.000
+b start=3.700 dur=2.800
+c start=6.200 dur=5.975
+d start=11.875 dur=4.817
+e start=16.392 dur=8.438
+f start=24.529 dur=7.550
+g start=31.779 dur=15.700

@@ -1,0 +1,23 @@
+1
+00:00:00,350 --> 00:00:03,550
+LLMs state wrong numbers with total confidence.
+
+2
+00:00:06,400 --> 00:00:16,192
+Upload a CSV. Approve the schema.
+
+3
+00:00:16,592 --> 00:00:24,379
+Ask in plain English.
+
+4
+00:00:24,779 --> 00:00:31,629
+Every number is checked against the query results.
+
+5
+00:00:32,079 --> 00:00:43,979
+Click a number. See the exact SQL behind it.
+
+6
+00:00:44,179 --> 00:00:47,029
+Nexus. Live demo in comments.
